@@ -1,0 +1,132 @@
+.demo-widget {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.demo-widget__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.demo-widget__section {
+  min-width: 0;
+}
+
+.demo-widget__heading {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.demo-widget__diff,
+.demo-widget__lesson,
+.demo-widget__quiz {
+  min-width: 0;
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--subtle);
+  color: var(--ink-2, var(--ink));
+  overflow-wrap: anywhere;
+}
+
+.demo-widget__diff {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.demo-widget__diff code {
+  white-space: inherit;
+}
+
+.demo-widget__claims,
+.demo-widget__quiz-choices {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-widget__claim,
+.demo-widget__quiz-choice {
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--elevated);
+  overflow-wrap: anywhere;
+}
+
+.demo-widget__claim {
+  display: grid;
+  gap: 2px;
+}
+
+.demo-widget__claim-status {
+  color: var(--accent-ink, var(--accent));
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.demo-widget__claim-text,
+.demo-widget__quiz-q,
+.demo-widget__lesson {
+  line-height: var(--lh-relaxed);
+}
+
+.demo-widget__quiz-q {
+  margin: 0 0 var(--sp-2);
+  overflow-wrap: anywhere;
+}
+
+.demo-widget__quiz-choice--correct {
+  border-color: var(--success);
+  background: var(--success-soft, var(--accent-softest));
+}
+
+.demo-widget--error p {
+  margin: 0 0 var(--sp-3);
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+@media (forced-colors: active) {
+  .demo-widget__diff,
+  .demo-widget__lesson,
+  .demo-widget__quiz,
+  .demo-widget__claim,
+  .demo-widget__quiz-choice {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .demo-widget__claim-status {
+    color: LinkText;
+  }
+
+  .demo-widget__quiz-choice--correct {
+    border: 2px solid Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-widget,
+  .demo-widget * {
+    transition: none;
+  }
+}

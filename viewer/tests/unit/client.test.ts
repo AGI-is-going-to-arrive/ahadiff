@@ -327,6 +327,23 @@ describe('auth bootstrap edge cases (Phase 2H)', () => {
 
     await expect(apiFetch('/api/runs')).resolves.toEqual({ runs: [] });
   });
+
+  it('allows skipAuth only for the deterministic public demo endpoint', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      expect(String(input)).toBe(apiUrl('/api/demo/learn-preview'));
+      expect(new Headers(init?.headers).has('x-ahadiff-token')).toBe(false);
+      return Promise.resolve(jsonResponse({ ok: true }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      apiFetch('/api/demo/learn-preview', { skipAuth: true }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      apiFetch('/api/config', { skipAuth: true }),
+    ).rejects.toMatchObject({ message: 'skipAuth is not allowed for /api/config' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('config api', () => {

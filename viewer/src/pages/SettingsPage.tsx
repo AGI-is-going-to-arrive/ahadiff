@@ -32,6 +32,8 @@ import { copyToClipboard } from '../utils/clipboard';
 import { mapDoctorMessage } from '../utils/doctor';
 import { actionLabel, strategyLabel } from '../utils/integrationLabels';
 import '../components/Settings.css';
+import UsagePanel from '../components/UsagePanel';
+import DemoWidget from '../components/DemoWidget';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
@@ -90,6 +92,7 @@ interface InstallActionState {
   previewTarget?: InstallTarget;
   manifestHash?: string;
   previewCollapsed?: boolean;
+  usageCollapsed?: boolean;
 }
 
 interface SettingsData {
@@ -164,7 +167,7 @@ export default function SettingsPage() {
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   const refreshInstallTargets = useCallback(async (opts?: { signal?: AbortSignal }) => {
     const inst = await getInstallTargets(opts);
@@ -177,12 +180,12 @@ export default function SettingsPage() {
         installTargets: false,
       },
     }));
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     void fetchAll();
     return () => abortRef.current?.abort();
-  }, [fetchAll]);
+  }, [fetchAll, locale]);
 
   useEffect(() => {
     const syncHashTab = () => {
@@ -328,6 +331,7 @@ export default function SettingsPage() {
             failed={Boolean(data.failed.installTargets)}
             showGraphify={active === 'integrations' || printMode}
             t={t}
+            locale={locale}
             onRetry={retry}
             onRefreshTargets={refreshInstallTargets}
           />
@@ -2267,6 +2271,7 @@ function IntegrationsTab({
   failed,
   showGraphify,
   t,
+  locale,
   onRetry,
   onRefreshTargets,
 }: {
@@ -2274,6 +2279,7 @@ function IntegrationsTab({
   failed: boolean;
   showGraphify: boolean;
   t: TFn;
+  locale: string;
   onRetry: () => void;
   onRefreshTargets: (opts?: { signal?: AbortSignal }) => Promise<void>;
 }) {
@@ -2283,6 +2289,7 @@ function IntegrationsTab({
   const mountedRef = useRef(true);
   const copiedResetTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const pendingUsageFocusRef = useRef<string | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -2297,6 +2304,19 @@ function IntegrationsTab({
   useEffect(() => {
     setLocalTargets(targets);
   }, [targets]);
+
+  useEffect(() => {
+    const targetName = pendingUsageFocusRef.current;
+    if (!targetName) return;
+    const frame = window.requestAnimationFrame(() => {
+      const panel = document.getElementById(`integration-usage-${targetName}`);
+      if (!(panel instanceof HTMLElement)) return;
+      panel.focus({ preventScroll: true });
+      panel.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      pendingUsageFocusRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [actionState, localTargets]);
 
   const upsertTarget = useCallback((target: InstallTarget) => {
     setLocalTargets((current) => current.map((item) => (
@@ -2350,8 +2370,15 @@ function IntegrationsTab({
         : await removeInstallTarget(target.name, preview.manifest_hash, { signal: controller.signal });
       if (controller.signal.aborted || !mountedRef.current) return;
       upsertTarget(result.target);
+      const shouldFocusUsage = kind === 'install' && result.target.usage_hint != null;
+      if (shouldFocusUsage) pendingUsageFocusRef.current = target.name;
       setActionState((current) => ({
-        ...current,
+        ...Object.fromEntries(
+          Object.entries(current).map(([key, value]) => [
+            key,
+            { ...value, usageCollapsed: true },
+          ]),
+        ),
         [target.name]: {
           message: kind === 'install'
             ? t('Settings_page.integration_install_success_project')
@@ -2359,6 +2386,7 @@ function IntegrationsTab({
           previewTarget: result.target,
           manifestHash: result.manifest_hash,
           previewCollapsed: true,
+          usageCollapsed: shouldFocusUsage ? false : true,
         },
       }));
       await onRefreshTargets({ signal: controller.signal });
@@ -2394,6 +2422,180 @@ function IntegrationsTab({
     void runAction(target, 'preview');
   }, [actionState, runAction]);
 
+  const toggleUsage = useCallback((target: InstallTarget) => {
+    setActionState((current) => ({
+      ...current,
+      [target.name]: {
+        ...current[target.name],
+        usageCollapsed: !(current[target.name]?.usageCollapsed ?? true),
+      },
+    }));
+  }, []);
+
+  const categories = ['cli', 'ide', 'ci'] as const;
+  const groups = useMemo(() => {
+    const res: Record<string, InstallTarget[]> = { cli: [], ide: [], ci: [], other: [] };
+    localTargets.forEach(t => {
+      const cat = t.usage_hint?.tool_category || 'other';
+      if (res[cat]) res[cat].push(t);
+      else res.other.push(t);
+    });
+    return res;
+  }, [localTargets]);
+
+  const installedCount = localTargets.filter(t => t.status === 'installed').length;
+  const availableCount = localTargets.filter(t => t.status === 'available').length;
+  const unsupportedCount = localTargets.filter(t => t.status === 'unsupported').length;
+
+  const renderTarget = (target: InstallTarget) => {
+    const statusKey = INTEGRATION_STATUS_KEY[target.status];
+    const badgeVariant = target.status === 'installed'
+      ? 'configured'
+      : target.status === 'available'
+        ? 'unknown'
+        : 'missing';
+    const state = actionState[target.name] ?? {};
+    const isPending = state.pending != null;
+    const primaryAction: InstallActionKind = target.status === 'installed' ? 'uninstall' : 'install';
+    const primaryCommandKind = primaryAction === 'uninstall' ? 'uninstall' : 'install';
+    const previewTarget = state.previewTarget ?? target;
+    const manifest = previewTarget.manifest ?? target.manifest ?? null;
+    const hasPreview = Boolean((state.previewTarget || state.manifestHash) && manifest);
+    const isPreviewOpen = hasPreview && !state.previewCollapsed;
+    const isUsageOpen = state.usageCollapsed === false && target.status === 'installed' && !!target.usage_hint;
+    const currentActions = manifest?.[primaryAction === 'install' ? 'write' : 'uninstall'] ?? [];
+    const copiedKey = `${target.name}:${primaryCommandKind}`;
+    const titleId = `integration-title-${target.name}`;
+    const previewId = `integration-preview-${target.name}`;
+    const usageId = `integration-usage-${target.name}`;
+
+    return (
+      <article
+        className={`integration-card integration-card--${target.status}`}
+        key={target.name}
+        aria-labelledby={titleId}
+      >
+        <div className="integration-card__top">
+          <div className="integration-mark" aria-hidden="true">
+            {targetMark(target)}
+          </div>
+          <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
+            {t(statusKey)}
+          </span>
+        </div>
+        <div className="integration-card__main">
+          <h3 id={titleId} className="integration-card__name">{target.display_name}</h3>
+          <p className="integration-card__description">{target.description}</p>
+          <p className="integration-card__scope">
+            <span>{t('Settings_page.integration_scope_current')}</span>
+            {t('Settings_page.integration_scope_note')}
+          </p>
+          {currentActions.length > 0 && (
+            <p className="integration-card__paths">
+              {currentActions.map(action => action.path).join(' · ')}
+            </p>
+          )}
+          {target.platform_supported && (
+            <div className="integration-command" aria-label={t(
+              primaryCommandKind === 'install'
+                ? 'Settings_page.integration_install_command'
+                : 'Settings_page.integration_uninstall_command',
+            )}
+            >
+              <code>$ {commandFor(target, primaryCommandKind)}</code>
+              <button
+                type="button"
+                className="integration-copy-btn"
+                aria-label={t(
+                  primaryCommandKind === 'install'
+                    ? 'Settings_page.integration_copy_install_aria'
+                    : 'Settings_page.integration_copy_uninstall_aria',
+                  { target: target.display_name },
+                )}
+                onClick={() => void copyTargetCommand(target, primaryCommandKind)}
+              >
+                {copiedTarget === copiedKey ? t('Skills.copied') : t('Skills.copy')}
+              </button>
+            </div>
+          )}
+          {state.message && <p className="integration-message" role="status">{state.message}</p>}
+          {state.error && <p className="integration-message integration-message--error" role="alert">{state.error}</p>}
+          {isPreviewOpen && manifest && (
+            <IntegrationPreviewPanel
+              id={previewId}
+              target={previewTarget}
+              manifestHash={state.manifestHash}
+              t={t}
+            />
+          )}
+          {isUsageOpen && target.usage_hint && (
+            <div
+              id={usageId}
+              className="integration-card__usage"
+              role="region"
+              aria-label={t('Settings_page.integration_usage_region_aria', { target: target.display_name })}
+              tabIndex={-1}
+            >
+              <UsagePanel hint={target.usage_hint} t={t} />
+            </div>
+          )}
+        </div>
+        <div className="integration-actions">
+          {target.platform_supported && (
+            <>
+              {target.usage_hint && target.status === 'installed' && (
+                <button
+                  type="button"
+                  className="integration-btn integration-btn--secondary"
+                  aria-controls={usageId}
+                  aria-expanded={isUsageOpen}
+                  onClick={() => toggleUsage(target)}
+                >
+                  {isUsageOpen ? t('Settings_page.integration_collapse_preview') : t('Settings_page.integration_quick_overview')}
+                </button>
+              )}
+              <button
+                type="button"
+                className="integration-btn integration-btn--secondary"
+                disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+                aria-controls={hasPreview ? previewId : undefined}
+                aria-expanded={isPreviewOpen}
+                aria-label={previewButtonAriaLabel(target, state, hasPreview, isPreviewOpen, t)}
+                onClick={() => togglePreview(target)}
+              >
+                {previewButtonLabel(state, hasPreview, isPreviewOpen, t)}
+              </button>
+              <button
+                type="button"
+                className={
+                  primaryAction === 'install'
+                    ? 'integration-btn integration-btn--primary'
+                    : 'integration-btn integration-btn--danger'
+                }
+                disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
+                aria-label={t(
+                  primaryAction === 'install'
+                    ? 'Settings_page.integration_install_project_aria'
+                    : 'Settings_page.integration_uninstall_project_aria',
+                  { target: target.display_name },
+                )}
+                onClick={() => void runAction(target, primaryAction)}
+              >
+                {state.pending === primaryAction
+                  ? (primaryAction === 'install'
+                    ? t('Settings_page.integration_writing_guidance')
+                    : t('Settings_page.integration_removing_guidance'))
+                  : (primaryAction === 'install'
+                    ? t('Settings_page.integration_install_project_action')
+                    : t('Settings_page.integration_uninstall_project_action'))}
+              </button>
+            </>
+          )}
+        </div>
+      </article>
+    );
+  };
+
   return (
     <>
       {showGraphify && (
@@ -2411,144 +2613,67 @@ function IntegrationsTab({
           onRetry={onRetry}
         />
       ) : (
+        <>
         <div className="settings-card">
-        <div className="settings-card__header">
-          <h2>{t('Settings_page.section_integrations')}</h2>
-          <span className="integration-card-count">{localTargets.length}</span>
-        </div>
-        <div className="settings-card__body">
-          <p className="integration-intro">
-            <strong>{t('Settings_page.integration_scope_current')}</strong>
-            {t('Settings_page.integration_intro_project')}
-          </p>
-          {localTargets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
-          <div className="integration-grid">
-            {localTargets.map(target => {
-              const statusKey = INTEGRATION_STATUS_KEY[target.status];
-              const badgeVariant = target.status === 'installed'
-                ? 'configured'
-                : target.status === 'available'
-                  ? 'unknown'
-                  : 'missing';
-              const state = actionState[target.name] ?? {};
-              const isPending = state.pending != null;
-              const primaryAction: InstallActionKind = target.status === 'installed' ? 'uninstall' : 'install';
-              const primaryCommandKind = primaryAction === 'uninstall' ? 'uninstall' : 'install';
-              const previewTarget = state.previewTarget ?? target;
-              const manifest = previewTarget.manifest ?? target.manifest ?? null;
-              const hasPreview = Boolean((state.previewTarget || state.manifestHash) && manifest);
-              const isPreviewOpen = hasPreview && !state.previewCollapsed;
-              const currentActions = manifest?.[primaryAction === 'install' ? 'write' : 'uninstall'] ?? [];
-              const copiedKey = `${target.name}:${primaryCommandKind}`;
-              const titleId = `integration-title-${target.name}`;
-              const previewId = `integration-preview-${target.name}`;
+          <div className="settings-card__header">
+            <h2>{t('Settings_page.section_integrations')}</h2>
+            <span className="integration-card-count">{localTargets.length}</span>
+          </div>
+          <div className="settings-card__body">
+            <p className="integration-intro">
+              <strong>{t('Settings_page.integration_scope_current')}</strong>
+              {t('Settings_page.integration_intro_project')}
+            </p>
+
+            <div className="integration-overview">
+              <h3 className="integration-overview__title">{t('Settings_page.integration_quick_overview')}</h3>
+              <div className="integration-overview__stats">
+                <span className="integration-overview__stat integration-overview__stat--installed">
+                  {t('Settings_page.integration_overview_written', { count: installedCount })}
+                </span>
+                <span className="integration-overview__stat integration-overview__stat--available">
+                  {t('Settings_page.integration_overview_available', { count: availableCount })}
+                </span>
+                {unsupportedCount > 0 && (
+                  <span className="integration-overview__stat integration-overview__stat--unsupported">
+                    {t('Settings_page.integration_overview_unsupported', { count: unsupportedCount })}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {localTargets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
+
+            {categories.map(category => {
+              const targets = groups[category];
+              if (!targets || targets.length === 0) return null;
+              const title = t(`Settings_page.integration_category_${category}`);
               return (
-                <article
-                  className={`integration-card integration-card--${target.status}`}
-                  key={target.name}
-                  aria-labelledby={titleId}
-                >
-                  <div className="integration-card__top">
-                    <div className="integration-mark" aria-hidden="true">
-                      {targetMark(target)}
-                    </div>
-                    <span className={`settings-field__badge settings-field__badge--${badgeVariant}`}>
-                      {t(statusKey)}
-                    </span>
+                <div key={category} className="integration-category">
+                  <h3 className="integration-category__title">{title}</h3>
+                  <div className="integration-grid">
+                    {targets.map(renderTarget)}
                   </div>
-                  <div className="integration-card__main">
-                    <h3 id={titleId} className="integration-card__name">{target.display_name}</h3>
-                    <p className="integration-card__description">{target.description}</p>
-                    <p className="integration-card__scope">
-                      <span>{t('Settings_page.integration_scope_current')}</span>
-                      {t('Settings_page.integration_scope_note')}
-                    </p>
-                    {currentActions.length > 0 && (
-                      <p className="integration-card__paths">
-                        {currentActions.map(action => action.path).join(' · ')}
-                      </p>
-                    )}
-                    {target.platform_supported && (
-                      <div className="integration-command" aria-label={t(
-                        primaryCommandKind === 'install'
-                          ? 'Settings_page.integration_install_command'
-                          : 'Settings_page.integration_uninstall_command',
-                      )}
-                      >
-                        <code>$ {commandFor(target, primaryCommandKind)}</code>
-                        <button
-                          type="button"
-                          className="integration-copy-btn"
-                          aria-label={t(
-                            primaryCommandKind === 'install'
-                              ? 'Settings_page.integration_copy_install_aria'
-                              : 'Settings_page.integration_copy_uninstall_aria',
-                            { target: target.display_name },
-                          )}
-                          onClick={() => void copyTargetCommand(target, primaryCommandKind)}
-                        >
-                          {copiedTarget === copiedKey ? t('Skills.copied') : t('Skills.copy')}
-                        </button>
-                      </div>
-                    )}
-                    {state.message && <p className="integration-message" role="status">{state.message}</p>}
-                    {state.error && <p className="integration-message integration-message--error" role="alert">{state.error}</p>}
-                    {isPreviewOpen && manifest && (
-                      <IntegrationPreviewPanel
-                        id={previewId}
-                        target={previewTarget}
-                        manifestHash={state.manifestHash}
-                        t={t}
-                      />
-                    )}
-                  </div>
-                  <div className="integration-actions">
-                    {target.platform_supported && (
-                      <>
-                        <button
-                          type="button"
-                          className="integration-btn integration-btn--secondary"
-                          disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
-                          aria-controls={hasPreview ? previewId : undefined}
-                          aria-expanded={isPreviewOpen}
-                          aria-label={previewButtonAriaLabel(target, state, hasPreview, isPreviewOpen, t)}
-                          onClick={() => togglePreview(target)}
-                        >
-                          {previewButtonLabel(state, hasPreview, isPreviewOpen, t)}
-                        </button>
-                        <button
-                          type="button"
-                          className={
-                            primaryAction === 'install'
-                              ? 'integration-btn integration-btn--primary'
-                              : 'integration-btn integration-btn--danger'
-                          }
-                          disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
-                          aria-label={t(
-                            primaryAction === 'install'
-                              ? 'Settings_page.integration_install_project_aria'
-                              : 'Settings_page.integration_uninstall_project_aria',
-                            { target: target.display_name },
-                          )}
-                          onClick={() => void runAction(target, primaryAction)}
-                        >
-                          {state.pending === primaryAction
-                            ? (primaryAction === 'install'
-                              ? t('Settings_page.integration_writing_guidance')
-                              : t('Settings_page.integration_removing_guidance'))
-                            : (primaryAction === 'install'
-                              ? t('Settings_page.integration_install_project_action')
-                              : t('Settings_page.integration_uninstall_project_action'))}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </article>
+                </div>
               );
             })}
+
+            {groups.other?.length > 0 && (
+              <div className="integration-category">
+                <div className="integration-grid">
+                  {groups.other.map(renderTarget)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+
+        <div className="settings-card">
+          <div className="settings-card__body">
+            <DemoWidget t={t} locale={locale} />
+          </div>
+        </div>
+        </>
       )}
     </>
   );

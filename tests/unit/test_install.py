@@ -16,8 +16,9 @@ import ahadiff.install.hooks as hooks_module
 from ahadiff.cli import app
 from ahadiff.core.errors import InputError
 from ahadiff.install.base import InstallContext
-from ahadiff.install.registry import get_target, target_detection
+from ahadiff.install.registry import available_targets, get_target, target_detection
 from ahadiff.install.template_loader import render_template
+from ahadiff.install.usage_hints import get_usage_hint
 
 _RUNNER = CliRunner()
 _INSTALL_TEMPLATE_NAMES = (
@@ -163,6 +164,23 @@ _V02_INSTALL_TARGET_CASES = (
     ("roo", ".roo/rules/ahadiff.md", "AHADIFF:GENERATED", True),
     ("windsurf", ".windsurf/rules/ahadiff.md", "AHADIFF:GENERATED", True),
 )
+_EXPECTED_USAGE_CATEGORIES = {
+    "aider": "cli",
+    "antigravity": "ide",
+    "antigravity-cli": "cli",
+    "claude": "cli",
+    "cline": "ide",
+    "codex": "cli",
+    "continue": "ide",
+    "copilot": "ide",
+    "cursor": "ide",
+    "gemini": "cli",
+    "github-action": "ci",
+    "hooks": "ci",
+    "opencode": "cli",
+    "roo": "ide",
+    "windsurf": "ide",
+}
 
 
 def test_install_reexports_manifest_helpers() -> None:
@@ -178,6 +196,32 @@ def test_install_reexports_manifest_helpers() -> None:
     assert install_package.InstallManifest is BaseInstallManifest
     assert install_package.InstallFileStrategy == BaseInstallFileStrategy
     assert install_package.manifest_preview_for is common_manifest_preview_for
+
+
+def test_install_usage_hints_cover_registered_targets() -> None:
+    targets = available_targets()
+
+    assert set(targets) == set(_EXPECTED_USAGE_CATEGORIES)
+    for target in targets:
+        en_hint = get_usage_hint(target, "en")
+        zh_hint = get_usage_hint(target, "zh-CN")
+        assert en_hint is not None
+        assert zh_hint is not None
+        assert en_hint.tool_category == _EXPECTED_USAGE_CATEGORIES[target]
+        assert zh_hint.tool_category == _EXPECTED_USAGE_CATEGORIES[target]
+        assert en_hint.invocation_pattern
+        assert zh_hint.invocation_pattern
+        assert 1 <= len(en_hint.quick_start_steps) <= 5
+        assert 1 <= len(zh_hint.quick_start_steps) <= 5
+        assert len(en_hint.example_prompts) <= 5
+        assert len(zh_hint.example_prompts) <= 5
+        assert en_hint.expected_behavior
+        assert zh_hint.expected_behavior
+        assert en_hint.quick_start_steps != zh_hint.quick_start_steps
+
+
+def test_install_usage_hint_unknown_target_returns_none() -> None:
+    assert get_usage_hint("missing", "en") is None
 
 
 def _git(repo_root: Path, *args: str) -> None:

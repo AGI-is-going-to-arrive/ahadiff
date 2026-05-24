@@ -83,6 +83,7 @@ let refreshRequestId = 0;
 // can't deadlock every API call queued behind ensureToken().
 const TOKEN_FETCH_TIMEOUT_MS = 8000;
 const REFRESH_REUSE_WINDOW_MS = 5000;
+const PUBLIC_SKIP_AUTH_PATHS = new Set(['/api/demo/learn-preview']);
 
 function normalizeApiPath(path: string): string {
   let url: URL;
@@ -285,20 +286,48 @@ async function rawFetch(
   });
 }
 
-export type ApiFetchOptions = RequestInit;
+export interface ApiFetchOptions extends RequestInit {
+  skipAuth?: boolean;
+}
 
 export async function apiFetch<T>(path: string, init?: ApiFetchOptions): Promise<T> {
   const apiPath = normalizeApiPath(path);
   const signal = init?.signal ?? undefined;
+  const { skipAuth = false, ...fetchInit } = init ?? {};
+
+  if (skipAuth) {
+    if (!PUBLIC_SKIP_AUTH_PATHS.has(apiPath)) {
+      throw new ApiError(
+        0,
+        { error: 'skip_auth_not_allowed', path: apiPath },
+        `skipAuth is not allowed for ${apiPath}`,
+      );
+    }
+    const headers = new Headers(fetchInit.headers);
+    if (fetchInit.body && !headers.has('content-type')) {
+      headers.set('content-type', 'application/json');
+    }
+    const res = await fetch(new URL(apiPath, window.location.origin).href, {
+      ...fetchInit,
+      headers,
+      credentials: 'same-origin',
+    });
+    if (!res.ok) throw new ApiError(res.status, await safeJson(res));
+    if (res.status === 204) {
+      throw new ApiError(204, null, `unexpected 204 No Content for ${apiPath}; use apiFetchVoid`);
+    }
+    return (await res.json()) as T;
+  }
+
   let token = await ensureToken(signal);
-  let res = await rawFetch(apiPath, token, init);
+  let res = await rawFetch(apiPath, token, fetchInit);
 
   // On 401/403 the cached token may be stale (e.g. serve process restarted).
   // refreshToken() coalesces concurrent refreshes so one stale-token storm
   // produces a single POST /api/auth/token, not N (CR1-01).
   if (res.status === 401 || res.status === 403) {
     token = await refreshToken(token, signal);
-    res = await rawFetch(apiPath, token, init);
+    res = await rawFetch(apiPath, token, fetchInit);
   }
 
   if (!res.ok) throw new ApiError(res.status, await safeJson(res));

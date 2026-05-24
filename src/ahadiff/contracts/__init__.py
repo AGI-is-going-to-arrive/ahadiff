@@ -99,7 +99,7 @@ from .serve_improve import (
     ImproveRunSnapshot,
     ImproveSessionSummary,
 )
-from .serve_install import InstallTargetsResponse, InstallTargetSummary
+from .serve_install import InstallTargetsResponse, InstallTargetSummary, ToolUsageHint
 from .serve_runtime import (
     ConceptGraphEdge,
     ConceptGraphNode,
@@ -227,6 +227,7 @@ __all__ = [
     "TERMINAL_RUN_STATUSES",
     "ThinkingLevel",
     "TokenizerEstimation",
+    "ToolUsageHint",
     "UsageEvent",
     "WatchStatusResponse",
     "WeakConceptItem",

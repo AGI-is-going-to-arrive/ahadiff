@@ -12,6 +12,7 @@ import {
   installTargetsResponseSchema,
   parseResponse,
   providersResponseSchema,
+  toolUsageHintSchema,
   usageResponseSchema,
 } from './schemas';
 import type { z } from 'zod';
@@ -99,6 +100,8 @@ export interface DbCheckResult {
   card_count: number;
 }
 
+export type ToolUsageHint = z.infer<typeof toolUsageHintSchema>;
+
 export interface InstallTarget {
   name: string;
   display_name: string;
@@ -106,12 +109,13 @@ export interface InstallTarget {
   platform_supported: boolean;
   status: 'installed' | 'available' | 'unsupported' | 'error';
   description: string;
-  install_command?: string;
-  uninstall_command?: string;
+  install_command: string;
+  uninstall_command: string;
   manifest?: InstallManifestSummary | null;
   manifest_hash?: string | null;
   manifest_error?: string | null;
   error_message?: string | null;
+  usage_hint?: ToolUsageHint | null;
 }
 
 export interface InstallManifestAction {

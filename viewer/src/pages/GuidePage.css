@@ -489,14 +489,65 @@
   max-width: var(--mw-prose);
 }
 
-.guide-agent-skills__chips {
+.guide-agent-skills__tabs {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--sp-2);
 }
 
-.guide-agent-skills__chip,
+.guide-agent-skills__tab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 28px;
+  padding: 3px var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--hair);
+  color: var(--muted);
+  background: var(--subtle);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out-quart);
+}
+
+.guide-agent-skills__tab-chip:hover {
+  background: var(--hair-light);
+  color: var(--ink);
+  border-color: var(--hair-strong);
+}
+
+.guide-agent-skills__tab-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+  border-color: var(--accent);
+}
+
+.guide-agent-skills__tab-chip--active {
+  color: var(--accent-ink);
+  background: var(--accent-softest);
+  border-color: var(--accent-tint);
+  font-weight: 600;
+}
+
+.guide-agent-skills__tab-chip--active .guide-agent-skills__tab-count {
+  color: #8b4a33;
+  opacity: 1;
+}
+
+.guide-agent-skills__tab-chip:not(.guide-agent-skills__tab-chip--active) .guide-agent-skills__tab-count {
+  color: #5a5447;
+  opacity: 1;
+}
+
+.guide-agent-skills__tab-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
 .guide-agent-card__status {
   display: inline-flex;
   align-items: center;
@@ -512,7 +563,6 @@
   text-transform: uppercase;
 }
 
-.guide-agent-skills__chip--active,
 .guide-agent-card__status--installed {
   color: var(--accent-ink);
   background: var(--accent-softest);
@@ -530,6 +580,13 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: var(--sp-6);
+}
+
+.guide-agent-skills__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
 }
 
 .guide-agent-card {
@@ -836,7 +893,8 @@
   .guide-agent-preview,
   .guide-integrations__item,
   .guide-notes,
-  .guide-integrations__hint {
+  .guide-integrations__hint,
+  .guide-workflow-card {
     border: 1px solid CanvasText;
     background: Canvas;
     color: CanvasText;
@@ -874,7 +932,8 @@
   }
   .guide-agent-card__status,
   .guide-agent-card__platform-badge,
-  .guide-agent-skills__chip {
+  .guide-agent-skills__tab-chip,
+  .guide-agent-card__manifest-preview-item {
     border: 1px solid CanvasText;
     background: Canvas;
     color: CanvasText;
@@ -900,7 +959,9 @@
   .guide-nav__chip,
   .guide-agent-card,
   .guide-agent-preview,
-  .guide-integrations__hint {
+  .guide-integrations__hint,
+  .guide-agent-skills__tab-chip,
+  .guide-workflow-card {
     transition: none;
   }
   .guide-workflow__step:hover {
@@ -909,4 +970,139 @@
   .guide-accordion[open] > .guide-accordion__summary .guide-accordion__chevron {
     transform: none;
   }
+}
+
+/* ---- Component Additions for Sprint 4 ---- */
+.guide-agent-card__install {
+  margin: var(--sp-3) 0;
+}
+
+.guide-agent-card__usage-panel-wrapper {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--hair);
+}
+
+.guide-agent-card__manifest-preview {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--hair);
+  text-align: left;
+}
+
+.guide-agent-card__manifest-preview-title {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.guide-agent-card__manifest-preview-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.guide-agent-card__manifest-preview-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--subtle);
+  border: 1px solid var(--hair-weak);
+  border-radius: var(--r-md);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.guide-agent-card__manifest-preview-item--generated {
+  border-left: 3px solid var(--accent);
+}
+
+.guide-agent-card__manifest-preview-item--user-managed {
+  border-left: 3px solid var(--muted-strong);
+}
+
+.guide-agent-card__manifest-preview-path {
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.guide-agent-card__manifest-preview-strategy-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.guide-agent-card__manifest-preview-strategy-badge--generated {
+  background: var(--accent-softest);
+  color: var(--accent-ink);
+}
+
+.guide-agent-card__manifest-preview-strategy-badge--user-managed {
+  background: var(--hair-strong);
+  color: var(--ink-strong);
+}
+
+.guide-workflows-section {
+  margin-top: var(--sp-10);
+  padding-top: var(--sp-8);
+  border-top: 1px solid var(--hair-strong);
+}
+
+.guide-workflows-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-xl);
+  line-height: var(--lh-tight);
+  margin: 0 0 var(--sp-6);
+  color: var(--ink);
+}
+
+.guide-workflows-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-6);
+}
+
+.guide-workflow-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+}
+
+.guide-workflow-card__title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-strong);
+}
+
+.guide-workflow-card__desc {
+  margin: 0 0 var(--sp-2);
+  font-size: 13px;
+  color: var(--muted);
+  line-height: var(--lh-relaxed);
+  text-align: left;
 }

@@ -23,8 +23,10 @@ from ahadiff.core.errors import InputError
 from ahadiff.install.base import InstallContext
 from ahadiff.install.common import manifest_preview_for
 from ahadiff.install.registry import available_targets, get_target
+from ahadiff.install.usage_hints import get_usage_hint
 
 from .auth import require_write_token, serve_state
+from .locale import request_locale
 from .lock import serve_repo_write_lock
 
 if TYPE_CHECKING:
@@ -68,7 +70,7 @@ def _display_name(name: str) -> str:
     return _TARGET_DISPLAY_NAMES.get(name, name.replace("-", " ").title())
 
 
-def _normalize_install_target_entry(entry: dict[str, Any]) -> dict[str, Any]:
+def _normalize_install_target_entry(entry: dict[str, Any], *, locale: str = "en") -> dict[str, Any]:
     name = str(entry.get("name") or "unknown")
     detected = bool(entry.get("detected"))
     platform_supported = bool(entry.get("platform_supported", True))
@@ -100,6 +102,7 @@ def _normalize_install_target_entry(entry: dict[str, Any]) -> dict[str, Any]:
             str(entry["manifest_error"]) if isinstance(entry.get("manifest_error"), str) else None
         ),
         "error_message": str(error_message) if isinstance(error_message, str) else None,
+        "usage_hint": get_usage_hint(name, locale),
     }
 
 
@@ -222,8 +225,9 @@ def _detect_all_targets(state: ServeState) -> list[dict[str, Any]]:
 
 async def get_install_targets(request: Request) -> JSONResponse:
     state: ServeState = serve_state(request)
+    locale = request_locale(request)
     targets = await to_thread.run_sync(_detect_all_targets, state)
-    normalized = [_normalize_install_target_entry(target) for target in targets]
+    normalized = [_normalize_install_target_entry(target, locale=locale) for target in targets]
     payload = InstallTargetsResponse.model_validate(
         {"targets": normalized, "total": len(normalized)}
     ).model_dump(mode="json")
@@ -234,11 +238,12 @@ def _preview_target_sync(
     state: ServeState,
     name: str,
     body: InstallPreviewRequest,
+    locale: str,
 ) -> dict[str, Any]:
     _validate_install_options(name, layer2=body.layer2)
     context = _target_context(state, force=body.force, layer2=body.layer2)
     entry = _target_entry(name, state, context)
-    normalized = _normalize_install_target_entry(entry)
+    normalized = _normalize_install_target_entry(entry, locale=locale)
     manifest_hash = normalized.get("manifest_hash")
     if not isinstance(manifest_hash, str):
         raise InputError("install target manifest preview is unavailable")
@@ -252,6 +257,7 @@ def _mutate_target_sync(
     name: str,
     body: InstallMutationRequest,
     operation: Literal["install", "uninstall"],
+    locale: str,
 ) -> dict[str, Any]:
     _validate_install_options(name, layer2=body.layer2)
     context = _target_context(state, force=body.force, layer2=body.layer2)
@@ -268,7 +274,7 @@ def _mutate_target_sync(
         else:
             updated_paths = target.uninstall(context)
         entry = _target_entry(name, state, context)
-    normalized = _normalize_install_target_entry(entry)
+    normalized = _normalize_install_target_entry(entry, locale=locale)
     return InstallTargetMutationResponse.model_validate(
         {
             "target": normalized,
@@ -285,7 +291,8 @@ async def preview_install_target(request: Request) -> JSONResponse:
     state = serve_state(request)
     name = request.path_params["target"]
     body = InstallPreviewRequest.model_validate(await request.json())
-    payload = await to_thread.run_sync(_preview_target_sync, state, name, body)
+    locale = request_locale(request)
+    payload = await to_thread.run_sync(_preview_target_sync, state, name, body, locale)
     return JSONResponse(payload)
 
 
@@ -294,7 +301,8 @@ async def install_target(request: Request) -> JSONResponse:
     state = serve_state(request)
     name = request.path_params["target"]
     body = InstallMutationRequest.model_validate(await request.json())
-    payload = await to_thread.run_sync(_mutate_target_sync, state, name, body, "install")
+    locale = request_locale(request)
+    payload = await to_thread.run_sync(_mutate_target_sync, state, name, body, "install", locale)
     return JSONResponse(payload)
 
 
@@ -303,5 +311,13 @@ async def uninstall_target(request: Request) -> JSONResponse:
     state = serve_state(request)
     name = request.path_params["target"]
     body = InstallMutationRequest.model_validate(await request.json())
-    payload = await to_thread.run_sync(_mutate_target_sync, state, name, body, "uninstall")
+    locale = request_locale(request)
+    payload = await to_thread.run_sync(
+        _mutate_target_sync,
+        state,
+        name,
+        body,
+        "uninstall",
+        locale,
+    )
     return JSONResponse(payload)

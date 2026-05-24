@@ -5,8 +5,12 @@ import {
   conceptGraphEdgeSchema,
   conceptGraphNodeSchema,
   conceptGraphResponseSchema,
+  demoLearnPreviewResponseSchema,
+  demoQuizPreviewSchema,
   freshnessProjectionSchema,
   graphStatusResponseSchema,
+  installTargetSchema,
+  installTargetsResponseSchema,
   judgeFailureSchema,
   learningEffectivenessResponseSchema,
   conceptLedgerEntrySchema,
@@ -543,6 +547,80 @@ describe('stats schema', () => {
 });
 
 describe('settings and auxiliary API schemas', () => {
+  const validUsageHint = {
+    tool_category: 'cli',
+    invocation_pattern: 'codex "Use AhaDiff"',
+    quick_start_steps: ['Write guidance'],
+    example_prompts: ['Run ahadiff learn --staged'],
+    expected_behavior: 'Turns diffs into verified learning output.',
+    platform_notes: {},
+  };
+
+  const validInstallTarget = {
+    name: 'codex',
+    display_name: 'Codex CLI',
+    detected: false,
+    platform_supported: true,
+    status: 'available',
+    description: 'Write Codex guidance.',
+    install_command: 'ahadiff install codex',
+    uninstall_command: 'ahadiff uninstall codex',
+    manifest: null,
+    manifest_hash: null,
+    manifest_error: null,
+    error_message: null,
+    usage_hint: validUsageHint,
+  };
+
+  it('keeps new install target and demo schemas strict', () => {
+    expect(installTargetSchema.parse(validInstallTarget).usage_hint?.tool_category).toBe('cli');
+    expect(() => installTargetSchema.parse({ ...validInstallTarget, extra: true })).toThrow();
+    expect(() =>
+      installTargetSchema.parse({
+        ...validInstallTarget,
+        usage_hint: { ...validUsageHint, platform_notes: { windows: 'ok', extra: 'bad' } },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      installTargetsResponseSchema.parse({
+        targets: [validInstallTarget],
+        total: 1,
+        extra: true,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects demo quiz answers that do not point to an existing choice', () => {
+    expect(
+      demoQuizPreviewSchema.parse({
+        question: 'When does it pass?',
+        choices: ['A', 'B'],
+        answer_index: 1,
+      }).answer_index,
+    ).toBe(1);
+    expect(() =>
+      demoQuizPreviewSchema.parse({
+        question: 'When does it pass?',
+        choices: ['A', 'B'],
+        answer_index: 2,
+      }),
+    ).toThrow();
+    expect(() =>
+      demoLearnPreviewResponseSchema.parse({
+        locale: 'en',
+        sample_diff: 'diff --git a/a b/a',
+        claims: [{ text: 'Claim', status: 'verified', evidence: 'a:1' }],
+        lesson_snippet: 'Lesson',
+        quiz: {
+          question: 'When?',
+          choices: ['A', 'B'],
+          answer_index: 2,
+        },
+      }),
+    ).toThrow();
+  });
+
   it('rejects negative usage costs', () => {
     const validUsage = {
       models: [

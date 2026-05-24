@@ -1182,6 +1182,15 @@ export async function installServeMock(page: Page): Promise<void> {
     codex: 'available',
     cursor: 'available',
   };
+  const targetCategory = (name: string): 'cli' | 'ide' | 'ci' => {
+    if (['claude', 'codex', 'antigravity-cli', 'gemini', 'aider', 'opencode'].includes(name)) {
+      return 'cli';
+    }
+    if (['antigravity', 'cursor', 'cline', 'continue', 'copilot', 'windsurf', 'roo'].includes(name)) {
+      return 'ide';
+    }
+    return 'ci';
+  };
   const displayNames: Record<string, string> = {
     antigravity: 'Antigravity IDE',
     'antigravity-cli': 'Antigravity CLI',
@@ -1280,7 +1289,51 @@ export async function installServeMock(page: Page): Promise<void> {
     manifest_hash: manifestHashes[name],
     manifest_error: null,
     error_message: null,
+    usage_hint: {
+      tool_category: targetCategory(name),
+      invocation_pattern: `${name} "Use AhaDiff to learn HEAD~1..HEAD"`,
+      quick_start_steps: ['Write guidance into this repository', 'Ask the tool to run ahadiff learn --staged'],
+      example_prompts: ['Use AhaDiff to learn this diff'],
+      expected_behavior: 'AhaDiff generates verified claims, a lesson, and a quiz.',
+      platform_notes: name === 'hooks'
+        ? {
+            windows: 'Git hook installation is unsupported on Windows.',
+            macos: 'Use a POSIX-compatible shell.',
+            linux: 'Use a POSIX-compatible shell.',
+          }
+        : {},
+    },
   });
+  await page.route(
+    (url) => url.pathname === '/api/demo/learn-preview',
+    (route) => {
+      const locale = extractCookieLocale(route.request());
+      const zh = locale === 'zh-CN';
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          locale: zh ? 'zh-CN' : 'en',
+          sample_diff: SAMPLE_DIFF,
+          claims: [
+            {
+              text: zh ? '演示 diff 生成了可验证声明。' : 'The demo diff produced a verified claim.',
+              status: 'verified',
+              evidence: 'demo.py:1-3',
+            },
+          ],
+          lesson_snippet: zh
+            ? 'AhaDiff 会把 diff 转成带证据的学习笔记。'
+            : 'AhaDiff turns the diff into evidence-backed learning notes.',
+          quiz: {
+            question: zh ? 'AhaDiff 从 diff 生成什么？' : 'What does AhaDiff generate from a diff?',
+            choices: zh ? ['随机文本', '带证据的学习输出'] : ['Random text', 'Evidence-backed learning output'],
+            answer_index: 1,
+          },
+        }),
+      });
+    },
+  );
   await page.route(
     (url) => url.pathname === '/api/install/targets',
     (route) =>

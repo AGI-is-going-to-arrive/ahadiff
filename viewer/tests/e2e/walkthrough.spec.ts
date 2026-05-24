@@ -1121,16 +1121,45 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(cards.first()).toBeVisible();
     await expect(page.locator('.guide-install-model')).toContainText('AhaDiff CLI');
     await expect(page.locator('.guide-install-model')).toContainText('Project agent instructions');
+
+    // Verify category filter tabs
     await expect(page.locator('.guide-agent-skills')).toContainText(/Agent Skills|Agent 技能/);
+    const tabs = page.locator('.guide-agent-skills__tab-chip');
+    await expect(tabs).toHaveCount(4);
+    await expect(tabs.nth(0)).toContainText(/All|全部/);
+
+    // Initial card count in 'All' tab (15 targets)
     await expect(page.locator('.guide-agent-card')).toHaveCount(15);
+
+    // Click "IDE" tab and verify count filters correctly (IDE targets are 7)
+    await tabs.nth(2).click();
+    await expect(page.locator('.guide-agent-card')).toHaveCount(7);
+
+    // Switch back to "All"
+    await tabs.nth(0).click();
+    await expect(page.locator('.guide-agent-card')).toHaveCount(15);
+
+    // Verify tool cards with usage panels
+    const usagePanels = page.locator('.guide-agent-card__usage-panel-wrapper');
+    await expect(usagePanels.first()).toBeVisible();
+
+    // Verify common workflows section
+    const workflowsSection = page.locator('.guide-workflows-section');
+    await expect(workflowsSection).toBeVisible();
+
+    // Manifest previews showing agent tool paths
+    const manifestPreviews = page.locator('.guide-agent-card__manifest-preview');
+    await expect(manifestPreviews.first()).toBeVisible();
+
     await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity IDE' })).toContainText(
       '.agents/skills/ahadiff-antigravity/SKILL.md',
     );
     await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity CLI' })).toContainText(
       '.agents/skills/ahadiff-antigravity-cli/SKILL.md',
     );
-    await expect(page.locator('.guide-agent-previews')).toContainText('SKILL.md');
-    await expect(page.locator('.guide-agent-previews')).toContainText('AGENTS.md preview');
+    await expect(page.locator('.guide-agent-card').filter({ hasText: 'Codex CLI' })).toContainText(
+      'AGENTS.md',
+    );
 
     // Copy button on at least one command block
     const copyBtns = page.locator('.command-block__copy-btn');
@@ -1188,6 +1217,13 @@ test.describe('walkthrough: full-app functional test', () => {
   test('Settings AI tool guidance — preview write remove mutation loop', async ({ page }) => {
     await page.goto('/#/settings?tab=integrations');
 
+    await expect(page.getByRole('heading', { name: 'Built-in Demo' })).toBeVisible();
+    await expect(page.locator('.demo-widget__diff')).toContainText('learn-from-diff');
+    await expect(page.getByText('Evidence-backed learning output')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CLI Tools' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'IDE Extensions' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'CI' })).toBeVisible();
+
     const codexRow = page.getByRole('article', { name: 'Codex CLI' });
     await expect(codexRow).toBeVisible();
     await expect(page.locator('.integration-intro')).toContainText('repo-local instruction files');
@@ -1233,6 +1269,10 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(codexRow).toContainText('$ ahadiff uninstall codex');
     await expect(codexRow.getByRole('button', { name: 'Remove Codex CLI guidance from the current project' })).toBeVisible();
     await expect(codexRow.getByRole('button', { name: 'Copy remove-guidance command for Codex CLI' })).toBeVisible();
+    const usageRegion = codexRow.getByRole('region', { name: 'Codex CLI usage guidance' });
+    await expect(usageRegion).toBeVisible();
+    await expect(usageRegion).toBeFocused();
+    await expect(usageRegion).toContainText('Quick start');
 
     const removeBtn = codexRow.getByRole('button', {
       name: 'Remove Codex CLI guidance from the current project',

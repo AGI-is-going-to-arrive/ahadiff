@@ -302,6 +302,15 @@ def test_response_schema_matches_frontend_expectations(tmp_path: Path) -> None:
         "manifest_hash",
         "manifest_error",
         "error_message",
+        "usage_hint",
+    }
+    usage_hint_keys = {
+        "tool_category",
+        "invocation_pattern",
+        "quick_start_steps",
+        "example_prompts",
+        "expected_behavior",
+        "platform_notes",
     }
     for target in response.json()["targets"]:
         assert set(target.keys()) == expected_keys
@@ -309,9 +318,38 @@ def test_response_schema_matches_frontend_expectations(tmp_path: Path) -> None:
         assert target["install_command"] == f"ahadiff install {target['name']}"
         assert target["uninstall_command"] == f"ahadiff uninstall {target['name']}"
         assert target["status"] in {"installed", "available", "unsupported", "error"}
+        assert isinstance(target["usage_hint"], dict)
+        assert set(target["usage_hint"].keys()) == usage_hint_keys
+        assert target["usage_hint"]["tool_category"] in {"cli", "ide", "ci"}
+        assert target["usage_hint"]["invocation_pattern"]
+        assert 1 <= len(target["usage_hint"]["quick_start_steps"]) <= 5
+        assert len(target["usage_hint"]["example_prompts"]) <= 5
+        assert target["usage_hint"]["expected_behavior"]
         if target["manifest"] is not None:
             assert isinstance(target["manifest_hash"], str)
             assert len(target["manifest_hash"]) == 64
+
+
+def test_get_install_targets_localizes_usage_hints(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    en_response = client.get("/api/install/targets")
+    zh_response = client.get(
+        "/api/install/targets",
+        headers={"accept-language": "zh-CN,zh;q=0.9"},
+    )
+
+    en_codex = {t["name"]: t for t in en_response.json()["targets"]}["codex"]
+    zh_codex = {t["name"]: t for t in zh_response.json()["targets"]}["codex"]
+    assert en_codex["usage_hint"]["tool_category"] == "cli"
+    assert zh_codex["usage_hint"]["tool_category"] == "cli"
+    assert (
+        en_codex["usage_hint"]["quick_start_steps"] != zh_codex["usage_hint"]["quick_start_steps"]
+    )
+    assert "Write" in en_codex["usage_hint"]["quick_start_steps"][0]
+    assert "写入" in zh_codex["usage_hint"]["quick_start_steps"][0]
 
 
 def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
@@ -489,6 +527,7 @@ def test_install_preview_returns_manifest_hash_and_is_read_only(tmp_path: Path) 
     assert response.status_code == 200
     payload = response.json()
     assert payload["target"]["name"] == "codex"
+    assert payload["target"]["usage_hint"]["tool_category"] == "cli"
     assert len(payload["manifest_hash"]) == 64
     assert payload["manifest_hash"] == payload["target"]["manifest_hash"]
     assert not (state_dir.parent / "AGENTS.md").exists()
@@ -576,12 +615,14 @@ def test_install_and_uninstall_mutations_write_only_tmp_repo(tmp_path: Path) -> 
     expected_paths = [".agents/skills/ahadiff/SKILL.md", "AGENTS.md"]
     assert sorted(installed.json()["updated_paths"]) == sorted(expected_paths)
     assert installed.json()["target"]["status"] == "installed"
+    assert installed.json()["target"]["usage_hint"]["tool_category"] == "cli"
     assert agents_path.exists()
     assert uninstalled.status_code == 200
     assert uninstalled.json()["operation"] == "uninstall"
     assert sorted(uninstalled.json()["updated_paths"]) == sorted(expected_paths)
     assert "AHADIFF:BEGIN target=codex" not in agents_path.read_text(encoding="utf-8")
     assert uninstalled.json()["target"]["detected"] is False
+    assert uninstalled.json()["target"]["usage_hint"] == installed.json()["target"]["usage_hint"]
 
 
 def test_install_mutation_rejects_repo_root_override(tmp_path: Path) -> None:

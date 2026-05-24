@@ -174,6 +174,19 @@ describe('SettingsPage provider/model helpers', () => {
     });
     expect(new Set(entries.map(([, mark]) => mark)).size).toBe(entries.length);
   });
+
+  it('moves focus to only the just-installed target usage panel', () => {
+    const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
+
+    expect(src).toContain('pendingUsageFocusRef.current = target.name');
+    expect(src).toContain("document.getElementById(`integration-usage-${targetName}`)");
+    expect(src).toContain('panel.focus({ preventScroll: true })');
+    expect(src).toContain('usageCollapsed: shouldFocusUsage ? false : true');
+    expect(src).toContain('usageCollapsed: true');
+    expect(src).toContain('tabIndex={-1}');
+    expect(src).toContain("aria-label={t('Settings_page.integration_usage_region_aria'");
+    expect(src).toContain('state.usageCollapsed === false');
+  });
 });
 
 describe('PreferencesTab quiz count adaptive mode', () => {

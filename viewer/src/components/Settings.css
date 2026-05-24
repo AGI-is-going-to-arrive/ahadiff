@@ -1386,6 +1386,16 @@
   color: var(--muted);
 }
 
+.integration-card__usage {
+  min-width: 0;
+  scroll-margin-block: var(--sp-4);
+}
+
+.integration-card__usage:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 @media (forced-colors: active) {
   .integration-card { border: 1px solid CanvasText; }
   .integration-card::before { background: Canvas; }
@@ -1412,6 +1422,9 @@
   .integration-copy-btn:focus-visible {
     outline: 2px solid Highlight;
     outline-offset: 2px;
+  }
+  .integration-card__usage:focus-visible {
+    outline: 2px solid Highlight;
   }
   .integration-btn:disabled {
     color: GrayText;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   BookOpen,
   Brain,
@@ -18,7 +18,7 @@ import { CommandBlock } from '../components/CommandBlock';
 import { getInstallTargets, type InstallTarget } from '../api/config';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { detectPlatform, getEnvVarCommand, type Platform } from '../utils/platform';
-import { actionLabel } from '../utils/integrationLabels';
+import UsagePanel from '../components/UsagePanel';
 import './GuidePage.css';
 
 type IconType = typeof BookOpen;
@@ -297,6 +297,8 @@ function fallbackInstallTargets(status: InstallTarget['status']): InstallTarget[
     platform_supported: true,
     status,
     description: '',
+    install_command: `ahadiff install ${target.name}`,
+    uninstall_command: `ahadiff uninstall ${target.name}`,
   }));
 }
 
@@ -563,6 +565,17 @@ function SetupSection({
   );
 }
 
+function getTargetCategory(targetName: string, hintCategory?: string): 'cli' | 'ide' | 'ci' {
+  if (hintCategory === 'cli' || hintCategory === 'ide' || hintCategory === 'ci') {
+    return hintCategory;
+  }
+  const cliTargets = ['claude', 'codex', 'antigravity-cli', 'gemini', 'aider', 'opencode'];
+  const ideTargets = ['antigravity', 'cursor', 'cline', 'continue', 'copilot', 'windsurf', 'roo'];
+  if (cliTargets.includes(targetName)) return 'cli';
+  if (ideTargets.includes(targetName)) return 'ide';
+  return 'ci';
+}
+
 function AgentSkillsSection({
   t,
   copyLabels,
@@ -570,9 +583,12 @@ function AgentSkillsSection({
   t: TranslateFn;
   copyLabels: { copyLabel: string; copiedLabel: string };
 }) {
+  const { locale } = useTranslation();
   const [targets, setTargets] = useState<InstallTarget[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<'all' | 'cli' | 'ide' | 'ci'>('all');
+  const buttonRefs = useRef<HTMLButtonElement[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -591,13 +607,17 @@ function AgentSkillsSection({
       }
     });
     return () => controller.abort();
-  }, []);
+  }, [locale]);
 
   const displayTargets = useMemo(
     () =>
       targets.length > 0
         ? targets
-        : fallbackInstallTargets(loaded && failed ? 'error' : 'available'),
+        : failed
+          ? fallbackInstallTargets('error')
+          : loaded
+            ? []
+            : fallbackInstallTargets('available'),
     [failed, loaded, targets],
   );
 
@@ -608,6 +628,58 @@ function AgentSkillsSection({
     }
     return map;
   }, []);
+
+  const { allCount, cliCount, ideCount, ciCount } = useMemo(() => {
+    let cli = 0, ide = 0, ci = 0;
+    displayTargets.forEach(t => {
+      const cat = getTargetCategory(t.name, t.usage_hint?.tool_category);
+      if (cat === 'cli') cli++;
+      else if (cat === 'ide') ide++;
+      else if (cat === 'ci') ci++;
+    });
+    return {
+      allCount: displayTargets.length,
+      cliCount: cli,
+      ideCount: ide,
+      ciCount: ci,
+    };
+  }, [displayTargets]);
+
+  const categories = [
+    { id: 'all', labelKey: 'Guide.agent_category_all' as const, count: allCount },
+    { id: 'cli', labelKey: 'Guide.agent_category_cli' as const, count: cliCount },
+    { id: 'ide', labelKey: 'Guide.agent_category_ide' as const, count: ideCount },
+    { id: 'ci', labelKey: 'Guide.agent_category_ci' as const, count: ciCount },
+  ];
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    let nextIndex = currentIndex;
+    if (e.key === 'ArrowRight') {
+      nextIndex = (currentIndex + 1) % categories.length;
+    } else if (e.key === 'ArrowLeft') {
+      nextIndex = (currentIndex - 1 + categories.length) % categories.length;
+    } else if (e.key === 'Home') {
+      nextIndex = 0;
+    } else if (e.key === 'End') {
+      nextIndex = categories.length - 1;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const targetButton = buttonRefs.current[nextIndex];
+    if (targetButton) {
+      targetButton.focus();
+      setActiveCategory(categories[nextIndex].id as 'all' | 'cli' | 'ide' | 'ci');
+    }
+  };
+
+  const filteredTargets = useMemo(() => {
+    if (activeCategory === 'all') return displayTargets;
+    return displayTargets.filter(t => {
+      const cat = getTargetCategory(t.name, t.usage_hint?.tool_category);
+      return cat === activeCategory;
+    });
+  }, [displayTargets, activeCategory]);
 
   return (
     <section
@@ -625,21 +697,44 @@ function AgentSkillsSection({
             {t('Guide.agent_skills_subtitle')}
           </p>
         </div>
-        <div className="guide-agent-skills__chips" aria-label={t('Guide.agent_skills_filter_label')}>
-          <span className="guide-agent-skills__chip guide-agent-skills__chip--active">
-            {t('Guide.agent_skills_all')}
-          </span>
-          <span className="guide-agent-skills__chip">
-            {t('Guide.agent_skills_supported', { count: displayTargets.length })}
-          </span>
-          <span className="guide-agent-skills__chip">
-            {failed ? t('Guide.agent_skills_status_unavailable') : t('Guide.agent_skills_status_live')}
-          </span>
+        <div
+          className="guide-agent-skills__tabs"
+          role="tablist"
+          aria-label={t('Guide.agent_skills_filter_label')}
+        >
+          {categories.map((cat, idx) => (
+            <button
+              key={cat.id}
+              ref={(el) => {
+                if (el) buttonRefs.current[idx] = el;
+              }}
+              type="button"
+              role="tab"
+              aria-selected={activeCategory === cat.id}
+              tabIndex={activeCategory === cat.id ? 0 : -1}
+              aria-controls="agent-skills-grid"
+              className={`guide-agent-skills__tab-chip ${
+                activeCategory === cat.id ? 'guide-agent-skills__tab-chip--active' : ''
+              }`}
+              onClick={() => setActiveCategory(cat.id as 'all' | 'cli' | 'ide' | 'ci')}
+              onKeyDown={(e) => handleKeyDown(e, idx)}
+            >
+              {t(cat.labelKey)} <span className="guide-agent-skills__tab-count">({cat.count})</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="guide-agent-skills__grid">
-        {displayTargets.map((target) => {
+      <div
+        id="agent-skills-grid"
+        className="guide-agent-skills__grid"
+        role="tabpanel"
+        aria-label={t('Guide.agent_skills_title')}
+      >
+        {filteredTargets.length === 0 && (
+          <p className="guide-agent-skills__empty">{t('Guide.agent_empty')}</p>
+        )}
+        {filteredTargets.map((target) => {
           const name = target.name;
           const status = loaded && failed ? 'error' : target.status;
           const displayName = target.display_name || name;
@@ -649,8 +744,6 @@ function AgentSkillsSection({
             ?? writes[0]?.path
             ?? AGENT_PATH_HINTS[name]
             ?? '';
-          const visibleWrites = writes.slice(0, 2);
-          const hiddenCount = Math.max(writes.length - visibleWrites.length, 0);
           const meta = integrationMeta.get(name);
           return (
             <article className="guide-agent-card" key={name}>
@@ -667,36 +760,84 @@ function AgentSkillsSection({
               </div>
               <h3 className="guide-agent-card__name">{displayName}</h3>
               {pathHint && <p className="guide-agent-card__path">{pathHint}</p>}
-              <CommandBlock command={command} {...copyLabels} />
-              {writes.length > 0 && (
-                <ul className="guide-agent-card__actions" role="list">
-                  {visibleWrites.map((action) => (
-                    <li key={`${action.action}:${action.path}`}>
-                      {actionLabel(action, t)} · <code>{action.path}</code>
-                    </li>
-                  ))}
-                  {hiddenCount > 0 && (
-                    <li className="guide-agent-card__actions-more">
-                      {t('Guide.agent_skills_more_actions', { count: hiddenCount })}
-                    </li>
-                  )}
-                </ul>
+
+              <div className="guide-agent-card__install">
+                <CommandBlock command={command} {...copyLabels} />
+              </div>
+
+              {target.usage_hint && (
+                <div className="guide-agent-card__usage-panel-wrapper">
+                  <UsagePanel hint={target.usage_hint} t={t} />
+                </div>
+              )}
+
+              {target.manifest && target.manifest.write && target.manifest.write.length > 0 && (
+                <div className="guide-agent-card__manifest-preview">
+                  <h4 className="guide-agent-card__manifest-preview-title">
+                    {t('Guide.agent_preview_manifest_title')}
+                  </h4>
+                  <ul className="guide-agent-card__manifest-preview-list" role="list">
+                    {target.manifest.write.map((action, idx) => (
+                      <li
+                        key={idx}
+                        className={`guide-agent-card__manifest-preview-item guide-agent-card__manifest-preview-item--${action.file_strategy}`}
+                      >
+                        <span className="guide-agent-card__manifest-preview-path">
+                          <code>{action.path}</code>
+                        </span>
+                        <span
+                          className={`guide-agent-card__manifest-preview-strategy-badge guide-agent-card__manifest-preview-strategy-badge--${action.file_strategy}`}
+                        >
+                          {action.file_strategy === 'generated'
+                            ? t('Guide.agent_preview_generated')
+                            : t('Guide.agent_preview_user_managed')}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </article>
           );
         })}
       </div>
 
-      <div className="guide-agent-previews">
-        <article className="guide-agent-preview">
-          <div className="guide-agent-preview__title">SKILL.md</div>
-          <pre className="guide-agent-preview__code">{SKILL_PREVIEW}</pre>
-        </article>
-        <article className="guide-agent-preview">
-          <div className="guide-agent-preview__title">AGENTS.md preview</div>
-          <pre className="guide-agent-preview__code">{AGENTS_PREVIEW}</pre>
-        </article>
+      <div className="guide-workflows-section">
+        <h3 className="guide-workflows-section__title">
+          <BookOpen className="guide-section__icon" aria-hidden="true" size={20} />
+          {t('Guide.agent_workflow_title')}
+        </h3>
+        <div className="guide-workflows-grid">
+          <div className="guide-workflow-card">
+            <h4 className="guide-workflow-card__title">{t('Guide.agent_workflow_daily_title')}</h4>
+            <p className="guide-workflow-card__desc">{t('Guide.agent_workflow_daily_desc')}</p>
+            <CommandBlock command="ahadiff learn HEAD~1..HEAD" {...copyLabels} />
+          </div>
+          <div className="guide-workflow-card">
+            <h4 className="guide-workflow-card__title">{t('Guide.agent_workflow_review_title')}</h4>
+            <p className="guide-workflow-card__desc">{t('Guide.agent_workflow_review_desc')}</p>
+            <CommandBlock command="ahadiff verify <run_id>\nahadiff review" {...copyLabels} />
+          </div>
+          <div className="guide-workflow-card">
+            <h4 className="guide-workflow-card__title">{t('Guide.agent_workflow_improve_title')}</h4>
+            <p className="guide-workflow-card__desc">{t('Guide.agent_workflow_improve_desc')}</p>
+            <CommandBlock command="ahadiff improve --rounds 1" {...copyLabels} />
+          </div>
+        </div>
       </div>
+
+      {(failed || targets.length === 0) && (
+        <div className="guide-agent-previews">
+          <article className="guide-agent-preview">
+            <div className="guide-agent-preview__title">SKILL.md</div>
+            <pre className="guide-agent-preview__code">{SKILL_PREVIEW}</pre>
+          </article>
+          <article className="guide-agent-preview">
+            <div className="guide-agent-preview__title">{t('Guide.agent_preview_agents_title')}</div>
+            <pre className="guide-agent-preview__code">{AGENTS_PREVIEW}</pre>
+          </article>
+        </div>
+      )}
     </section>
   );
 }

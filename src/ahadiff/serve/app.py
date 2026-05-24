@@ -29,6 +29,7 @@ from .routes_challenge import (
 )
 from .routes_config import get_config, get_doctor, put_config
 from .routes_db import post_db_check
+from .routes_demo import get_demo_learn_preview
 from .routes_export import get_export_apkg, get_export_results, post_export_preview
 from .routes_graph import get_concept_graph, get_graph_status, post_graph_refresh
 from .routes_improve import get_improve_preflight
@@ -228,6 +229,7 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/db/check", post_db_check, methods=["POST"]),
             Route("/api/learn", post_learn, methods=["POST"]),
             Route("/api/learn/estimate", post_learn_estimate, methods=["POST"]),
+            Route("/api/demo/learn-preview", get_demo_learn_preview, methods=["GET"]),
             Route("/api/tasks", list_tasks, methods=["GET"]),
             Route("/api/tasks/{task_id}", get_task, methods=["GET"]),
             Route("/api/tasks/{task_id}/cancel", cancel_task, methods=["POST"]),

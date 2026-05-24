@@ -1,0 +1,117 @@
+.usage-panel {
+  display: grid;
+  gap: var(--sp-4);
+  min-width: 0;
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--hair);
+}
+
+.usage-panel__section {
+  min-width: 0;
+}
+
+.usage-panel__heading {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.usage-panel__list,
+.usage-panel__prompts {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+}
+
+.usage-panel__list {
+  padding-inline-start: 1.25rem;
+}
+
+.usage-panel__list li,
+.usage-panel__text {
+  margin: 0;
+  color: var(--ink-2, var(--ink));
+  font-size: var(--fs-sm);
+  line-height: var(--lh-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.usage-panel__prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--subtle);
+}
+
+.usage-panel__prompt code {
+  min-width: 0;
+  flex: 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.usage-panel__copy-btn {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 2px 8px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-xs);
+  background: var(--elevated);
+  color: var(--accent-ink, var(--accent));
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+
+.usage-panel__copy-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .usage-panel__prompt {
+    flex-direction: column;
+  }
+
+  .usage-panel__copy-btn {
+    width: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .usage-panel,
+  .usage-panel__prompt {
+    border-color: CanvasText;
+  }
+
+  .usage-panel__prompt,
+  .usage-panel__copy-btn {
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .usage-panel__copy-btn {
+    border-color: CanvasText;
+  }
+
+  .usage-panel__copy-btn:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-panel__copy-btn {
+    transition: none;
+  }
+}

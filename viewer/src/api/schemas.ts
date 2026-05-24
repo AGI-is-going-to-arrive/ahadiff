@@ -879,50 +879,105 @@ export const dbCheckResultSchema = z
   })
   .strict();
 
-export const installManifestActionSchema = z.object({
-  action: z.string().min(1),
-  file_strategy: z.enum(['generated', 'user-managed']),
-  path: z.string().min(1),
+export const installManifestActionSchema = z
+  .object({
+    action: z.string().min(1),
+    file_strategy: z.enum(['generated', 'user-managed']),
+    path: z.string().min(1),
+  })
+  .strict();
+
+export const installManifestSummarySchema = z
+  .object({
+    preview: z.array(installManifestActionSchema),
+    write: z.array(installManifestActionSchema),
+    uninstall: z.array(installManifestActionSchema),
+  })
+  .strict();
+
+const platformNotesSchema = z
+  .object({
+    windows: z.string().optional(),
+    macos: z.string().optional(),
+    linux: z.string().optional(),
+  })
+  .strict();
+
+export const toolUsageHintSchema = z
+  .object({
+    tool_category: z.enum(['cli', 'ide', 'ci']),
+    invocation_pattern: z.string().min(1),
+    quick_start_steps: z.array(z.string()).min(1).max(5),
+    example_prompts: z.array(z.string()).max(5).default([]),
+    expected_behavior: z.string().min(1),
+    platform_notes: platformNotesSchema.default({}),
+  })
+  .strict();
+
+export const installTargetSchema = z
+  .object({
+    name: z.string().min(1),
+    display_name: z.string().min(1),
+    detected: z.boolean(),
+    platform_supported: z.boolean(),
+    status: z.enum(['installed', 'available', 'unsupported', 'error']),
+    description: z.string(),
+    install_command: z.string().min(1),
+    uninstall_command: z.string().min(1),
+    manifest: installManifestSummarySchema.nullable().optional(),
+    manifest_hash: z.string().length(64).nullable().optional(),
+    manifest_error: z.string().nullable().optional(),
+    error_message: z.string().nullable().optional(),
+    usage_hint: toolUsageHintSchema.nullable().optional(),
+  })
+  .strict();
+
+export const installTargetsResponseSchema = z
+  .object({
+    targets: z.array(installTargetSchema),
+    total: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const installTargetPreviewResponseSchema = z
+  .object({
+    target: installTargetSchema,
+    manifest_hash: z.string().length(64),
+  })
+  .strict();
+
+export const installTargetMutationResponseSchema = z
+  .object({
+    target: installTargetSchema,
+    operation: z.enum(['install', 'uninstall']),
+    updated: z.boolean(),
+    updated_paths: z.array(z.string()),
+    manifest_hash: z.string().length(64),
+  })
+  .strict();
+
+export const demoClaimPreviewSchema = z.object({
+  text: z.string().min(1),
+  status: z.enum(['verified', 'weak', 'not_proven']),
+  evidence: z.string().min(1),
+}).strict();
+
+export const demoQuizPreviewSchema = z.object({
+  question: z.string().min(1),
+  choices: z.array(z.string()).min(2).max(5),
+  answer_index: z.number().int().min(0).max(4),
+}).strict().refine((quiz) => quiz.answer_index < quiz.choices.length, {
+  message: 'answer_index must point to an existing choice',
+  path: ['answer_index'],
 });
 
-export const installManifestSummarySchema = z.object({
-  preview: z.array(installManifestActionSchema),
-  write: z.array(installManifestActionSchema),
-  uninstall: z.array(installManifestActionSchema),
-});
-
-export const installTargetSchema = z.object({
-  name: z.string().min(1),
-  display_name: z.string().min(1),
-  detected: z.boolean(),
-  platform_supported: z.boolean(),
-  status: z.enum(['installed', 'available', 'unsupported', 'error']),
-  description: z.string(),
-  install_command: z.string().min(1).optional(),
-  uninstall_command: z.string().min(1).optional(),
-  manifest: installManifestSummarySchema.nullable().optional(),
-  manifest_hash: z.string().length(64).nullable().optional(),
-  manifest_error: z.string().nullable().optional(),
-  error_message: z.string().nullable().optional(),
-});
-
-export const installTargetsResponseSchema = z.object({
-  targets: z.array(installTargetSchema),
-  total: z.number().int().nonnegative(),
-});
-
-export const installTargetPreviewResponseSchema = z.object({
-  target: installTargetSchema,
-  manifest_hash: z.string().length(64),
-});
-
-export const installTargetMutationResponseSchema = z.object({
-  target: installTargetSchema,
-  operation: z.enum(['install', 'uninstall']),
-  updated: z.boolean(),
-  updated_paths: z.array(z.string()),
-  manifest_hash: z.string().length(64),
-});
+export const demoLearnPreviewResponseSchema = z.object({
+  locale: z.enum(['en', 'zh-CN']),
+  sample_diff: z.string().min(1),
+  claims: z.array(demoClaimPreviewSchema).min(1).max(3),
+  lesson_snippet: z.string().min(1),
+  quiz: demoQuizPreviewSchema,
+}).strict();
 
 export const providerSummarySchema = z
   .object({

@@ -173,7 +173,14 @@ describe('GuidePage command examples', () => {
     const source = readFileSync(resolve(__dirname, '../GuidePage.tsx'), 'utf-8');
 
     expect(source).toContain("file_strategy === 'generated'");
+    expect(source).toContain("? fallbackInstallTargets('error')");
+    expect(source).toContain('? []');
+    expect(source).toContain("t('Guide.agent_empty')");
+    expect(source).toContain("t('Guide.agent_preview_manifest_title')");
+    expect(source).toContain("t('Guide.agent_preview_agents_title')");
     expect(source).not.toContain('target.manifest?.write?.[0]?.path ?? AGENT_PATH_HINTS');
+    expect(source).not.toContain('(Manifest Preview)');
+    expect(source).not.toContain('AGENTS.md preview</div>');
     expect(source).not.toContain('className="guide-agent-card__actions-more" aria-hidden');
   });
 
