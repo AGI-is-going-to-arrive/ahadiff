@@ -4,7 +4,7 @@ import inspect
 import json
 import subprocess
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from typer.testing import CliRunner
 
@@ -658,6 +658,9 @@ def test_cli_learn_delegates_to_shared_pipeline_and_preserves_quiz_mode(
     ) -> LearnResult:
         captured["request"] = request
         captured["kwargs"] = kwargs
+        progress = kwargs.get("on_progress")
+        assert callable(progress)
+        progress(3, 10, "Extracting claims from diff")
         return LearnResult(
             run_id="run-shared-cli",
             status="dry_run",
@@ -706,6 +709,9 @@ def test_cli_learn_delegates_to_shared_pipeline_and_preserves_quiz_mode(
     assert request.model == "local-model"
     assert request.privacy_mode == "strict_local"
     assert request.lang == "zh-CN"
+    kwargs = cast("dict[str, object]", captured["kwargs"])
+    assert isinstance(kwargs, dict)
+    assert callable(kwargs.get("on_progress"))
     assert "Run ID" in result.stdout
     assert "pipeline warning" in result.stdout
 

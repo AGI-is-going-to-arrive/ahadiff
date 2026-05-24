@@ -40,6 +40,8 @@ from ahadiff.core.paths import (
     workspace_identity_lookup_keys,
 )
 from ahadiff.git.repo import repo_write_lock, unlock_repo_write_lock
+from ahadiff.llm import usage as usage_module
+from ahadiff.review import database as review_database
 
 
 @pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
@@ -1102,14 +1104,70 @@ def test_cli_doctor_exits_non_zero_when_sqlite_gate_fails(
     repo_root.mkdir()
     _init_git_repo(repo_root)
     monkeypatch.chdir(repo_root)
-    monkeypatch.setattr(cli_module, "_sqlite_version_tuple", lambda: (3, 50, 4))
-    monkeypatch.setattr(cli_module.sqlite3, "sqlite_version", "3.50.4")
+    monkeypatch.setattr(cli_module, "_sqlite_version_tuple", lambda: (3, 42, 0))
+    monkeypatch.setattr(cli_module.sqlite3, "sqlite_version", "3.42.0")
 
     runner = CliRunner()
     result = runner.invoke(app(), ["doctor"], catch_exceptions=False)
     assert result.exit_code == 1
     assert "SQLite gate" in result.stdout
     assert "does not satisfy the frozen doctor gate" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("version", "supported"),
+    [
+        ((3, 51, 3), True),
+        ((3, 50, 5), True),
+        ((3, 50, 4), True),
+        ((3, 50, 3), False),
+        ((3, 44, 7), True),
+        ((3, 44, 6), True),
+        ((3, 44, 5), False),
+        ((3, 42, 0), False),
+    ],
+)
+def test_sqlite_gate_patch_floor_contract_is_consistent_across_entrypoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: tuple[int, int, int],
+    supported: bool,
+) -> None:
+    version_text = ".".join(str(part) for part in version)
+    backport_text = "allowed backports are 3.44.6+, 3.50.4+"
+    repo_root = tmp_path / f"repo-{version_text}"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    monkeypatch.setattr(cli_module.sqlite3, "sqlite_version", version_text)
+    monkeypatch.setattr(usage_module.sqlite3, "sqlite_version", version_text)
+    monkeypatch.setattr(usage_module.sqlite3, "sqlite_version_info", version)
+    monkeypatch.setattr(review_database.sqlite3, "sqlite_version", version_text)
+
+    runner = CliRunner()
+    doctor_result = runner.invoke(
+        app(),
+        ["doctor", "--repo-root", str(repo_root)],
+        catch_exceptions=False,
+    )
+    usage_path = tmp_path / f"usage-{version_text}.sqlite"
+    review_path = tmp_path / f"review-{version_text}.sqlite"
+
+    if supported:
+        assert doctor_result.exit_code == 0
+        with usage_module.connect_usage_db(usage_path, create_parent=True):
+            pass
+        with review_database.connect_review_db(review_path, create_parent=True):
+            pass
+        return
+
+    assert doctor_result.exit_code == 1
+    assert backport_text in doctor_result.stdout
+    with pytest.raises(StorageError) as usage_error:
+        usage_module.connect_usage_db(usage_path, create_parent=True)
+    with pytest.raises(StorageError) as review_error:
+        review_database.connect_review_db(review_path, create_parent=True)
+    assert backport_text in str(usage_error.value)
+    assert backport_text in str(review_error.value)
 
 
 def test_cli_maint_clean_orphans_removes_tmp_runs_and_audit_tmp_files(

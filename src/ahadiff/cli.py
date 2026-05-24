@@ -58,6 +58,8 @@ from .i18n import normalize_locale, resolve_locale
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from rich.status import Status
+
     from .contracts import PrivacyMode
     from .review.schemas import ReviewAnswer
     from .safety.gates import TransportTarget
@@ -95,7 +97,10 @@ _INSTALL_TARGET_HELP = (
     "hooks uses POSIX shell hooks; Windows hooks are not supported in v0.1."
 )
 _SQLITE_MIN_VERSION = (3, 51, 3)
-_SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
+_SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] = {
+    (3, 50): (3, 50, 4),
+    (3, 44): (3, 44, 6),
+}
 
 
 @cache
@@ -231,7 +236,10 @@ def _sqlite_version_tuple() -> tuple[int, int, int]:
 
 
 def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
-    return version >= _SQLITE_MIN_VERSION or version in _SQLITE_ALLOWED_BACKPORTS
+    if version >= _SQLITE_MIN_VERSION:
+        return True
+    floor = _SQLITE_ALLOWED_BACKPORT_MINIMUMS.get(version[:2])
+    return floor is not None and version >= floor
 
 
 def _handle_cli_error(error: Exception) -> None:
@@ -319,6 +327,20 @@ def _learnability_metadata_for_result(result: Any) -> dict[str, Any]:
             if isinstance(raw_learnability, dict):
                 return cast("dict[str, Any]", raw_learnability)
     return {}
+
+
+def _learn_progress_callback(status: Status) -> Callable[[int, int, str], None]:
+    def _cli_progress(step: int, total: int, message: str) -> None:
+        status.update(f"[bold]({step}/{total})[/bold] {message}")
+
+    return _cli_progress
+
+
+def _status_message_callback(status: Status) -> Callable[[str], None]:
+    def _cli_progress(message: str) -> None:
+        status.update(f"[bold]{message}[/bold]")
+
+    return _cli_progress
 
 
 def _print_learn_pipeline_result(result: Any) -> None:
@@ -788,7 +810,8 @@ def doctor_cmd(
         else:
             minimum = ".".join(str(part) for part in _SQLITE_MIN_VERSION)
             backports = ", ".join(
-                ".".join(str(part) for part in item) for item in sorted(_SQLITE_ALLOWED_BACKPORTS)
+                f"{'.'.join(str(p) for p in floor)}+"
+                for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
             )
             console.print(
                 "[red]SQLite gate[/red]: "
@@ -1055,36 +1078,39 @@ def learn_cmd(
         )
         from .core import orchestrator as orchestrator_module
 
-        result = orchestrator_module.run_learn_pipeline(
-            orchestrator_module.LearnRequest(
-                workspace_root=root,
-                revision=revision,
-                last=last,
-                since=since,
-                author=author,
-                staged=staged,
-                unstaged=unstaged,
-                include_untracked=include_untracked,
-                changed_paths=changed_paths,
-                patch=patch,
-                compare=compare,
-                compare_dir=compare_dir,
-                against_spec=against_spec,
-                spec_semantic_review=spec_semantic_review,
-                patch_url=patch_url,
-                provider_name=provider,
-                provider_class=provider_class,
-                base_url=base_url,
-                model=model,
-                api_key_env=api_key_env,
-                dry_run=dry_run,
-                force_learn=force_learn,
-                use_graphify=use_graphify,
-                lang=lang,
-                privacy_mode=privacy_mode,
-                quiz_mode=quiz_mode,
-            )
+        request = orchestrator_module.LearnRequest(
+            workspace_root=root,
+            revision=revision,
+            last=last,
+            since=since,
+            author=author,
+            staged=staged,
+            unstaged=unstaged,
+            include_untracked=include_untracked,
+            changed_paths=changed_paths,
+            patch=patch,
+            compare=compare,
+            compare_dir=compare_dir,
+            against_spec=against_spec,
+            spec_semantic_review=spec_semantic_review,
+            patch_url=patch_url,
+            provider_name=provider,
+            provider_class=provider_class,
+            base_url=base_url,
+            model=model,
+            api_key_env=api_key_env,
+            dry_run=dry_run,
+            force_learn=force_learn,
+            use_graphify=use_graphify,
+            lang=lang,
+            privacy_mode=privacy_mode,
+            quiz_mode=quiz_mode,
         )
+        with console.status("[bold]Starting learn pipeline...[/bold]", spinner="dots") as status:
+            result = orchestrator_module.run_learn_pipeline(
+                request,
+                on_progress=_learn_progress_callback(status),
+            )
         _print_learn_pipeline_result(result)
         if open_viewer:
             snapshot = (
@@ -1479,31 +1505,35 @@ def regenerate_cmd(
             cards_path: Path | None = None
             try:
                 output_lang = _run_content_lang(run_path)
-                quiz_artifacts, questions = generate_quiz_from_run(
-                    run_id=run_id,
-                    run_path=run_path,
-                    workspace_root=root,
-                    provider_config=provider_config,
-                    api_key=effective_api_key,
-                    security_config=security_config,
-                    request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                    max_concurrent=int(llm_config["max_concurrent"]),
-                    qps_limit=int(provider_limits["qps_limit"]),
-                    retry_attempts=int(llm_config["retry_attempts"]),
-                    privacy_mode=resolved_privacy_mode,
-                    output_lang=output_lang,
-                    quiz_output_token_cap=int(llm_config.get("quiz_generation_output_cap", 18_000)),
-                    misconception_output_token_cap=int(
-                        llm_config.get("misconception_cards_output_cap", 6_000)
-                    ),
-                    question_count=_effective_quiz_question_count(
-                        quiz_config,
-                        _run_diff_stats_or_none(run_path),
-                    ),
-                    overwrite=True,
-                    structured_output_mode=_structured_output_mode(llm_config),
-                    structured_validation_retries=_structured_validation_retries(llm_config),
-                )
+                with console.status("[bold]Regenerating quiz...[/bold]", spinner="dots") as status:
+                    quiz_artifacts, questions = generate_quiz_from_run(
+                        run_id=run_id,
+                        run_path=run_path,
+                        workspace_root=root,
+                        provider_config=provider_config,
+                        api_key=effective_api_key,
+                        security_config=security_config,
+                        request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                        max_concurrent=int(llm_config["max_concurrent"]),
+                        qps_limit=int(provider_limits["qps_limit"]),
+                        retry_attempts=int(llm_config["retry_attempts"]),
+                        privacy_mode=resolved_privacy_mode,
+                        output_lang=output_lang,
+                        quiz_output_token_cap=int(
+                            llm_config.get("quiz_generation_output_cap", 18_000)
+                        ),
+                        misconception_output_token_cap=int(
+                            llm_config.get("misconception_cards_output_cap", 6_000)
+                        ),
+                        question_count=_effective_quiz_question_count(
+                            quiz_config,
+                            _run_diff_stats_or_none(run_path),
+                        ),
+                        overwrite=True,
+                        structured_output_mode=_structured_output_mode(llm_config),
+                        structured_validation_retries=_structured_validation_retries(llm_config),
+                        on_sub_progress=_status_message_callback(status),
+                    )
                 report = evaluate_run(run_path)
                 cards_path = generate_cards_for_run(
                     run_path=run_path,
@@ -1655,7 +1685,8 @@ def review_cmd(
                 console.print(f"[bold]Scaffolding[/bold]: {update.scaffolding_level}")
                 return
             if optimize:
-                result = optimize_review_weights(db_path)
+                with console.status("[bold]Optimizing FSRS parameters...[/bold]", spinner="dots"):
+                    result = optimize_review_weights(db_path)
                 weights_text = json.dumps(result.weights, ensure_ascii=False)
                 table = Table(title="FSRS optimizer")
                 table.add_column("Field", style="cyan")
@@ -1789,23 +1820,24 @@ def improve_cmd(
 
         with repo_write_lock(lock_file_path(root), command="improve") as _:
             initialize_review_db(db_path)
-            result = run_improve_loop(
-                repo_root=root,
-                state_dir=state_dir,
-                db_path=db_path,
-                rounds=rounds,
-                suite=suite,
-                provider_config=provider_config,
-                api_key=effective_api_key,
-                security_config=security_config,
-                resume_session_id=resume,
-                request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                max_concurrent=int(llm_config["max_concurrent"]),
-                qps_limit=int(provider_limits["qps_limit"]),
-                retry_attempts=int(llm_config["retry_attempts"]),
-                privacy_mode=resolved_privacy_mode,
-                output_lang=resolved_output_lang,
-            )
+            with console.status("[bold]Running improve loop...[/bold]", spinner="dots"):
+                result = run_improve_loop(
+                    repo_root=root,
+                    state_dir=state_dir,
+                    db_path=db_path,
+                    rounds=rounds,
+                    suite=suite,
+                    provider_config=provider_config,
+                    api_key=effective_api_key,
+                    security_config=security_config,
+                    resume_session_id=resume,
+                    request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                    max_concurrent=int(llm_config["max_concurrent"]),
+                    qps_limit=int(provider_limits["qps_limit"]),
+                    retry_attempts=int(llm_config["retry_attempts"]),
+                    privacy_mode=resolved_privacy_mode,
+                    output_lang=resolved_output_lang,
+                )
 
         console.print(f"[green]Improve session[/green]: {result.session_id}")
         console.print(f"[bold]Anchor run[/bold]: {result.anchor_run_id}")
@@ -1990,7 +2022,11 @@ def _run_watch_learn(
             force_learn=fl,
             lang=ln,
         )
-        result = run_learn_pipeline(request)
+        with console.status("[bold]Starting learn pipeline...[/bold]", spinner="dots") as status:
+            result = run_learn_pipeline(
+                request,
+                on_progress=_learn_progress_callback(status),
+            )
         console.print(
             f"  [bold]Result[/bold]: {result.status}"
             f" (score={result.overall},"
@@ -2427,24 +2463,25 @@ def claims_cmd(
                 snapshot,
                 cli_lang=None,
             )
-            raw_claims_path, _ = extract_claim_candidates_from_run(
-                run_id=run_id,
-                run_path=run_path,
-                workspace_root=root,
-                provider_config=provider_config,
-                api_key=effective_api_key,
-                security_config=security_config,
-                output_path=extract_output_path,
-                overwrite=False,
-                privacy_mode=resolved_privacy_mode,
-                max_concurrent=int(llm_config["max_concurrent"]),
-                qps_limit=int(provider_limits["qps_limit"]),
-                retry_attempts=int(llm_config["retry_attempts"]),
-                request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-                output_lang=verify_content_lang,
-                structured_output_mode=_structured_output_mode(llm_config),
-                structured_validation_retries=_structured_validation_retries(llm_config),
-            )
+            with console.status("[bold]Extracting claims...[/bold]", spinner="dots"):
+                raw_claims_path, _ = extract_claim_candidates_from_run(
+                    run_id=run_id,
+                    run_path=run_path,
+                    workspace_root=root,
+                    provider_config=provider_config,
+                    api_key=effective_api_key,
+                    security_config=security_config,
+                    output_path=extract_output_path,
+                    overwrite=False,
+                    privacy_mode=resolved_privacy_mode,
+                    max_concurrent=int(llm_config["max_concurrent"]),
+                    qps_limit=int(provider_limits["qps_limit"]),
+                    retry_attempts=int(llm_config["retry_attempts"]),
+                    request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                    output_lang=verify_content_lang,
+                    structured_output_mode=_structured_output_mode(llm_config),
+                    structured_validation_retries=_structured_validation_retries(llm_config),
+                )
             extracted_candidate_path = raw_claims_path
             candidate_load_path = raw_claims_path
             if candidate_path_preexisted:
@@ -2772,13 +2809,14 @@ def score_cmd(
     ] = False,
 ) -> None:
     try:
-        _score_or_verify_run(
-            command_name="score",
-            run_id=run_id,
-            repo_root=repo_root,
-            output=output,
-            force=force,
-        )
+        with console.status("[bold]Scoring run...[/bold]", spinner="dots"):
+            _score_or_verify_run(
+                command_name="score",
+                run_id=run_id,
+                repo_root=repo_root,
+                output=output,
+                force=force,
+            )
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 
@@ -2834,13 +2872,14 @@ def benchmark_cmd(
             resolved_output_lang = "en"
         _, lock_path = _state_dir_and_lock_path(repo_root)
         with repo_write_lock(lock_path, command="benchmark") as _:
-            report = run_benchmark_suite(
-                manifest_path,
-                suite=suite,
-                model_id=model_id,
-                api_family_version=api_family_version,
-                output_lang=resolved_output_lang,
-            )
+            with console.status("[bold]Running benchmark...[/bold]", spinner="dots"):
+                report = run_benchmark_suite(
+                    manifest_path,
+                    suite=suite,
+                    model_id=model_id,
+                    api_family_version=api_family_version,
+                    output_lang=resolved_output_lang,
+                )
             write_benchmark_report(output_path, report)
         console.print(f"[green]Benchmark complete[/green]: {report.suite_id}")
         console.print(f"[bold]Suite digest[/bold]: {report.suite_digest}")
@@ -2884,13 +2923,14 @@ def verify_cmd(
             return
         if run_id is None:
             raise AhaDiffError("verify requires RUN_ID unless --ci is used")
-        _score_or_verify_run(
-            command_name="verify",
-            run_id=run_id,
-            repo_root=repo_root,
-            output=output,
-            force=force,
-        )
+        with console.status("[bold]Verifying run...[/bold]", spinner="dots"):
+            _score_or_verify_run(
+                command_name="verify",
+                run_id=run_id,
+                repo_root=repo_root,
+                output=output,
+                force=force,
+            )
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
 
@@ -2949,7 +2989,10 @@ def export_preview_cmd(
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         output_dir = out.expanduser().resolve()
         _, lock_path = _state_dir_and_lock_path(repo_root)
-        with repo_write_lock(lock_path, command="export preview") as _:
+        with (
+            repo_write_lock(lock_path, command="export preview") as _,
+            console.status("[bold]Building export preview...[/bold]", spinner="dots"),
+        ):
             manifest = export_preview(
                 run_id=run_id,
                 output_path=output_dir,
@@ -2978,7 +3021,10 @@ def db_upgrade_cmd(
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         db_path = state_dir / "review.sqlite"
         _, lock_path = _state_dir_and_lock_path(repo_root)
-        with repo_write_lock(lock_path, command="db upgrade") as _:
+        with (
+            repo_write_lock(lock_path, command="db upgrade") as _,
+            console.status("[bold]Upgrading database...[/bold]", spinner="dots"),
+        ):
             outcome = upgrade_review_db(db_path)
         console.print(f"[green]Upgraded[/green] {outcome.db_path}")
         console.print(f"[bold]Schema version[/bold]: {outcome.schema_version}")
@@ -3003,7 +3049,10 @@ def db_backup_cmd(
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         db_path = state_dir / "review.sqlite"
         _, lock_path = _state_dir_and_lock_path(repo_root)
-        with repo_write_lock(lock_path, command="db backup") as _:
+        with (
+            repo_write_lock(lock_path, command="db backup") as _,
+            console.status("[bold]Backing up database...[/bold]", spinner="dots"),
+        ):
             backup_path = backup_review_db(db_path, backup_path=output)
         console.print(f"[green]Backed up[/green] {backup_path}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests
@@ -3157,7 +3206,10 @@ def graph_import_cmd(
     try:
         root = find_repo_root(repo_root)
         graph_max_nodes_import = effective_graph_max_nodes_import(root)
-        with repo_write_lock(lock_file_path(root), command="graph import") as _:
+        with (
+            repo_write_lock(lock_file_path(root), command="graph import") as _,
+            console.status("[bold]Importing graph...[/bold]", spinner="dots"),
+        ):
             status = import_graphify_artifact(
                 root,
                 force=force,
@@ -3178,7 +3230,10 @@ def graph_refresh_cmd(
     try:
         root = find_repo_root(repo_root)
         graph_max_nodes_import = effective_graph_max_nodes_import(root)
-        with repo_write_lock(lock_file_path(root), command="graph refresh") as _:
+        with (
+            repo_write_lock(lock_file_path(root), command="graph refresh") as _,
+            console.status("[bold]Refreshing graph...[/bold]", spinner="dots"),
+        ):
             status = import_graphify_artifact(
                 root,
                 force=True,
@@ -3307,7 +3362,10 @@ def concepts_sync_cmd(
         jsonl_path = sd / "concepts.jsonl"
         if not jsonl_path.exists():
             raise InputError(f"concepts JSONL does not exist: {jsonl_path}")
-        with repo_write_lock(lock_file_path(root), command="concepts sync") as _:
+        with (
+            repo_write_lock(lock_file_path(root), command="concepts sync") as _,
+            console.status("[bold]Syncing concepts...[/bold]", spinner="dots"),
+        ):
             count = import_concepts_from_jsonl(db_path, jsonl_path)
         console.print(f"[green]Synced[/green] {count} concepts to {db_path}")
     except Exception as error:
@@ -3446,17 +3504,21 @@ def concepts_lint_cmd(
                 recent_runs = []
 
         if dry_run:
-            summary = run_deterministic_lint(
-                concepts=concepts,
-                recent_runs=recent_runs,
-                repo_root=root,
-                db_path=None,
-                dry_run=True,
-                orphan_threshold=orphan_threshold,
-                line_drift_threshold=line_drift_threshold,
-            )
+            with console.status("[bold]Linting concepts...[/bold]", spinner="dots"):
+                summary = run_deterministic_lint(
+                    concepts=concepts,
+                    recent_runs=recent_runs,
+                    repo_root=root,
+                    db_path=None,
+                    dry_run=True,
+                    orphan_threshold=orphan_threshold,
+                    line_drift_threshold=line_drift_threshold,
+                )
         else:
-            with repo_write_lock(lock_file_path(root), command="concepts lint") as _:
+            with (
+                repo_write_lock(lock_file_path(root), command="concepts lint") as _,
+                console.status("[bold]Linting concepts...[/bold]", spinner="dots"),
+            ):
                 summary = run_deterministic_lint(
                     concepts=concepts,
                     recent_runs=recent_runs,
@@ -3604,22 +3666,23 @@ def provider_test_cmd(
                     "--api-key-env must point to a set env var when stdin is non-interactive"
                 )
 
-        report = probe_provider(
-            provider_name=name,
-            provider_class=provider_class,
-            model_name=resolved_model,
-            model_limits_name=model_limits_name,
-            base_url=normalized_base_url,
-            api_key=effective_api_key,
-            api_key_env=api_key_env,
-            workspace_root=root,
-            security_config=security_config,
-            max_concurrent=int(llm_config["max_concurrent"]),
-            qps_limit=int(provider_limits["qps_limit"]),
-            retry_attempts=int(llm_config["retry_attempts"]),
-            request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
-            privacy_mode=resolved_privacy_mode,
-        )
+        with console.status("[bold]Testing provider...[/bold]", spinner="dots"):
+            report = probe_provider(
+                provider_name=name,
+                provider_class=provider_class,
+                model_name=resolved_model,
+                model_limits_name=model_limits_name,
+                base_url=normalized_base_url,
+                api_key=effective_api_key,
+                api_key_env=api_key_env,
+                workspace_root=root,
+                security_config=security_config,
+                max_concurrent=int(llm_config["max_concurrent"]),
+                qps_limit=int(provider_limits["qps_limit"]),
+                retry_attempts=int(llm_config["retry_attempts"]),
+                request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                privacy_mode=resolved_privacy_mode,
+            )
 
         console.print(f"[green]Provider probe succeeded[/green] for {report.provider_name}")
         console.print(f"[bold]Transport[/bold]: {report.transport_target}")

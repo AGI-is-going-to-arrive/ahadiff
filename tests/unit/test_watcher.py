@@ -707,8 +707,12 @@ class TestWatchLearnRunner:
 
         captured: dict[str, Any] = {}
 
-        def fake_run_learn_pipeline(request: object) -> SimpleNamespace:
+        def fake_run_learn_pipeline(request: object, **kwargs: object) -> SimpleNamespace:
             captured["request"] = request
+            captured["kwargs"] = kwargs
+            progress = kwargs.get("on_progress")
+            assert callable(progress)
+            progress(2, 10, "Capturing diff")
             return SimpleNamespace(
                 status="completed",
                 overall=None,
@@ -731,6 +735,9 @@ class TestWatchLearnRunner:
         assert request.changed_paths == ("src/app.py",)
         assert request.unstaged is True
         assert request.include_untracked is True
+        kwargs = captured["kwargs"]
+        assert isinstance(kwargs, dict)
+        assert callable(kwargs["on_progress"])
 
     def test_retriggers_after_change_queued_during_run(self) -> None:
         first_started = threading.Event()

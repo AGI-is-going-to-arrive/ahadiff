@@ -75,13 +75,17 @@ vi.mock('../../i18n/useTranslation', async () => {
 
 function extractRenderedCommands(html: string): string[] {
   return [...html.matchAll(/data-command="([^"]+)"/g)].map((match) =>
-    match[1]
-      .replace(/&quot;/g, '"')
-      .replace(/&#x27;/g, "'")
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>'),
+    decodeHtmlEntities(match[1]),
   );
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
 }
 
 describe('GuidePage command examples', () => {
@@ -135,6 +139,20 @@ describe('GuidePage command examples', () => {
     expect(commands).not.toContain(
       'ahadiff learn HEAD~1..HEAD --provider gpt55 --privacy-mode explicit_remote',
     );
+  });
+
+  it('renders precise guidance labels for optional and lossy commands', async () => {
+    const { default: GuidePage } = await import('../GuidePage');
+    const html = decodeHtmlEntities(renderToStaticMarkup(<GuidePage />));
+
+    expect(html).toContain('需要 Python 3.11+');
+    expect(html).toContain('从工作区指定路径的变更中学习');
+    expect(html).toContain('检查挑战循环状态（需 opt-in 配置）');
+    expect(html).toContain('图谱状态（可选，读取 graphify-out/graph.json）');
+    expect(html).toContain('从 graphify-out/graph.json 刷新图谱');
+    expect(html).toContain('导出结果到 .ahadiff/results.tsv');
+    expect(html).toContain('导入 legacy results.tsv（有损转换）');
+    expect(html).not.toContain('需 graphify CLI');
   });
 
   it('renders PowerShell setup syntax for Windows users', async () => {

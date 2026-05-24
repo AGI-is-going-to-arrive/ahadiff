@@ -56,7 +56,10 @@ if TYPE_CHECKING:
 
 CURRENT_SCHEMA_VERSION = 10
 _SQLITE_MIN_VERSION = (3, 51, 3)
-_SQLITE_ALLOWED_BACKPORTS = {(3, 50, 7), (3, 44, 6)}
+_SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] = {
+    (3, 50): (3, 50, 4),
+    (3, 44): (3, 44, 6),
+}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 _SQLITE_SIDECAR_REMOVE_ATTEMPTS = 5
 _SQLITE_SIDECAR_REMOVE_DELAY_SECONDS = 0.05
@@ -2651,7 +2654,8 @@ def _assert_sqlite_runtime_supported() -> None:
         return
     minimum = ".".join(str(part) for part in _SQLITE_MIN_VERSION)
     backports = ", ".join(
-        ".".join(str(part) for part in item) for item in sorted(_SQLITE_ALLOWED_BACKPORTS)
+        f"{'.'.join(str(p) for p in floor)}+"
+        for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
     )
     raise StorageError(
         f"SQLite runtime {sqlite3.sqlite_version} is below {minimum}; "
@@ -2666,7 +2670,10 @@ def _sqlite_version_tuple() -> tuple[int, int, int]:
 
 
 def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
-    return version >= _SQLITE_MIN_VERSION or version in _SQLITE_ALLOWED_BACKPORTS
+    if version >= _SQLITE_MIN_VERSION:
+        return True
+    floor = _SQLITE_ALLOWED_BACKPORT_MINIMUMS.get(version[:2])
+    return floor is not None and version >= floor
 
 
 # ---------------------------------------------------------------------------

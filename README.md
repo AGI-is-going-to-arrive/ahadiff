@@ -34,7 +34,7 @@ AI writes code faster, but developers can understand less of what actually chang
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.11+ with Python's `sqlite3` runtime at SQLite 3.51.3+; patched backport branches 3.50.4+ and 3.44.6+ are also accepted. Run `ahadiff doctor` to check the runtime Python actually uses.
 - git (on PATH)
 - [uv](https://docs.astral.sh/uv/) — install with `curl -LsSf https://astral.sh/uv/install.sh | sh` or `brew install uv`
 - An LLM provider: remote (OpenAI / Anthropic / Gemini / Azure / any OpenAI-compatible) with API key, or local (LM Studio / Ollama, no key needed)
