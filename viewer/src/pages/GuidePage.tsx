@@ -3,6 +3,7 @@ import {
   BookOpen,
   Brain,
   ChevronRight,
+  ChevronDown,
   Code,
   ExternalLink,
   GraduationCap,
@@ -584,11 +585,33 @@ function AgentSkillsSection({
   copyLabels: { copyLabel: string; copiedLabel: string };
 }) {
   const { locale } = useTranslation();
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [printExpanded, setPrintExpanded] = useState(false);
   const [targets, setTargets] = useState<InstallTarget[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [activeCategory, setActiveCategory] = useState<'all' | 'cli' | 'ide' | 'ci'>('all');
   const buttonRefs = useRef<HTMLButtonElement[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const printQuery = window.matchMedia('print');
+    const syncPrintState = () => setPrintExpanded(printQuery.matches);
+    const handleBeforePrint = () => setPrintExpanded(true);
+    const handleAfterPrint = () => setPrintExpanded(false);
+    const handlePrintChange = (event: MediaQueryListEvent) => setPrintExpanded(event.matches);
+
+    syncPrintState();
+    printQuery.addEventListener('change', handlePrintChange);
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    return () => {
+      printQuery.removeEventListener('change', handlePrintChange);
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -745,58 +768,81 @@ function AgentSkillsSection({
             ?? AGENT_PATH_HINTS[name]
             ?? '';
           const meta = integrationMeta.get(name);
+          const isExpanded = expandedCard === name;
+          const renderPanelContent = isExpanded || printExpanded;
           return (
-            <article className="guide-agent-card" key={name}>
-              <div className="guide-agent-card__topline">
-                <span className="guide-agent-card__mark">{targetMark(name)}</span>
-                <span className={`guide-agent-card__status guide-agent-card__status--${status}`}>
-                  {t(`Guide.agent_status_${status}` as MessageKey)}
-                </span>
-                {meta?.posixOnly && (
-                  <span className="guide-agent-card__platform-badge">
-                    {t('Guide.integrations_posix_only')}
+            <article className={`guide-agent-card ${isExpanded ? 'is-expanded' : ''}`} key={name}>
+              <button
+                className="guide-agent-card__header"
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={`agent-content-${name}`}
+                onClick={() => setExpandedCard(current => (current === name ? null : name))}
+              >
+                <span className="guide-agent-card__header-content">
+                  <span className="guide-agent-card__topline">
+                    <span className="guide-agent-card__mark">{targetMark(name)}</span>
+                    <span className={`guide-agent-card__status guide-agent-card__status--${status}`}>
+                      {t(`Guide.agent_status_${status}` as MessageKey)}
+                    </span>
+                    {meta?.posixOnly && (
+                      <span className="guide-agent-card__platform-badge">
+                        {t('Guide.integrations_posix_only')}
+                      </span>
+                    )}
                   </span>
+                  <span className="guide-agent-card__name">{displayName}</span>
+                  {pathHint && <span className="guide-agent-card__path">{pathHint}</span>}
+                </span>
+                <ChevronDown className="guide-agent-card__chevron" size={18} aria-hidden="true" />
+              </button>
+
+              <div
+                id={`agent-content-${name}`}
+                className="guide-agent-card__collapsible"
+                hidden={!renderPanelContent}
+              >
+                {renderPanelContent && (
+                  <div className="guide-agent-card__content-inner">
+                    <div className="guide-agent-card__install">
+                      <CommandBlock command={command} {...copyLabels} />
+                    </div>
+
+                    {target.usage_hint && (
+                      <div className="guide-agent-card__usage-panel-wrapper">
+                        <UsagePanel hint={target.usage_hint} t={t} />
+                      </div>
+                    )}
+
+                    {target.manifest && target.manifest.write && target.manifest.write.length > 0 && (
+                      <div className="guide-agent-card__manifest-preview">
+                        <h4 className="guide-agent-card__manifest-preview-title">
+                          {t('Guide.agent_preview_manifest_title')}
+                        </h4>
+                        <ul className="guide-agent-card__manifest-preview-list" role="list">
+                          {target.manifest.write.map((action, idx) => (
+                            <li
+                              key={idx}
+                              className={`guide-agent-card__manifest-preview-item guide-agent-card__manifest-preview-item--${action.file_strategy}`}
+                            >
+                              <span className="guide-agent-card__manifest-preview-path">
+                                <code>{action.path}</code>
+                              </span>
+                              <span
+                                className={`guide-agent-card__manifest-preview-strategy-badge guide-agent-card__manifest-preview-strategy-badge--${action.file_strategy}`}
+                              >
+                                {action.file_strategy === 'generated'
+                                  ? t('Guide.agent_preview_generated')
+                                  : t('Guide.agent_preview_user_managed')}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-              <h3 className="guide-agent-card__name">{displayName}</h3>
-              {pathHint && <p className="guide-agent-card__path">{pathHint}</p>}
-
-              <div className="guide-agent-card__install">
-                <CommandBlock command={command} {...copyLabels} />
-              </div>
-
-              {target.usage_hint && (
-                <div className="guide-agent-card__usage-panel-wrapper">
-                  <UsagePanel hint={target.usage_hint} t={t} />
-                </div>
-              )}
-
-              {target.manifest && target.manifest.write && target.manifest.write.length > 0 && (
-                <div className="guide-agent-card__manifest-preview">
-                  <h4 className="guide-agent-card__manifest-preview-title">
-                    {t('Guide.agent_preview_manifest_title')}
-                  </h4>
-                  <ul className="guide-agent-card__manifest-preview-list" role="list">
-                    {target.manifest.write.map((action, idx) => (
-                      <li
-                        key={idx}
-                        className={`guide-agent-card__manifest-preview-item guide-agent-card__manifest-preview-item--${action.file_strategy}`}
-                      >
-                        <span className="guide-agent-card__manifest-preview-path">
-                          <code>{action.path}</code>
-                        </span>
-                        <span
-                          className={`guide-agent-card__manifest-preview-strategy-badge guide-agent-card__manifest-preview-strategy-badge--${action.file_strategy}`}
-                        >
-                          {action.file_strategy === 'generated'
-                            ? t('Guide.agent_preview_generated')
-                            : t('Guide.agent_preview_user_managed')}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </article>
           );
         })}

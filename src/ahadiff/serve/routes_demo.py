@@ -19,15 +19,15 @@ if TYPE_CHECKING:
 
 
 _SAMPLE_DIFF = """
-diff --git a/src/cart.py b/src/cart.py
-@@ -12,7 +12,10 @@ def apply_discount(total, code):
--    if code == "WELCOME10":
--        return total * 0.9
-+    if code == "WELCOME10" and total >= 5000:
-+        return round(total * 0.9, 2)
-+    if code == "WELCOME10":
-+        return total
-     return total
+diff --git a/app/main.py b/app/main.py
+@@ -8,6 +8,12 @@ app = FastAPI()
++@app.middleware("http")
++async def no_store_api_responses(request: Request, call_next):
++    response = await call_next(request)
++    if request.url.path.startswith("/api/"):
++        response.headers["cache-control"] = "no-store"
++    return response
+ @app.get("/health")
 """.strip()
 
 
@@ -38,30 +38,39 @@ def _demo_preview(locale: Literal["en", "zh-CN"]) -> DemoLearnPreviewResponse:
             sample_diff=_SAMPLE_DIFF,
             claims=[
                 DemoClaimPreview(
-                    text="WELCOME10 现在只会给金额至少 5000 的订单打折。",
+                    text=(
+                        '新增函数通过 @app.middleware("http") 注册为 HTTP 中间件，'
+                        "而不是普通路由处理器。"
+                    ),
                     status="verified",
-                    evidence="src/cart.py:12-13",
+                    evidence="app/main.py:8-9",
                 ),
                 DemoClaimPreview(
-                    text="未达到门槛的 WELCOME10 订单会返回原价。",
+                    text="中间件会先 await call_next(request)，让正常路由先生成响应。",
                     status="verified",
-                    evidence="src/cart.py:14-15",
+                    evidence="app/main.py:10",
+                ),
+                DemoClaimPreview(
+                    text="只有路径以 /api/ 开头的请求，响应才会被加上 cache-control: no-store。",
+                    status="verified",
+                    evidence="app/main.py:11-12",
                 ),
             ],
             lesson_snippet=(
-                "这次 diff 把折扣资格从“只要有优惠码”收紧为"
-                "“优惠码加金额门槛”。AhaDiff 会把行为变化绑定到具体行号，"
-                "并生成可以主动回忆的测验。"
+                "vibe coding 后，这类几行 FastAPI 中间件最容易被直接合并但没真正理解。"
+                "AhaDiff 会把 AI 写出的 diff 拆成带行号证据的 claims：它是中间件，"
+                "call_next 保留正常路由响应，只有 /api/ 响应会被加上 no-store。"
+                "AI 写完，Diff 教回。"
             ),
             quiz=DemoQuizPreview(
-                question="WELCOME10 在什么情况下会应用 10% 折扣？",
+                question="这个中间件在什么情况下会给响应加上 cache-control: no-store？",
                 choices=[
-                    "任意订单都可以",
-                    "订单金额至少 5000 时",
-                    "只有没有优惠码时",
-                    "只在返回 total 之前",
+                    "请求路径以 /api/ 开头时",
+                    "每一个静态资源响应",
+                    "只有 /health 路由",
+                    "永远不会，因为 call_next 返回 None",
                 ],
-                answer_index=1,
+                answer_index=0,
             ),
         )
     return DemoLearnPreviewResponse(
@@ -69,30 +78,45 @@ def _demo_preview(locale: Literal["en", "zh-CN"]) -> DemoLearnPreviewResponse:
         sample_diff=_SAMPLE_DIFF,
         claims=[
             DemoClaimPreview(
-                text="WELCOME10 now discounts only orders of at least 5000.",
+                text=(
+                    "The added function is registered as an HTTP middleware, "
+                    "not as a route handler."
+                ),
                 status="verified",
-                evidence="src/cart.py:12-13",
+                evidence="app/main.py:8-9",
             ),
             DemoClaimPreview(
-                text="WELCOME10 orders below the threshold now return the original total.",
+                text=(
+                    "The middleware lets the normal route handler build the response "
+                    "by awaiting call_next(request)."
+                ),
                 status="verified",
-                evidence="src/cart.py:14-15",
+                evidence="app/main.py:10",
+            ),
+            DemoClaimPreview(
+                text=(
+                    "Only requests whose path starts with /api/ receive cache-control: "
+                    "no-store on the response."
+                ),
+                status="verified",
+                evidence="app/main.py:11-12",
             ),
         ],
         lesson_snippet=(
-            "This diff tightens discount eligibility from any matching code to matching "
-            "code plus a minimum order total. AhaDiff ties that behavior change to exact "
-            "evidence and turns it into recall practice."
+            "Vibe coding often leaves you with a tiny middleware that changes more than it "
+            "looks like. AhaDiff teaches the diff back as verified claims: this is "
+            "middleware, call_next preserves the normal route response, and only /api/ "
+            "responses get no-store. AI writes; the diff teaches back."
         ),
         quiz=DemoQuizPreview(
-            question="When does WELCOME10 apply a 10% discount?",
+            question="When does this middleware add cache-control: no-store?",
             choices=[
-                "For every order",
-                "When the order total is at least 5000",
-                "Only when no code is present",
-                "Only after returning total",
+                "Only when the request path starts with /api/",
+                "For every static asset response",
+                "Only for the /health route",
+                "Never, because call_next returns None",
             ],
-            answer_index=1,
+            answer_index=0,
         ),
     )
 

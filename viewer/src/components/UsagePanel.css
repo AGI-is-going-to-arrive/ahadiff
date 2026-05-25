@@ -13,12 +13,10 @@
 
 .usage-panel__heading {
   margin: 0 0 var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
+  color: var(--ink-muted);
 }
 
 .usage-panel__list,

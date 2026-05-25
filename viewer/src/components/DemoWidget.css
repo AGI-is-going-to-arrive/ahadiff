@@ -18,12 +18,10 @@
 
 .demo-widget__heading {
   margin: 0 0 var(--sp-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
+  font-family: var(--font-serif);
+  font-size: var(--fs-sm);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
+  color: var(--ink-muted);
 }
 
 .demo-widget__diff,
@@ -70,16 +68,18 @@
 }
 
 .demo-widget__claim {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
 }
 
-.demo-widget__claim-status {
-  color: var(--accent-ink, var(--accent));
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  text-transform: uppercase;
+.demo-widget__claim .claim-badge {
+  flex: 0 0 auto;
+}
+
+.demo-widget__claim-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .demo-widget__claim-text,
@@ -115,10 +115,6 @@
     color: CanvasText;
   }
 
-  .demo-widget__claim-status {
-    color: LinkText;
-  }
-
   .demo-widget__quiz-choice--correct {
     border: 2px solid Highlight;
   }
@@ -128,5 +124,17 @@
   .demo-widget,
   .demo-widget * {
     transition: none;
+  }
+
+  .demo-widget .claim-badge--verified,
+  .demo-widget .claim-badge--verified:hover {
+    transform: rotate(-3deg);
+  }
+
+  .demo-widget .claim-badge--weak:hover,
+  .demo-widget .claim-badge--not-proven:hover,
+  .demo-widget .claim-badge--contradicted:hover,
+  .demo-widget .claim-badge--rejected:hover {
+    transform: none;
   }
 }

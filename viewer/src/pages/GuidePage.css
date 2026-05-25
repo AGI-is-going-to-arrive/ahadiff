@@ -591,7 +591,8 @@
 
 .guide-agent-card {
   min-width: 0;
-  padding: var(--sp-4);
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   background: var(--elevated);
@@ -619,6 +620,7 @@
 }
 
 .guide-agent-card__name {
+  display: block;
   margin: var(--sp-3) 0 var(--sp-1);
   font-family: var(--font-serif);
   font-size: 18px;
@@ -626,6 +628,7 @@
 }
 
 .guide-agent-card__path {
+  display: block;
   margin: 0 0 var(--sp-3);
   color: var(--muted);
   font-family: var(--font-mono);
@@ -839,7 +842,7 @@
   .guide-agent-skills__head {
     flex-direction: column;
   }
-  .guide-agent-skills__chips {
+  .guide-agent-skills__tabs {
     justify-content: flex-start;
   }
   .guide-agent-skills__grid {
@@ -1105,4 +1108,78 @@
   color: var(--muted);
   line-height: var(--lh-relaxed);
   text-align: left;
+}
+
+/* Agent card header button reset */
+.guide-agent-card__header {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  cursor: pointer;
+  padding: var(--sp-4);
+  box-sizing: border-box;
+}
+.guide-agent-card__header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-sm);
+}
+.guide-agent-card__header-content {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Chevron rotation */
+.guide-agent-card__chevron {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform var(--dur-base, 200ms) ease;
+}
+.guide-agent-card.is-expanded .guide-agent-card__chevron {
+  transform: rotate(180deg);
+}
+
+/* Collapsible content — hidden attribute handles a11y; grid handles animation */
+.guide-agent-card__collapsible[hidden] {
+  display: none;
+}
+.guide-agent-card__collapsible:not([hidden]) {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.guide-agent-card__content-inner {
+  overflow: hidden;
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .guide-agent-card__chevron,
+  .guide-agent-card__collapsible {
+    transition: none;
+  }
+}
+
+/* Forced colors */
+@media (forced-colors: active) {
+  .guide-agent-card__header:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}
+
+/* Print: force expand all */
+@media print {
+  .guide-agent-card__collapsible[hidden] {
+    display: grid !important;
+    grid-template-rows: 1fr;
+  }
+  .guide-agent-card__content-inner {
+    overflow: visible;
+  }
+  .guide-agent-card__chevron {
+    display: none;
+  }
 }
