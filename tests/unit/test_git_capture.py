@@ -1534,6 +1534,26 @@ def test_compare_dir_rejects_too_many_files_before_content_read(
         )
 
 
+def test_compare_dir_rejects_too_many_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    (old_dir / "nested").mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    (old_dir / "nested" / "file.txt").write_text("old\n", encoding="utf-8")
+    monkeypatch.setattr(capture_module, "_COMPARE_DIR_MAX_DIRS", 1)
+
+    with pytest.raises(InputError, match="exceeds 1 directories"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+
 def test_compare_dir_rejects_empty_directories(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     (workspace_root / "old").mkdir(parents=True)
@@ -1591,6 +1611,22 @@ def test_compare_dir_rejects_symlink_entry_and_excessive_depth(tmp_path: Path) -
     (cursor / "deep.txt").write_text("old\n", encoding="utf-8")
 
     with pytest.raises(InputError, match="exceeds depth"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            compare_dir=(Path("old"), Path("new")),
+            max_patch_bytes=10_000,
+        )
+
+
+def test_compare_dir_rejects_control_chars_in_relative_paths(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    old_dir = workspace_root / "old"
+    new_dir = workspace_root / "new"
+    old_dir.mkdir(parents=True)
+    new_dir.mkdir(parents=True)
+    (old_dir / "bad\n+++ b_injected.py").write_text("old\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="control characters"):
         capture_module.capture_patch(
             workspace_root=workspace_root,
             compare_dir=(Path("old"), Path("new")),
@@ -1661,6 +1697,7 @@ def test_compare_dir_rejects_windows_without_secure_dir_fd(
     (old_dir / "safe.txt").write_text("old\n", encoding="utf-8")
     (new_dir / "safe.txt").write_text("new\n", encoding="utf-8")
     monkeypatch.setattr(capture_module.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
 
     with pytest.raises(InputError, match="secure directory file descriptors"):
         capture_module.capture_patch(

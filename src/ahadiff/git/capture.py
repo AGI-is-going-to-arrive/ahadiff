@@ -2067,6 +2067,7 @@ def _read_compare_dir_tree(
                             entry_stat = entry.stat(follow_symlinks=False)
                         except OSError as exc:
                             raise InputError("compare-dir input entry is unreadable") from exc
+                        _validate_compare_dir_entry_name(entry.name)
                         entry_path = current / entry.name
                         if stat.S_ISLNK(entry_stat.st_mode):
                             raise InputError("compare-dir input must not contain symlinks")
@@ -2107,6 +2108,11 @@ def _read_compare_dir_tree(
 def _close_compare_dir_stack(stack: list[tuple[Path, Path, int]]) -> None:
     for _, _, fd in stack:
         os.close(fd)
+
+
+def _validate_compare_dir_entry_name(entry_name: str) -> None:
+    if any(ord(char) < 32 or ord(char) == 127 for char in entry_name):
+        raise InputError("compare-dir input path contains control characters")
 
 
 def _open_child_compare_directory_fd(

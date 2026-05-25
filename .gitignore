@@ -48,6 +48,9 @@ node_modules/
 .ccg/
 .codex/
 
+# Generated agent skill installs (local only)
+.agents/
+
 # Internal planning artifacts (research prompts, audit reports, kept local)
 plan/
 

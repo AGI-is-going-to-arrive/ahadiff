@@ -972,7 +972,10 @@ def learn_cmd(
     ] = None,
     compare_dir: Annotated[
         tuple[Path, Path] | None,
-        typer.Option("--compare-dir", help="Recursively compare two directories."),
+        typer.Option(
+            "--compare-dir",
+            help="Recursively compare two directories (macOS/Linux only).",
+        ),
     ] = None,
     against_spec: Annotated[
         Path | None,

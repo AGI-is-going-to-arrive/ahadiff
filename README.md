@@ -93,7 +93,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 
 ## Features
 
-- **Learn**: `ahadiff learn` supports 10 diff capture sources: working tree, unstaged, staged, last commit, revision/range, time-window (`--since`), patch/stdin, patch URL, file compare, and directory compare.
+- **Learn**: `ahadiff learn` supports 10 diff capture sources: working tree, unstaged, staged, last commit, revision/range, time-window (`--since`), patch/stdin, patch URL, file compare, and directory compare. Recursive directory compare currently requires macOS/Linux secure directory file descriptors.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, defaults to JSON object mode with one bounded validation retry, and keeps the existing parser, repair, and degraded fallback paths. Truncated or malformed fallback JSON is retried instead of being accepted.
 - **Adaptive capture limits**: fresh configs default to auto capture sizing; existing customized capture settings stay manual. Auto mode uses provider probes, the bundled model registry, output reserves, safety reserves, and CJK diff density, while runtime patch intake remains capped at 50 MiB. Settings previews provider limits from the current draft provider class, model, and optional limits profile before saving, without remote probing on every edit.
@@ -166,6 +166,8 @@ Settings groups targets into CLI / IDE / CI, shows quick-start steps, example pr
 Guide and the New Run dialog keep cards, note markers, and footer actions readable in Windows high-contrast / forced-colors mode; usage hints use the same tokenized type scale as the rest of the viewer.
 
 For Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, and OpenCode, install writes tool-native generated files. The generated paths include `.claude/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff/SKILL.md`, `.gemini/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff-antigravity/SKILL.md`, `.agents/skills/ahadiff-antigravity-cli/SKILL.md`, `.agents/rules/ahadiff.md`, `.github/instructions/ahadiff.instructions.md`, and `.opencode/agents/ahadiff.md`. Repo guidance sections stay in user-managed files such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and `.github/copilot-instructions.md`. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
+
+This repository ignores generated `.agents/` installs, so repo-local Codex / Antigravity skill output remains local unless a user explicitly tracks it.
 
 ## 8-Dimension Rubric
 
