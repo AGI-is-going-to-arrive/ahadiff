@@ -95,8 +95,9 @@ ui/
 
 # Internal development documentation and planning
 doc/
-plan/
-docs/VALIDATION_AUDIT.zh.md
+docs/EVAL_SCORING_ENHANCEMENT_PLAN.md
+docs/EVAL_SCORING_ENHANCEMENT_REVIEW.md
+docs/plans/
 
 # Codex / Aider / dev conventions (not for end users)
 AGENTS.md

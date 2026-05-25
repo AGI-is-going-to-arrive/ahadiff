@@ -1044,6 +1044,10 @@
     border: 2px solid CanvasText;
   }
 
+  .learn-dialog__tile {
+    border: 2px solid ButtonText;
+  }
+
   .learn-dialog__tile--selected {
     border-color: Highlight;
     background: Highlight;
@@ -1073,6 +1077,15 @@
 
   .learn-dialog__btn--primary {
     border: 2px solid ButtonText;
+  }
+
+  .learn-dialog__btn--ghost {
+    outline: 1px solid ButtonText;
+  }
+
+  .learn-dialog__btn--ghost:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
   }
 
   .learn-dialog__mode-hint {

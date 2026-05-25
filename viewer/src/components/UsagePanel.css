@@ -13,8 +13,8 @@
 
 .usage-panel__heading {
   margin: 0 0 var(--sp-2);
-  font-family: var(--font-serif);
-  font-size: var(--fs-sm);
+  font-family: inherit;
+  font-size: var(--fs-base);
   font-weight: 600;
   color: var(--ink-muted);
 }
@@ -57,6 +57,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+  font-family: var(--font-mono);
 }
 
 .usage-panel__copy-btn {

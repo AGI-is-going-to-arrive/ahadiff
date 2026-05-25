@@ -163,6 +163,8 @@ ahadiff install claude          # 也支持: cursor, copilot, codex, gemini, ant
 
 Settings 会按 CLI / IDE / CI 分组展示这些目标，并显示快速开始步骤、示例提示词、预期输出、平台说明和不调用 provider 的 FastAPI middleware 内置演示。Guide 使用同一套使用提示，并在默认折叠的 Agent Skills 卡片展开后以只读方式展示 manifest 预览；真正写入和移除仍在 Settings 中完成。
 
+Guide 和新建学习对话框在 Windows 高对比 / forced-colors 模式下也会保持卡片、note marker 和底部操作可辨；使用提示沿用 viewer 的 token 化字号体系。
+
 Claude、Codex、Gemini、Antigravity IDE、Antigravity CLI、Copilot 和 OpenCode 安装时会写入工具原生的生成文件。生成文件包括 `.claude/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff/SKILL.md`、`.gemini/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff-antigravity/SKILL.md`、`.agents/skills/ahadiff-antigravity-cli/SKILL.md`、`.agents/rules/ahadiff.md`、`.github/instructions/ahadiff.instructions.md` 和 `.opencode/agents/ahadiff.md`。repo 指引标记段仍写在 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.github/copilot-instructions.md` 等用户管理文件中。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
 
 ## 8 维评分 Rubric

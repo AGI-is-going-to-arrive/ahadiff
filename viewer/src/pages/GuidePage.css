@@ -533,12 +533,12 @@
 }
 
 .guide-agent-skills__tab-chip--active .guide-agent-skills__tab-count {
-  color: #8b4a33;
+  color: var(--accent-ink);
   opacity: 1;
 }
 
 .guide-agent-skills__tab-chip:not(.guide-agent-skills__tab-chip--active) .guide-agent-skills__tab-count {
-  color: #5a5447;
+  color: var(--muted);
   opacity: 1;
 }
 
@@ -674,7 +674,7 @@
   border-radius: var(--r-full);
   border: 1px solid var(--hair-strong);
   background: var(--subtle);
-  color: #726c5d;
+  color: var(--muted);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -926,7 +926,8 @@
     border: 1px solid LinkText;
   }
   .guide-notes__item::before {
-    background: LinkText;
+    color: LinkText;
+    background: transparent;
   }
   .guide-integrations__badge {
     border: 1px solid CanvasText;

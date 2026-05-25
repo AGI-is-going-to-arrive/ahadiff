@@ -163,6 +163,8 @@ ahadiff install claude          # also: cursor, copilot, codex, gemini, antigrav
 
 Settings groups targets into CLI / IDE / CI, shows quick-start steps, example prompts, expected behavior, platform notes, and a provider-free FastAPI middleware demo. Guide uses the same usage hints inside default-collapsed Agent Skills cards and shows the manifest preview in read-only form after expansion; actual write/remove stays in Settings.
 
+Guide and the New Run dialog keep cards, note markers, and footer actions readable in Windows high-contrast / forced-colors mode; usage hints use the same tokenized type scale as the rest of the viewer.
+
 For Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, and OpenCode, install writes tool-native generated files. The generated paths include `.claude/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff/SKILL.md`, `.gemini/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff-antigravity/SKILL.md`, `.agents/skills/ahadiff-antigravity-cli/SKILL.md`, `.agents/rules/ahadiff.md`, `.github/instructions/ahadiff.instructions.md`, and `.opencode/agents/ahadiff.md`. Repo guidance sections stay in user-managed files such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and `.github/copilot-instructions.md`. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
 
 ## 8-Dimension Rubric
