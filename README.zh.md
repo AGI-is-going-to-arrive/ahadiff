@@ -99,7 +99,7 @@ ahadiff review           # 复习过去生成的卡片
 - **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。Settings 会按当前草稿 provider class、model 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。
 - **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run，源码证据会在作答后再展示；`ahadiff review` 用间隔重复带回旧卡片。题量默认固定为 3 题，可配置为 1 到 30；开启自适应后会按 diff 大小调整，默认范围是 3-12。
 - **评分**：每次 run 都会得到 8 维确定性评分；配置后也可以启用 advisory LLM judge。没有 spec 的 `spec_alignment` 会显示为 N/A / `0/0`，并从总分里排除；judge 结果不会覆盖 `score.json.verdict`。Diff Coverage 只看可见 `line_map.json` 里的文件和按行数加权的 hunk；hard gate 详情会写明本次 run 使用的自适应 claim-anchor 阈值。如果可选 LLM judge 失败，确定性评分仍会保留，失败信息会以脱敏后的 `judge_failure.json` 保存。
-- **WebUI**：`ahadiff serve` 打开 Welcome、Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。Run Detail 会展示 Score、Judge、Artifacts；可选 LLM judge 失败时，会显示脱敏后的失败面板。Welcome 的 Before/After demo 会把过长的原始 diff 折叠起来，显示行数和展开/收起按钮；短 diff 或空 diff 不会多出无用控件。
+- **WebUI**：`ahadiff serve` 打开 Welcome、Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。viewer 现在使用浅色报纸编辑风格，以 paper / ink / terracotta token 为主，并通过 `@fontsource` 自托管 Cormorant Garamond 衬线字体；CSP 继续让字体走本地资源，不走 CDN。Run Detail 会展示 Score、Judge、Artifacts；可选 LLM judge 失败时，会显示脱敏后的失败面板。Welcome 的 Before/After demo 会把过长的原始 diff 折叠起来，显示行数和展开/收起按钮；短 diff 或空 diff 不会多出无用控件。
 - **新建学习对话框**：Dashboard 可直接从工作区、未暂存、已暂存或最近一次提交开始学习；高级卡片覆盖 `--since`、提交/范围、patch URL、粘贴补丁、文件对比和目录对比。
 - **导出**：支持 TSV / JSON、Anki `.apkg`，以及本地静态预览包。
 - **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
