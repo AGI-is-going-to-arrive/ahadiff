@@ -16,7 +16,9 @@
   gap: var(--sp-6);
   padding-bottom: 22px;
   margin-bottom: 28px;
-  border-bottom: 1px solid var(--hair);
+  /* Annual-report masthead: heavy classic double rule under the title block,
+     echoing the bound-ledger / financial-almanac feel. */
+  border-bottom: 4px double var(--hair-strong);
   flex-wrap: wrap;
 }
 
@@ -55,13 +57,20 @@
 }
 
 .ratchet-page__title {
-  font-family: "Newsreader", var(--font-serif);
-  font-weight: 420;
-  font-size: clamp(1.85rem, 2.6vw + 0.5rem, 2.9rem);
-  letter-spacing: -0.02em;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-h1);
+  letter-spacing: var(--ls-h1);
   margin: 0;
-  line-height: 1.05;
+  line-height: var(--lh-h1);
   color: var(--ink-blackletter);
+  text-wrap: balance;
+}
+
+@supports not (text-wrap: balance) {
+  .ratchet-page__title {
+    text-wrap: initial;
+  }
 }
 
 .ratchet-page__sub {
@@ -97,9 +106,9 @@
 
 .ratchet-card__header h2 {
   margin: 0;
-  font-family: "Newsreader", var(--font-serif);
-  font-size: 18px;
-  font-weight: 440;
+  font-family: var(--font-serif);
+  font-size: var(--fs-lg);
+  font-weight: 500;
   letter-spacing: -0.015em;
   color: var(--ink-blackletter);
 }
@@ -150,7 +159,7 @@
 }
 
 .ratchet-table .num {
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-style: italic;
   font-weight: 400;
   font-variant-numeric: tabular-nums lining-nums;
@@ -374,7 +383,7 @@
 
 .ratchet-page .benchmark-card__value {
   margin-top: var(--sp-2);
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-size: 28px;
   line-height: 1.05;
   color: var(--ink-blackletter);

@@ -10,10 +10,10 @@
   z-index: var(--z-toast);
   padding: var(--sp-2) var(--sp-4);
   background: var(--accent);
-  color: var(--elevated);
+  color: var(--on-accent);
   border-radius: var(--r-md);
   text-decoration: none;
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 .skip-to-content:focus {
   top: var(--sp-2);

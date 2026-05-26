@@ -33,7 +33,7 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-md);
   background: var(--subtle);
-  color: var(--ink-2, var(--ink));
+  color: var(--ink-2);
   overflow-wrap: anywhere;
 }
 
@@ -95,7 +95,7 @@
 
 .demo-widget__quiz-choice--correct {
   border-color: var(--success);
-  background: var(--success-soft, var(--accent-softest));
+  background: var(--success-soft);
 }
 
 .demo-widget--error p {

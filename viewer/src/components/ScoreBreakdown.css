@@ -20,9 +20,13 @@
 }
 
 .score-breakdown__overall-value {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-serif);
+  font-size: var(--fs-3xl);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
 }
 
 .score-breakdown__overall-meta {
@@ -84,7 +88,8 @@
 }
 
 .score-breakdown__dim-card:hover {
-  border-color: var(--border);
+  border-color: var(--accent-hair);
+  background: var(--accent-softest);
 }
 
 .score-breakdown__dim-top {
@@ -96,15 +101,20 @@
 }
 
 .score-breakdown__dim-name {
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
 }
 
 .score-breakdown__dim-score {
-  font-size: var(--fs-md);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-serif);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .score-breakdown__dim-max {

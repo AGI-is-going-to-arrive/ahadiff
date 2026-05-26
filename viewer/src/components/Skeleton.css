@@ -7,7 +7,7 @@
   background: linear-gradient(
     90deg,
     var(--subtle) 25%,
-    var(--paper-deep, var(--subtle)) 37%,
+    var(--paper-deep) 37%,
     var(--subtle) 63%
   );
   background-size: 200% 100%;

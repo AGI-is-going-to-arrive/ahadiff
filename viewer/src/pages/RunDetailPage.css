@@ -93,11 +93,12 @@
 }
 
 .run-detail__summary-score {
-  font-family: var(--font-mono);
-  font-size: var(--fs-lg);
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  line-height: 1;
   color: var(--ink-strong);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .run-detail__summary-body {
@@ -223,8 +224,10 @@
 
 .run-detail__spec-title {
   margin: 0;
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
   font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.005em;
   color: var(--ink-strong);
 }
 
@@ -236,9 +239,11 @@
 }
 
 .run-detail__spec-score {
-  font-family: var(--font-mono);
-  font-size: var(--fs-lg);
+  font-family: var(--font-serif);
+  font-size: var(--fs-xl);
+  font-weight: 500;
   color: var(--accent-ink);
+  font-variant-numeric: tabular-nums lining-nums;
   white-space: nowrap;
 }
 
@@ -263,9 +268,11 @@
 
 .run-detail__spec-summary dd {
   margin: var(--sp-1) 0 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-md);
-  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-strong);
 }
 
 .run-detail__spec-requirements {
@@ -421,13 +428,15 @@
 }
 
 .run-detail__artifact-section-title {
-  font-family: var(--font-sans);
-  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
   font-weight: 600;
-  color: var(--muted);
+  color: var(--muted-2);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin: 0 0 var(--sp-2);
+  letter-spacing: 0.16em;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--hair);
+  margin: 0 0 var(--sp-3);
 }
 
 .run-detail__artifact-list {
@@ -465,11 +474,13 @@
 }
 
 .run-detail__concepts-table th {
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: var(--muted);
-  font-size: var(--fs-xs);
+  color: var(--muted-2);
+  font-size: var(--fs-2xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.16em;
+  border-bottom: 2px solid var(--hair-strong);
 }
 
 .run-detail__concepts-table td code {
@@ -502,10 +513,10 @@
 .run-detail__judge-failure {
   margin-top: var(--sp-3);
   padding: var(--sp-4);
-  border: 1px solid var(--warning-hair, var(--border));
-  border-left: 3px solid var(--warning, var(--danger));
+  border: 1px solid var(--warning-hair);
+  border-left: 3px solid var(--warning);
   border-radius: var(--r-md);
-  background: var(--warning-soft-bg, var(--surface));
+  background: var(--warning-soft-bg);
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -524,18 +535,18 @@
   width: 1.5rem;
   height: 1.5rem;
   border-radius: 50%;
-  background: var(--warning-soft, var(--danger-soft));
-  color: var(--warning, var(--danger));
+  background: var(--warning-soft);
+  color: var(--warning);
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: var(--fs-md);
   flex-shrink: 0;
 }
 
 .run-detail__judge-failure-title {
   margin: 0;
-  font-size: var(--fs-md, 1rem);
+  font-size: var(--fs-md);
   font-weight: 600;
-  color: var(--text);
+  color: var(--ink-strong);
 }
 
 .run-detail__judge-failure-meta {
@@ -548,8 +559,8 @@
 }
 
 .run-detail__judge-failure-row {
-  font-size: var(--fs-sm, 0.875rem);
-  color: var(--text);
+  font-size: var(--fs-sm);
+  color: var(--ink);
 }
 
 .run-detail__judge-failure-message {
@@ -558,9 +569,9 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-  font-size: var(--fs-sm, 0.875rem);
-  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -570,8 +581,8 @@
 
 .run-detail__judge-failure-note {
   margin: 0;
-  font-size: var(--fs-sm, 0.875rem);
-  color: var(--text-muted, var(--text));
+  font-size: var(--fs-sm);
+  color: var(--muted);
 }
 
 /* ---------- Forced-colors ---------- */

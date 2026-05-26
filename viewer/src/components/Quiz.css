@@ -40,7 +40,7 @@
 .quiz-page__skip {
   border: 1px solid var(--hair);
   border-radius: var(--r-full);
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--subtle);
   color: var(--ink);
   cursor: pointer;
   font-family: var(--font-mono);
@@ -138,7 +138,7 @@
 
 .quiz-panel__header h2 {
   margin: 0;
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   color: var(--ink-blackletter);
   font-size: 20px;
   font-weight: 500;
@@ -206,9 +206,9 @@
   align-items: center;
   text-align: center;
   padding: var(--sp-6) var(--sp-4);
-  background: var(--subtle, #f8f6f3);
-  border: 1px dashed var(--hair, #e0dcd6);
-  border-radius: 8px;
+  background: var(--subtle);
+  border: 1px dashed var(--hair);
+  border-radius: var(--r-md);
 }
 
 .quiz-evidence__locked-icon {
@@ -219,7 +219,7 @@
 
 .quiz-evidence__locked-text {
   margin: 0;
-  color: var(--ink-2, #555);
+  color: var(--ink-2);
   font-size: var(--fs-sm);
   font-weight: 500;
   line-height: 1.5;
@@ -227,7 +227,7 @@
 
 .quiz-evidence__locked-hint {
   margin: var(--sp-1) 0 0;
-  color: var(--muted, #999);
+  color: var(--muted);
   font-size: var(--fs-xs);
   line-height: 1.5;
 }
@@ -257,14 +257,14 @@
 
 .quiz-progress-table {
   width: 100%;
-  font-size: var(--fs-xs, 12.5px);
+  font-size: var(--fs-xs);
   border-collapse: collapse;
   table-layout: fixed;
 }
 
 .quiz-progress-table td {
   padding: 6px 8px;
-  border-bottom: 1px solid var(--subtle, #f0ede8);
+  border-bottom: 1px solid var(--subtle);
   vertical-align: middle;
 }
 
@@ -274,13 +274,13 @@
 
 .quiz-progress-table__qid {
   font-family: var(--font-mono);
-  color: var(--muted, #8c8278);
+  color: var(--muted);
   white-space: nowrap;
   width: 36px;
 }
 
 .quiz-progress-table__concept {
-  color: var(--ink-2, #4a4540);
+  color: var(--ink-2);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -288,24 +288,24 @@
 }
 
 .quiz-progress-table__row--current td {
-  background: var(--accent-softest, #faf5f0);
+  background: var(--accent-softest);
 }
 
 .quiz-progress-badge {
   display: inline-flex;
   align-items: center;
-  font-size: var(--fs-2xs, 11px);
-  color: var(--muted, #8c8278);
+  font-size: var(--fs-2xs);
+  color: var(--muted);
   font-family: var(--font-mono);
   white-space: nowrap;
 }
 
 .quiz-progress-badge--done {
-  color: var(--add-fg, #2d7a3a);
+  color: var(--add-fg);
 }
 
 .quiz-progress-badge--current {
-  color: var(--accent-ink, #8b5a3c);
+  color: var(--accent-ink);
   font-weight: 500;
 }
 
@@ -477,13 +477,13 @@
 }
 
 .srs-card__choice--correct {
-  background: transparent;
+  background: var(--success-soft);
   border-bottom-color: var(--success);
   opacity: 1;
 }
 
 .srs-card__choice--wrong {
-  background: transparent;
+  background: var(--danger-soft);
   border-bottom-color: var(--danger);
   opacity: 1;
 }
@@ -499,7 +499,7 @@
   background: transparent;
   border: 1px solid var(--hair-strong);
   color: var(--muted-strong);
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-size: 16px;
   font-style: italic;
   font-weight: 500;
@@ -803,23 +803,23 @@
   min-height: 44px;
   min-width: 44px;
   padding: 8px 16px;
-  border: 1px solid var(--hair, #e6dfd5);
-  border-radius: var(--r-md, 8px);
-  background: var(--elevated, #ffffff);
-  color: var(--ink, #2c2826);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  color: var(--ink);
   font-family: var(--font-sans);
-  font-size: var(--fs-sm, 13px);
+  font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
   transition:
-    background var(--dur-fast, 0.15s) var(--ease-out-quart),
-    border-color var(--dur-fast, 0.15s) var(--ease-out-quart),
-    color var(--dur-fast, 0.15s) var(--ease-out-quart),
-    opacity var(--dur-fast, 0.15s) var(--ease-out-quart);
+    background var(--dur-fast) var(--ease-out-quart),
+    border-color var(--dur-fast) var(--ease-out-quart),
+    color var(--dur-fast) var(--ease-out-quart),
+    opacity var(--dur-fast) var(--ease-out-quart);
 }
 
 .quiz-page__nav-btn:hover:not(:disabled) {
-  border-color: var(--accent, #d27050);
+  border-color: var(--accent);
 }
 
 .quiz-page__nav-btn:focus-visible {
@@ -839,25 +839,25 @@
 .quiz-page__nav-btn--ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--muted, #8c8278);
+  color: var(--muted);
 }
 
 .quiz-page__nav-btn--ghost:hover:not(:disabled) {
-  color: var(--ink-2, #4a4540);
-  border-color: var(--hair, #e6dfd5);
+  color: var(--ink-2);
+  border-color: var(--hair);
   background: transparent;
 }
 
 .quiz-page__nav-btn--primary {
-  background: var(--accent-soft, #f5e6d8);
-  border-color: var(--accent-hair, #ebc3ae);
-  color: var(--accent-ink, #8b5a3c);
+  background: var(--accent-soft);
+  border-color: var(--accent-hair);
+  color: var(--accent-ink);
   margin-left: auto;
 }
 
 .quiz-page__nav-btn--primary:hover:not(:disabled) {
-  background: var(--accent-softer, #edd8c8);
-  border-color: var(--accent-hair, #ebc3ae);
+  background: var(--accent-softer);
+  border-color: var(--accent-hair);
 }
 
 .quiz-page__signal-error {
@@ -990,24 +990,24 @@
   position: absolute;
   inset-block-start: calc(100% + 8px);
   inset-inline-end: 0;
-  background: var(--elevated, #fff);
-  color: var(--ink-2, #555);
-  border: 1px solid var(--hair, #e0dcd6);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  font-family: var(--font-body, system-ui, sans-serif);
+  background: var(--elevated);
+  color: var(--ink-2);
+  border: 1px solid var(--hair);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 400;
   text-transform: none;
   letter-spacing: 0;
   line-height: 1.4;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   white-space: normal;
   width: max-content;
   min-width: min(200px, calc(100vw - 32px));
   max-width: min(280px, calc(100vw - 32px));
   pointer-events: none;
-  z-index: 10;
+  z-index: var(--z-content-sticky);
 }
 
 .quiz-page__mode-tooltip::before {
@@ -1016,7 +1016,7 @@
   inset-block-end: 100%;
   inset-inline-end: 16px;
   border: 5px solid transparent;
-  border-bottom-color: var(--hair, #e0dcd6);
+  border-bottom-color: var(--hair);
   pointer-events: none;
 }
 

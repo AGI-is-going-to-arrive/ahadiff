@@ -60,7 +60,7 @@
   border-radius: var(--r-full);
   background: var(--subtle);
   font-size: var(--fs-xs);
-  color: var(--ink-2, var(--ink));
+  color: var(--ink-2);
   border: 1px solid var(--hair);
 }
 
@@ -71,12 +71,12 @@
 }
 
 .review__chip--warn {
-  color: var(--danger, #A33D2B);
-  border-color: var(--danger, #A33D2B);
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .review__sub-risk {
-  color: var(--danger, #A33D2B);
+  color: var(--danger);
   font-weight: 500;
 }
 
@@ -95,37 +95,37 @@
 .review__progress-bar {
   display: flex;
   align-items: center;
-  gap: var(--sp-3, 12px);
-  margin-bottom: var(--sp-4, 16px);
-  padding: var(--sp-2, 8px) 0;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-2) 0;
 }
 
 .review__progress-track {
   flex: 1;
   height: 6px;
-  background: var(--subtle, #e2e8f0);
+  background: var(--subtle);
   border-radius: 3px;
   overflow: hidden;
 }
 
 .review__progress-fill {
   height: 100%;
-  background: var(--accent, #b45309);
+  background: var(--accent);
   border-radius: 3px;
   transition: width 300ms ease-out;
 }
 
 .review__progress-text {
-  font-size: var(--fs-sm, 0.875rem);
-  color: var(--muted, #64748b);
+  font-size: var(--fs-sm);
+  color: var(--muted);
   white-space: nowrap;
   font-family: var(--font-mono);
 }
 
 .review__progress-accuracy {
-  font-size: var(--fs-sm, 0.875rem);
+  font-size: var(--fs-sm);
   font-weight: 600;
-  color: var(--success, #059669);
+  color: var(--success);
   white-space: nowrap;
 }
 
@@ -223,7 +223,7 @@
   border-top: 1px dashed var(--hair);
   margin-top: var(--sp-5);
   padding-top: var(--sp-5);
-  color: var(--ink-2, var(--ink));
+  color: var(--ink-2);
   font-size: var(--fs-md);
   line-height: 1.65;
   animation: review-reveal 200ms ease-out;
@@ -239,20 +239,20 @@
 }
 
 .flashcard__answer {
-  font-size: var(--fs-xl, 1.25rem);
+  font-size: var(--fs-xl);
   line-height: 1.6;
   font-weight: 500;
   color: var(--ink);
 }
 
 .flashcard__answer code {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-family: var(--font-mono);
   font-size: 0.9em;
-  background: var(--subtle, #f1f5f9);
+  background: var(--subtle);
   padding: 0.15em 0.4em;
-  border-radius: 4px;
-  border: 1px solid var(--hair, #e2e8f0);
-  color: var(--accent-ink, #b45309);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--hair);
+  color: var(--accent-ink);
 }
 
 .flashcard__meta {
@@ -360,47 +360,46 @@
   cursor: not-allowed;
 }
 
-/* Tinted rating buttons (P0 visual): each rating gets a semantic color so the
- * four options are distinguishable at a glance. Uses existing semantic tokens
- * (--danger / --warning / --success / --info) with hex fallbacks for the
- * fallback path. `color-mix(in srgb, ...)` matches the codebase pattern
- * (export-modal.css, LearnModeDialog.css, Diff.css) and is supported across
- * the browserslist (Chrome >= 111, Edge >= 111, Firefox >= 113, Safari >= 16.4). */
+/* Tinted rating buttons: each rating maps to a semantic ink (Again --danger /
+ * Hard --warning / Good --success / Easy --info). Restrained editorial style —
+ * the resting state is a hairline-bordered paper chit with colored ink, and
+ * hover lifts to the matching *-soft wash rather than a heavy fill, so the four
+ * options stay distinguishable without shouting. */
 .srs-btn--wrong {
-  border-color: var(--danger, #dc2626);
-  color: var(--danger, #dc2626);
+  border-color: var(--danger-hair);
+  color: var(--danger);
 }
 .srs-btn--wrong:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger, #dc2626) 8%, transparent);
-  border-color: var(--danger, #dc2626);
+  background: var(--danger-soft);
+  border-color: var(--danger);
 }
 
 .srs-btn--hard {
-  border-color: var(--warning, #d97706);
-  color: var(--warning, #d97706);
+  border-color: var(--warning-hair);
+  color: var(--warning);
 }
 .srs-btn--hard:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--warning, #d97706) 8%, transparent);
-  border-color: var(--warning, #d97706);
+  background: var(--warning-soft);
+  border-color: var(--warning);
 }
 
 .srs-btn--good {
-  border-color: var(--success, #059669);
-  color: var(--success, #059669);
+  border-color: var(--success-hair);
+  color: var(--success);
   background: var(--elevated);
 }
 .srs-btn--good:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--success, #059669) 8%, transparent);
-  border-color: var(--success, #059669);
+  background: var(--success-soft);
+  border-color: var(--success);
 }
 
 .srs-btn--easy {
-  border-color: var(--info, #0284c7);
-  color: var(--info, #0284c7);
+  border-color: color-mix(in srgb, var(--info) 35%, var(--hair));
+  color: var(--info);
 }
 .srs-btn--easy:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--info, #0284c7) 8%, transparent);
-  border-color: var(--info, #0284c7);
+  background: color-mix(in srgb, var(--info) 8%, var(--elevated));
+  border-color: var(--info);
 }
 
 .srs-btn__label {
@@ -712,7 +711,7 @@
 
 .review__summary-card-title {
   font-size: var(--fs-base);
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--ink-blackletter);
@@ -933,9 +932,9 @@
   align-items: flex-start;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
-  background: var(--surface-1, var(--paper));
-  border: 1px solid var(--border-1, var(--hair));
-  border-radius: var(--r-12, var(--radius-12));
+  background: var(--paper);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
   cursor: pointer;
   text-align: left;
   width: 100%;
@@ -973,12 +972,12 @@
 
 .review__choice--correct {
   border-color: var(--success);
-  background: var(--success-soft, var(--accent-soft));
+  background: var(--success-soft);
 }
 
 .review__choice--wrong {
   border-color: var(--danger);
-  background: var(--danger-soft, var(--accent-soft));
+  background: var(--danger-soft);
 }
 
 .review__choice-letter {
@@ -988,10 +987,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--r-8, var(--radius-8));
-  background: var(--surface-2, var(--accent-softer));
-  color: var(--ink-1, var(--ink));
-  font-family: var(--font-mono, ui-monospace, monospace);
+  border-radius: var(--r-md);
+  background: var(--accent-softer);
+  color: var(--ink);
+  font-family: var(--font-mono);
   font-size: var(--fs-sm);
   font-weight: 600;
 }
@@ -1003,12 +1002,12 @@
 
 .review__choice--correct .review__choice-letter {
   background: var(--success);
-  color: var(--on-success, var(--on-accent));
+  color: var(--on-accent);
 }
 
 .review__choice--wrong .review__choice-letter {
   background: var(--danger);
-  color: var(--on-danger, var(--on-accent));
+  color: var(--on-accent);
 }
 
 .review__choice-content {
@@ -1020,7 +1019,7 @@
 
 .review__choice-text {
   font-size: var(--fs-sm);
-  color: var(--ink-1, var(--ink));
+  color: var(--ink);
   word-break: break-word;
 }
 
@@ -1076,23 +1075,23 @@
 .flashcard__stats {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-1, 4px) var(--sp-2, 8px);
-  padding: var(--sp-2, 8px) 0;
-  font-size: var(--fs-xs, 0.75rem);
-  color: var(--muted, #64748b);
-  border-bottom: 1px solid var(--hair, #e2e8f0);
-  margin-bottom: var(--sp-3, 12px);
+  gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2) 0;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: var(--sp-3);
 }
 
 .flashcard__stats-item {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1, 4px);
+  gap: var(--sp-1);
 }
 
 .flashcard__stats-item--path {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
-  font-size: var(--fs-2xs, 0.7rem);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1100,7 +1099,7 @@
 }
 
 .flashcard__stats-item--warn {
-  color: var(--danger, #dc2626);
+  color: var(--danger);
 }
 
 /* ---- Session complete: rating distribution bar (P1.2b) ---- */
@@ -1109,7 +1108,7 @@
   height: 8px;
   border-radius: 4px;
   overflow: hidden;
-  margin: var(--sp-4, 16px) auto 0;
+  margin: var(--sp-4) auto 0;
   max-width: 560px;
 }
 
@@ -1118,35 +1117,35 @@
   transition: flex 300ms ease-out;
 }
 
-.review__rating-segment--wrong { background: var(--danger, #dc2626); }
-.review__rating-segment--hard { background: var(--warning, #d97706); }
-.review__rating-segment--good { background: var(--success, #059669); }
-.review__rating-segment--easy { background: var(--info, #0284c7); }
+.review__rating-segment--wrong { background: var(--danger); }
+.review__rating-segment--hard { background: var(--warning); }
+.review__rating-segment--good { background: var(--success); }
+.review__rating-segment--easy { background: var(--info); }
 
 /* ---- Session complete: elapsed time + per-card pace (P1.2a) ---- */
 .review__complete-time {
-  font-size: var(--fs-sm, 0.875rem);
-  color: var(--muted, #64748b);
-  margin-top: var(--sp-2, 8px);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  margin-top: var(--sp-2);
 }
 
 /* ---- Session complete: CTA back to dashboard (P1.2c) ---- */
 .review__complete-actions {
   display: flex;
-  gap: var(--sp-3, 12px);
-  margin-top: var(--sp-6, 24px);
+  gap: var(--sp-3);
+  margin-top: var(--sp-6);
   justify-content: center;
 }
 
 .review__complete-cta {
   display: inline-flex;
   align-items: center;
-  padding: var(--sp-2, 8px) var(--sp-4, 16px);
-  border-radius: 8px;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-md);
   font-weight: 500;
   text-decoration: none;
-  background: var(--accent, #b45309);
-  color: var(--on-accent, #fff);
+  background: var(--accent);
+  color: var(--on-accent);
   transition: opacity 150ms ease;
 }
 
@@ -1154,19 +1153,19 @@
 
 /* ---- Card info expandable panel (P1.4) ---- */
 .flashcard__info-panel {
-  margin-top: var(--sp-3, 12px);
-  border: 1px solid var(--hair, #e2e8f0);
-  border-radius: 8px;
+  margin-top: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
   overflow: hidden;
 }
 
 .flashcard__info-toggle {
   display: flex;
   align-items: center;
-  padding: var(--sp-2, 8px) var(--sp-3, 12px);
-  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-sm);
   font-weight: 500;
-  color: var(--muted, #64748b);
+  color: var(--muted);
   cursor: pointer;
   user-select: none;
   list-style: none;
@@ -1176,7 +1175,7 @@
 
 .flashcard__info-toggle::before {
   content: '›';
-  margin-right: var(--sp-2, 8px);
+  margin-right: var(--sp-2);
   font-size: 1rem;
   transition: transform 150ms ease;
 }
@@ -1186,19 +1185,19 @@
 }
 
 .flashcard__info-body {
-  padding: var(--sp-2, 8px) var(--sp-3, 12px);
-  border-top: 1px solid var(--hair, #e2e8f0);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--hair);
 }
 
 .flashcard__info-row {
   display: flex;
   justify-content: space-between;
-  padding: var(--sp-1, 4px) 0;
-  font-size: var(--fs-sm, 0.875rem);
+  padding: var(--sp-1) 0;
+  font-size: var(--fs-sm);
 }
 
 .flashcard__info-label {
-  color: var(--muted, #64748b);
+  color: var(--muted);
 }
 
 .flashcard__info-value {
@@ -1210,7 +1209,7 @@
 .flashcard__evidence-row {
   display: flex;
   align-items: center;
-  gap: var(--sp-2, 8px);
+  gap: var(--sp-2);
   flex-wrap: wrap;
 }
 
@@ -1222,14 +1221,14 @@
 .flashcard__evidence-cta {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1, 4px);
-  padding: var(--sp-1, 4px) var(--sp-2, 8px);
-  font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: var(--fs-xs, 0.75rem);
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
   font-weight: 500;
-  color: var(--accent, #b45309);
-  background: color-mix(in srgb, var(--accent, #b45309) 6%, transparent);
-  border-radius: 6px;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border-radius: var(--r-sm);
   text-decoration: none;
   white-space: nowrap;
   transition: background 150ms ease;
@@ -1237,7 +1236,7 @@
 
 .flashcard__evidence-cta:hover,
 .flashcard__evidence-cta:focus-visible {
-  background: color-mix(in srgb, var(--accent, #b45309) 12%, transparent);
+  background: var(--accent-softer);
 }
 
 /* ---- Forced colors for P1 additions ---- */

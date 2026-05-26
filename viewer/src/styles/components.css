@@ -7,14 +7,14 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 ::selection{background:var(--accent-soft);color:var(--accent-ink)}
 .mono{font-family:var(--font-mono)}
 .serif{font-family:var(--font-serif)}
-.eyebrow{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.eyebrow{font-family:var(--font-mono);font-size:var(--fs-eyebrow);letter-spacing:var(--ls-eyebrow);text-transform:uppercase;color:var(--muted)}
 .num{font-variant-numeric:tabular-nums}
 
 /* App shell layout is handled by AppShell.css, Sidebar.css, Topbar.css */
-.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:500;border:1px solid var(--hair-strong);background:#fff;color:var(--ink);transition:all .15s;white-space:nowrap}
-.btn:hover{background:var(--accent-softer);border-color:#E0B89E;transform:translateY(-1px);box-shadow:0 4px 10px -6px rgba(120,80,50,.2)}
+.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:8px;font-size:13px;font-weight:500;border:1px solid var(--hair-strong);background:var(--elevated);color:var(--ink);transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--accent-softer);border-color:var(--accent-hair);transform:translateY(-1px);box-shadow:0 4px 10px -6px rgba(120,80,50,.2)}
 .btn:active{transform:translateY(0);box-shadow:none}
-.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 1px 2px rgba(176,78,40,.18)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:0 1px 2px rgba(176,78,40,.18)}
 .btn.primary:hover{background:var(--accent-ink);border-color:var(--accent-ink);box-shadow:0 6px 14px -6px rgba(176,78,40,.45)}
 .btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
 .btn.ghost:hover{background:var(--subtle);color:var(--ink);box-shadow:none;transform:none}
@@ -23,7 +23,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .page{display:none;padding:32px 40px 88px;max-width:1440px;animation:fadeUp .28s ease-out}
 .page.active{display:block}
 @keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.page-head{display:flex;align-items:flex-start;gap:24px;padding-bottom:22px;margin-bottom:28px;border-bottom:1px solid var(--hair);flex-wrap:wrap}
+.page-head{display:flex;align-items:flex-start;gap:24px;padding-bottom:22px;margin-bottom:28px;border-bottom:4px double var(--hair-strong);flex-wrap:wrap}
 .page-head h1{font-family:var(--font-serif);font-weight:500;font-size:36px;letter-spacing:-.022em;margin:0;line-height:1.08}
 .page-head .sub{color:var(--muted);font-size:14px;margin-top:8px;max-width:680px;line-height:1.65}
 .page-head .right{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;min-width:0}
@@ -32,12 +32,12 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .card{background:var(--elevated);border:1px solid var(--hair);border-radius:12px;box-shadow:0 1px 0 rgba(180,160,130,.06), 0 4px 20px -16px rgba(120,80,40,.18);transition:box-shadow .2s,border-color .2s}
 .card:hover{box-shadow:0 1px 0 rgba(180,160,130,.06), 0 8px 28px -18px rgba(120,80,40,.28)}
 .card .ch{padding:15px 20px;border-bottom:1px solid var(--hair);display:flex;align-items:center;gap:10px;justify-content:space-between}
-.card .ch h3{margin:0;font-family:var(--font-serif);font-size:18px;font-weight:500;letter-spacing:-.012em}
+.card .ch h3{margin:0;font-family:var(--font-serif);font-size:var(--fs-h3);line-height:var(--lh-h3);font-weight:500;letter-spacing:-.012em}
 .card .ch .meta{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
 .card .cb{padding:20px}
 
 /* Badges */
-.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;height:22px;font-size:11px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;border-radius:99px;border:1px solid var(--hair-strong);background:#fff;color:var(--ink-2)}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:2px 8px;height:22px;font-size:11px;font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;border-radius:99px;border:1px solid var(--hair-strong);background:var(--elevated);color:var(--ink-2)}
 .badge .bd{width:6px;height:6px;border-radius:50%;background:currentColor}
 .badge.verified{color:var(--success);border-color:#B9D7C1;background:#ECF4EE}
 .badge.weak{color:var(--warning);border-color:#E3CDA1;background:#F7EED9}
@@ -88,10 +88,10 @@ table.t .mono{font-size:12.5px}
 /* Misc */
 hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:99px;background:var(--subtle);font-size:12px;color:var(--ink-2);border:1px solid var(--hair);cursor:pointer;transition:all .12s;user-select:none}
-.chip:hover{border-color:var(--hair-strong);background:#fff}
+.chip:hover{border-color:var(--hair-strong);background:var(--elevated)}
 .chip.on{background:var(--accent-soft);color:var(--accent-ink);border-color:#E6BFA6}
 .chip.on:hover{background:var(--accent-soft);border-color:#D9A682}
-.kbd{font-family:var(--font-mono);font-size:10.5px;background:#fff;border:1px solid var(--hair);padding:1px 5px;border-radius:4px;color:var(--muted)}
+.kbd{font-family:var(--font-mono);font-size:var(--fs-eyebrow);background:var(--elevated);border:1px solid var(--hair);padding:1px 5px;border-radius:4px;color:var(--muted)}
 
 .claim-card{border:1px solid var(--hair);border-radius:10px;padding:13px 15px;background:#fff;margin-bottom:10px;transition:all .15s;cursor:pointer}
 .claim-card:hover{border-color:var(--hair-strong);transform:translateX(2px)}
@@ -279,7 +279,7 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
   .page[data-page="lesson"]{display:block !important}
   .page-head{border-bottom:1px solid #000;margin-bottom:18px}
   .reader{grid-template-columns:1fr !important}
-  .prose{font-family:"Newsreader",Georgia,serif;font-size:12pt;color:#111}
+  .prose{font-family:var(--font-serif);font-size:12pt;color:#111}
   .prose h2{font-size:16pt;margin-top:22pt}
   .prose h3{font-size:13pt}
   .prose code, .prose pre, .mono{font-family:"JetBrains Mono",monospace;font-size:9.5pt;background:#f5f2ec}
@@ -579,9 +579,9 @@ button:focus-visible,a:focus-visible,[tabindex]:focus-visible,[role="button"]:fo
    - Lifts --muted-2 and text-accent to WCAG AA contrast
    ============================================================ */
 
-/* --- H1/H2 hierarchy repair: page-head h1 was 36px, section h2 38px --- */
-.page-head h1{font-size:40px;letter-spacing:-.024em;line-height:1.1}
-.section h2{font-size:32px;letter-spacing:-.02em;line-height:1.15;margin:24px 0 10px}
+/* --- H1/H2 hierarchy repair: route to editorial scale tokens --- */
+.page-head h1{font-size:var(--fs-h1);letter-spacing:var(--ls-h1);line-height:var(--lh-h1)}
+.section h2{font-size:var(--fs-h2);letter-spacing:var(--ls-h2);line-height:var(--lh-h2);margin:24px 0 10px}
 
 /* --- Stylesheet-level half-pixel → whole-px --- */
 /* 10.5px → 11px */
@@ -816,7 +816,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 /* 巨大衬线 italic h1，bold 实心高亮 em，老牌报刊 folio 感
    (Gemini review fix: 平滑 clamp 跨桌面/平板/移动，单一公式消除 768px 断层) */
 [data-page="landing"] .hero h1{
-  font-family: "Newsreader", "Noto Serif SC", var(--font-serif);
+  font-family: var(--font-serif);
   font-size: clamp(2.35rem, 3.8vw + 1rem, 5.8rem);
   font-weight: var(--bolder-thin);
   font-style: italic;
@@ -839,7 +839,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 }
 
 [data-page="landing"] .hero .en{
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-style: italic;
   font-weight: 400;
   font-size: clamp(15px, 1.3vw + 6px, 22px);
@@ -860,7 +860,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
    策略: 字号适度(2.6em)、line-height 1、padding 顶部 2px 让方块字顶边气眼、
    vertical-align baseline 保持基线；Noto Serif SC 700 已加载用于兜底) */
 [data-page="landing"] .hero .lead::first-letter{
-  font-family: "Newsreader", "Noto Serif SC", var(--font-serif);
+  font-family: var(--font-serif);
   font-weight: 700;
   font-style: normal;
   font-size: 2.6em;
@@ -966,16 +966,17 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 /* ================ C · Page-head editorial typography ============ */
 .page-head h1,
 .page-head h1.serif{
-  font-family: "Newsreader", var(--font-serif);
-  font-weight: 420;
-  font-size: clamp(1.85rem, 2.6vw + .5rem, 2.9rem);
-  letter-spacing: -.02em;
-  line-height: 1.05;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-h1);
+  line-height: var(--lh-h1);
+  letter-spacing: var(--ls-h1);
   color: var(--ink-blackletter);
+  text-wrap: balance;
 }
 .page-head .eyebrow{
-  font-size: 10.5px;
-  letter-spacing: .26em;
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
   color: var(--muted-2);
   padding-top: 10px;
   border-top: 2px solid var(--folio-line);
@@ -1017,7 +1018,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 .ornament-rule::before,
 .ornament-rule::after{ content:""; flex: 1; border-top: 1px solid currentColor; }
 .ornament-rule > span{
-  font-family: "Newsreader", serif;
+  font-family: var(--font-serif);
   font-size: 22px;
   font-style: italic;
   color: var(--ornament-ink);
@@ -1028,7 +1029,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 .metric-value,
 [data-page="dashboard"] td.num,
 [data-page="ratchet"] td.num{
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum","lnum";
   font-weight: 400;
@@ -1045,7 +1046,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 [data-page="lesson"] [class*="hunk"]::before{
   content: attr(data-hunk-mark);
   position: absolute; left: -22px; top: 14px;
-  font-family: "Newsreader", serif;
+  font-family: var(--font-serif);
   font-style: italic;
   font-size: 22px;
   color: var(--accent);
@@ -1057,7 +1058,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 /* ================ H · Topbar — archival crumb =================== */
 .topbar{ border-bottom: 1px solid var(--hair); }
 .topbar .crumb{
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-size: 14.5px;
   font-style: italic;
   letter-spacing: .005em;
@@ -1095,12 +1096,13 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 /* ================ J · Section title serif =========================== */
 .section > h2,
 .section h2:first-child{
-  font-family: "Newsreader", var(--font-serif);
-  font-weight: 440;
-  font-size: clamp(1.5rem, 1.8vw + .5rem, 2.1rem);
-  letter-spacing: -.015em;
-  line-height: 1.1;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  letter-spacing: var(--ls-h2);
   color: var(--ink-blackletter);
+  text-wrap: balance;
 }
 
 /* ================ K · Brand mark — chisel lift ================== */
@@ -1115,7 +1117,7 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 
 /* ================ L · TOC — archival index ====================== */
 .toc .h{
-  font-family: "Newsreader", serif;
+  font-family: var(--font-serif);
   font-style: italic;
   font-weight: 500;
   font-size: 14px;

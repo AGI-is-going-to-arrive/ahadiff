@@ -18,6 +18,7 @@ body {
   font-size: 15px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
 }
@@ -25,6 +26,15 @@ body {
 :lang(zh-Hans),
 :lang(zh-CN) {
   line-height: 1.75;
+}
+
+/* Headings default to the editorial serif. Page-level CSS with more specific
+   selectors still wins; this just ensures bare h1–h6 read as masthead type.
+   Grayscale smoothing keeps the large serif weights crisp on macOS. */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 *:focus-visible {

@@ -25,6 +25,23 @@
     --del-bg: Canvas;
     --danger-soft: Canvas;
     --accent-softest: Canvas;
+
+    /* Editorial overlay tokens (newspaper rules, folio crumb, ornament,
+       display ink). Without remapping, consumers that use these directly
+       would paint a literal dark hex in forced-colors mode instead of the
+       system palette. Map structure to CanvasText, the verified stamp to
+       LinkText, so contrast stays correct everywhere. */
+    --folio-line: CanvasText;
+    --ornament-ink: CanvasText;
+    --ink-display: CanvasText;
+    --ink-blackletter: CanvasText;
+    --stamp-verified: LinkText;
+    --stamp-verified-ink: LinkText;
+    --stamp-verified-frame: CanvasText;
+    --stamp-verified-tint: Canvas;
+    --stamp-verified-shadow: CanvasText;
+    --stamp-red: CanvasText;
+    --stamp-red-ink: CanvasText;
   }
 
   button,

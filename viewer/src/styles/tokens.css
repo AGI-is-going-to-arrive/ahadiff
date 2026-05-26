@@ -1,32 +1,33 @@
 :root {
   /* Surface */
   --paper: #FAF8F2;
-  --subtle: #F2EFE7;
+  --subtle: #F3EFE4;
   --elevated: #FFFFFF;
 
   /* Text */
-  /* Light-mode contrast target: WCAG AA (>= 4.5:1) on --paper.
-   * --muted #6A6456 yields ~5.4:1 on --paper #FAF8F2 — meets AA but not AAA.
-   * V6 specifies #6A6456 verbatim, so the viewer matches V6 fidelity at the
-   * cost of dropping from AAA (the prior #5A5447 was 7.0:1). Dark mode keeps
-   * AAA — see the dark override below for rationale. */
-  --ink: #1C1B18;
+  /* Light-mode contrast clears WCAG AAA (>= 7:1) on --paper for body ink and
+   * meets AA-large+ everywhere for muted.
+   * --muted #5F594C ≈ 6.55:1 on --paper #FAF8F2 and 6.05:1 on --subtle #F3EFE4.
+   * --muted-strong #6B6556 ≈ 5.0:1 on --subtle #F3EFE4 (AA; was #736D5E 4.48:1 which
+   * failed AA on --subtle, flagged by axe-core on the not-proven claim badge).
+   * --ink #141310 ≈ 17.49:1 on --paper (AAA). */
+  --ink: #141310;
   --ink-strong: #38362F;
-  --muted: #6A6456;
-  --muted-strong: #736D5E;
+  --muted: #5F594C;
+  --muted-strong: #6B6556;
 
   /* Borders */
-  --hair: #E6E3D8;
-  --hair-strong: #D5D0BF;
+  --hair: #E4E0D2;
+  --hair-strong: #CDC7B5;
 
   /* Accent — light-mode accent must give >= 4.5:1 with --on-accent #FFFFFF.
-   * #BE5236 on white ≈ 4.7:1 (AA). Prior #D27050 was only 3.3:1.
-   * accent-ink on accent-soft (#F4E4D9): #9B4420 ≈ 5.2:1 (AA). */
+   * #B2462D on white ≈ 5.52:1 (AA). Prior #BE5236 was 4.7:1.
+   * accent-ink on accent-soft (#F9EBE5): #8A321E ≈ 7.06:1 (AAA). */
   --on-accent: #FFFFFF;
-  --accent: #BE5236;
-  --accent-rgb: 190 82 54;
-  --accent-ink: #9B4420;
-  --accent-soft: #F4E4D9;
+  --accent: #B2462D;
+  --accent-rgb: 178 70 45;
+  --accent-ink: #8A321E;
+  --accent-soft: #F9EBE5;
   --accent-softer: #FAF0E8;
   --accent-softest: #FDF1EC;
   --accent-tint: #E4B8AE;
@@ -44,16 +45,34 @@
   --danger: #A33D2B;
   --danger-soft: #F7E2DC;
   --info: #2E4A6B;
+  --info-soft: #E8EEF4;
 
-  /* Typography — V6 fallback order: Latin primary → CJK secondary → generic system.
-   * Font strategy (Phase 6E): local-first, no external font loading.
-   * CSP restricts font-src to 'self' data: — external Google Fonts are not
-   * allowed. Newsreader is removed from the serif stack; Georgia provides the
-   * Latin serif baseline on virtually all platforms. CJK falls to Noto Serif SC
-   * or Source Han Serif SC where installed. */
-  --font-sans: "Inter", "PingFang SC", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Georgia", "Noto Serif SC", "Noto Serif", "Source Han Serif SC", "Source Serif 4", ui-serif, serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "Sarasa Mono SC", monospace;
+  /* Typography — fallback order: Latin primary → CJK secondary → generic system.
+   * Font strategy: local-first, bundled Latin serif. CSP restricts
+   * font-src to 'self' data:, so "Cormorant Garamond" (SIL OFL) ships via
+   * @fontsource (bundled by Vite, see main.tsx) rather than any CDN. The
+   * sans/mono stacks resolve from local() installs with broad system fallbacks;
+   * CJK glyphs fall to Noto Serif/Sans SC or Source Han where installed. */
+  --font-serif: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", ui-serif, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", "Sarasa Mono SC", "Noto Sans Mono CJK SC", ui-monospace, monospace;
+
+  /* Editorial type scale — fluid display/heading sizes with tight leading and
+     negative tracking for the newspaper masthead look. Page CSS opts into
+     these on serif display/heading text. */
+  --fs-display: clamp(2.5rem, 5vw + 1rem, 4.2rem);
+  --lh-display: 1.02;
+  --ls-display: -0.03em;
+  --fs-h1: clamp(1.9rem, 3.2vw + 0.8rem, 3.2rem);
+  --lh-h1: 1.08;
+  --ls-h1: -0.02em;
+  --fs-h2: clamp(1.5rem, 2.2vw + 0.6rem, 2.1rem);
+  --lh-h2: 1.15;
+  --ls-h2: -0.015em;
+  --fs-h3: 1.125rem;
+  --lh-h3: 1.30;
+  --fs-eyebrow: 0.6875rem;
+  --ls-eyebrow: 0.20em;
 
   /* Radius */
   --radius-6: 6px;
@@ -246,30 +265,30 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --paper: #1C1B18;
-    --subtle: #2A2823;
-    --elevated: #38362F;
+    --paper: #131210;
+    --subtle: #1C1B18;
+    --elevated: #262521;
 
-    --ink: #E6E3D8;
+    --ink: #EBE8DD;
     --ink-strong: #F2EFE7;
-    /* Dark-mode muted lifted to clear WCAG AAA 7:1 on every dark surface
-       (paper / subtle / elevated). Old #ABA69D was 4.99:1 on --elevated;
-       #C9C3B7 was 6.89:1; #D0CABF clears 7.4:1 on the worst surface. */
-    --muted: #D0CABF;
+    /* Dark-mode muted clears WCAG AAA 7:1 on every dark surface
+       (paper / subtle / elevated). #C0B9AB ≈ 7.87:1 on --elevated #262521,
+       the worst surface, and 9.6:1 on --paper #131210. */
+    --muted: #C0B9AB;
     --muted-strong: #DBD5CB;
 
-    --hair: #38362F;
-    --hair-strong: #4A473E;
+    --hair: #2C2A25;
+    --hair-strong: #3F3C35;
 
-    --on-accent: #1C1B18;
-    /* Dark accent intentionally diverges from light --accent #D27050 to a
-     * warmer, slightly higher-luminance hue (#D97757 = brand-anthropic) so it
-     * stays distinguishable on dark surfaces. The lift also gives accent-ink
-     * room to clear AAA on --elevated — see comment below. */
-    --accent: #D97757;
-    /* Lifted from #E0B89E (6.63:1 on --elevated) to clear AAA 7:1. */
-    --accent-ink: #E3C0A8;
-    --accent-soft: rgba(210, 112, 80, 0.15);
+    --on-accent: #131210;
+    /* Dark accent diverges from light --accent #B2462D to a warmer,
+     * higher-luminance terracotta (#E88466) so it stays distinguishable on
+     * dark surfaces and gives accent-ink room to clear AAA on --elevated. */
+    --accent: #E88466;
+    --accent-rgb: 232 132 102;
+    /* #F0A58F ≈ 7.66:1 on --elevated #262521 (AAA). */
+    --accent-ink: #F0A58F;
+    --accent-soft: rgba(232, 132, 102, 0.14);
     --accent-softer: rgba(210, 112, 80, 0.08);
     --accent-softest: rgba(210, 112, 80, 0.04);
     --accent-tint: rgba(210, 112, 80, 0.12);
@@ -290,6 +309,7 @@
     --danger: #ECBCB2;
     --danger-soft: rgba(163, 61, 43, 0.12);
     --info: #B3C9E0;
+    --info-soft: rgba(46, 74, 107, 0.12);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
     --shadow-md: 0 1px 0 rgba(0, 0, 0, 0.15), 0 4px 20px -16px rgba(0, 0, 0, 0.4);
@@ -360,20 +380,20 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #1C1B18;
-  --subtle: #2A2823;
-  --elevated: #38362F;
-  --ink: #E6E3D8;
+  --paper: #131210;
+  --subtle: #1C1B18;
+  --elevated: #262521;
+  --ink: #EBE8DD;
   --ink-strong: #F2EFE7;
-  --muted: #D0CABF;
+  --muted: #C0B9AB;
   --muted-strong: #DBD5CB;
-  --hair: #38362F;
-  --hair-strong: #4A473E;
-  --on-accent: #1C1B18;
-  --accent: #D97757;
-  --accent-rgb: 217 119 87;
-  --accent-ink: #E3C0A8;
-  --accent-soft: rgba(210, 112, 80, 0.15);
+  --hair: #2C2A25;
+  --hair-strong: #3F3C35;
+  --on-accent: #131210;
+  --accent: #E88466;
+  --accent-rgb: 232 132 102;
+  --accent-ink: #F0A58F;
+  --accent-soft: rgba(232, 132, 102, 0.15);
   --accent-softer: rgba(210, 112, 80, 0.08);
   --accent-softest: rgba(210, 112, 80, 0.04);
   --accent-tint: rgba(210, 112, 80, 0.12);
@@ -389,6 +409,7 @@
   --danger: #ECBCB2;
   --danger-soft: rgba(163, 61, 43, 0.12);
   --info: #B3C9E0;
+  --info-soft: rgba(46, 74, 107, 0.12);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 1px 0 rgba(0, 0, 0, 0.15), 0 4px 20px -16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 28px -18px rgba(0, 0, 0, 0.5);

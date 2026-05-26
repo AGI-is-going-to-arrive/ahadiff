@@ -532,6 +532,7 @@ export default function ProviderCard({
 
   const cardClass = [
     'provider-card',
+    'card-accent',
     expanded ? 'provider-card--expanded' : '',
     editing ? 'provider-card--editing' : '',
     isNew ? 'provider-card--new' : '',

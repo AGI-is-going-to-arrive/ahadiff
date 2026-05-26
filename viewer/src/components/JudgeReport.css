@@ -47,9 +47,9 @@
   align-items: baseline;
   margin: 0 0 var(--sp-4);
   padding: var(--sp-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent-hair);
   border-radius: var(--r-md);
-  background: var(--surface);
+  background: var(--accent-softest);
 }
 
 .judge-report__summary-label {
@@ -62,10 +62,11 @@
 
 .judge-report__summary-value {
   color: var(--ink-strong);
-  font-family: var(--font-mono);
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-serif);
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .judge-report__summary-note {

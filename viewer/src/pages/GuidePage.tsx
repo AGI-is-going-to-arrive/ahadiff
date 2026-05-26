@@ -336,7 +336,7 @@ export default function GuidePage() {
         <header className="guide__head">
           <p className="guide__eyebrow">§ {t('Guide.eyebrow')}</p>
           <h1 className="guide__title">{t('Guide.title')}</h1>
-          <p className="guide__subtitle">{t('Guide.subtitle')}</p>
+          <p className="guide__subtitle guide__subtitle--lead">{t('Guide.subtitle')}</p>
         </header>
 
         <SectionNav t={t} />

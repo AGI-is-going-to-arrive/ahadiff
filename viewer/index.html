@@ -13,17 +13,18 @@
     <title>AhaDiff</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="./manifest.json" />
-    <meta name="theme-color" content="#D27050" />
+    <meta name="theme-color" content="#FAF8F2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#131210" media="(prefers-color-scheme: dark)" />
     <style>
       /* critical inline CSS — FOUC 防护；tokens.css 加载后会覆盖 */
       :root {
         --paper: #FAF8F2;
-        --ink: #1C1B18;
+        --ink: #141310;
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --paper: #1C1B18;
-          --ink: #E6E3D8;
+          --paper: #131210;
+          --ink: #EBE8DD;
         }
       }
       html, body { height: 100%; margin: 0; }

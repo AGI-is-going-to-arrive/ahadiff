@@ -390,7 +390,7 @@ export default function LandingPage() {
       <section className="hero">
         <div className="hero-grid">
           <div>
-            <div className="eyebrow" style={{ marginBottom: '18px' }}>{t('Landing.hero_eyebrow')}</div>
+            <p className="eyebrow">{t('Landing.hero_eyebrow')}</p>
             <h1 className="hero__title">
               {t('Landing.hero_title_1')}
               <br />
@@ -416,6 +416,13 @@ export default function LandingPage() {
             <div className="hero-learn-status">
               <LearnTaskBanner />
             </div>
+            <p className="folio-line hero__folio" aria-hidden="true">
+              <span className="folio-line__page">§ 01</span>
+              <span className="folio-line__sep">·</span>
+              <span>{t('Brand.name')}</span>
+              <span className="folio-line__sep">·</span>
+              <span>{t('Brand.tagline')}</span>
+            </p>
           </div>
 
           <div className="hero-demo">
@@ -509,10 +516,10 @@ export default function LandingPage() {
         <div className="sub">{t('Landing.features_sub')}</div>
         <div className="feature-grid" aria-label={t('Landing.features_title')}>
           {FEATURE_CARDS.map((card) => (
-            <article className="card feature-card" key={card.marker} style={{ padding: '18px 20px' }}>
+            <article className="card feature-card" key={card.marker}>
               <div className="eyebrow feature-card__marker">{card.marker}</div>
-              <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '18px', fontWeight: 500, margin: '8px 0 6px', letterSpacing: '-0.01em' }}>{t(card.titleKey)}</h3>
-              <p style={{ fontSize: '13px', color: 'var(--muted)', margin: 0, lineHeight: 1.55 }}>{t(card.descKey)}</p>
+              <h3>{t(card.titleKey)}</h3>
+              <p>{t(card.descKey)}</p>
             </article>
           ))}
         </div>
@@ -582,7 +589,7 @@ export default function LandingPage() {
               )}
             </div>
           </div>
-          <div className="col" style={{ background: '#fff' }}>
+          <div className="col" style={{ background: 'var(--elevated)' }}>
             <div ref={rightColRef}>
               <h3 className="ba-col__header">{t('Landing.after_header')}</h3>
               <div className="prose" style={{ fontSize: '14.5px', lineHeight: 1.7 }}>

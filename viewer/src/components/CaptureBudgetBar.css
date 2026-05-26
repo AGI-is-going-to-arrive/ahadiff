@@ -41,7 +41,7 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-sm);
   overflow: hidden;
-  background: var(--subtle, var(--paper, transparent));
+  background: var(--subtle);
   isolation: isolate;
 }
 
@@ -55,29 +55,29 @@
   display: block;
   height: 100%;
   min-width: 0;
-  transition: width var(--dur-fast, 150ms) var(--ease-out, ease-out);
+  transition: width var(--dur-fast) var(--ease-out);
 }
 
 .capture-budget-bar__segment--system {
-  background: var(--muted, #9aa);
+  background: var(--muted);
   opacity: 0.55;
 }
 
 .capture-budget-bar__segment--safety {
-  background: var(--warning, #d39a17);
+  background: var(--warning);
 }
 
 .capture-budget-bar__segment--diff {
-  background: var(--accent, #4a6b8a);
+  background: var(--accent);
 }
 
 .capture-budget-bar__segment--output {
-  background: var(--accent-ink, #2c4866);
+  background: var(--accent-ink);
   opacity: 0.7;
 }
 
 .capture-budget-bar__segment--remaining {
-  background: var(--hair-strong, #d6d6d6);
+  background: var(--hair-strong);
   opacity: 0.6;
 }
 
@@ -90,7 +90,7 @@
   gap: var(--sp-2) var(--sp-4);
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--muted-strong, var(--muted));
+  color: var(--muted-strong);
 }
 
 .capture-budget-bar__legend-item {
@@ -110,42 +110,42 @@
 }
 
 .capture-budget-bar__swatch--system {
-  background: var(--muted, #9aa);
+  background: var(--muted);
   opacity: 0.55;
 }
 
 .capture-budget-bar__swatch--safety {
-  background: var(--warning, #d39a17);
+  background: var(--warning);
 }
 
 .capture-budget-bar__swatch--diff {
-  background: var(--accent, #4a6b8a);
+  background: var(--accent);
 }
 
 .capture-budget-bar__swatch--output {
-  background: var(--accent-ink, #2c4866);
+  background: var(--accent-ink);
   opacity: 0.7;
 }
 
 .capture-budget-bar__swatch--remaining {
-  background: var(--hair-strong, #d6d6d6);
+  background: var(--hair-strong);
   opacity: 0.6;
 }
 
 .capture-budget-bar__legend-label {
-  color: var(--muted, #888);
+  color: var(--muted);
 }
 
 .capture-budget-bar__legend-value {
-  color: var(--ink-strong, currentColor);
-  font-variant-numeric: tabular-nums;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .capture-budget-bar__status {
   margin: 0;
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--muted-strong, var(--muted));
+  color: var(--muted-strong);
 }
 
 .capture-budget-bar__status--danger {

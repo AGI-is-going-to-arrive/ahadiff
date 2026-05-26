@@ -12,45 +12,81 @@
   padding: 0 0 var(--sp-10);
 }
 
-/* ---- Header ---- */
+/* ---- Header (masthead) ---- */
 .guide__head {
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-8);
 }
 
+/* Eyebrow now reads as a printed column kicker: mono caps over a folio rule. */
 .guide__eyebrow {
   font-family: var(--font-mono);
-  font-size: var(--fs-2xs);
-  letter-spacing: 0;
-  color: var(--muted);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  color: var(--muted-2);
   text-transform: uppercase;
-  margin: 0 0 var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  padding-top: 10px;
+  border-top: 2px solid var(--folio-line);
+  display: inline-block;
+  min-width: 220px;
 }
 
+/* Masthead title — display serif scale, balanced wrap with hard fallback. */
 .guide__title {
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: clamp(28px, 4vw, 36px);
-  letter-spacing: 0;
-  line-height: var(--lh-tight);
+  font-size: var(--fs-h1);
+  letter-spacing: var(--ls-h1);
+  line-height: var(--lh-h1);
+  color: var(--ink-blackletter);
   margin: 0;
+  text-wrap: balance;
 }
 
 .guide__subtitle {
-  color: var(--muted);
-  font-size: var(--fs-base);
-  margin: var(--sp-2) 0 0;
+  color: var(--muted-strong);
+  font-size: var(--fs-md);
+  margin: var(--sp-3) 0 0;
   line-height: var(--lh-relaxed);
   max-width: var(--mw-prose);
+}
+
+/* Lead-in drop cap — magazine opener on the standfirst. Scoped to the guide
+   subtitle's first letter. initial-letter is the clean sunk-cap path; the
+   joint @supports-not below catches Firefox (no initial-letter at all) without
+   double-rendering on Safari (which only ships the -webkit- prefix). */
+.guide__subtitle--lead::first-letter {
+  -webkit-initial-letter: 2;
+  initial-letter: 2;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-style: normal;
+  font-synthesis: none;
+  color: var(--accent-deep);
+  margin-inline-end: 0.1em;
+}
+
+@supports not ((initial-letter: 2) or (-webkit-initial-letter: 2)) {
+  .guide__subtitle--lead::first-letter {
+    -webkit-initial-letter: normal;
+    initial-letter: normal;
+    float: left;
+    font-size: 2.6em;
+    line-height: 0.8;
+    padding: 0.05em 0.1em 0 0;
+    margin-top: 0.02em;
+    vertical-align: baseline;
+  }
 }
 
 /* ---- Section nav (jump-to chips) ---- */
 .guide-nav {
   margin: 0 0 var(--sp-10);
-  padding: 0;
+  padding: 0 0 var(--sp-6);
   border: none;
   background: transparent;
-  border-bottom: 1px solid var(--hair-strong);
-  padding-bottom: var(--sp-6);
+  /* Classic newsroom heavy separator beneath the masthead/index. */
+  border-bottom: 4px double var(--hair-strong);
 }
 
 .guide-nav__list {
@@ -95,9 +131,10 @@
 
 .guide-nav__chip-index {
   flex-shrink: 0;
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-style: italic;
   font-size: 16px;
+  font-variant-numeric: tabular-nums lining-nums;
   color: var(--accent-ink);
   opacity: 1;
   transition: opacity var(--dur-fast) var(--ease-out-quart);
@@ -109,25 +146,31 @@
 
 /* ---- Sections shared ---- */
 .guide-section {
-  margin-top: var(--sp-10);
+  margin-top: var(--sp-12);
   scroll-margin-top: var(--sp-6);
 }
 
+/* Section title reads as an editorial subhead: serif h2 scale, anchored to a
+   hairline column rule so each block opens like a newspaper section. */
 .guide-section__title {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--sp-2);
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: var(--fs-xl);
-  letter-spacing: 0;
-  line-height: var(--lh-tight);
-  margin: 0 0 var(--sp-4);
-  color: var(--ink);
+  font-size: var(--fs-h2);
+  letter-spacing: var(--ls-h2);
+  line-height: var(--lh-h2);
+  margin: 0 0 var(--sp-5);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--hair-strong);
+  color: var(--ink-blackletter);
+  text-wrap: balance;
 }
 
 .guide-section__icon {
   flex-shrink: 0;
+  align-self: center;
   color: var(--accent);
 }
 
@@ -431,9 +474,9 @@
   padding: var(--sp-4) 0;
   cursor: pointer;
   list-style: none;
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-weight: 500;
-  font-size: 20px;
+  font-size: var(--fs-h3);
   color: var(--ink-strong);
   -webkit-user-select: none;
   user-select: none;
@@ -514,7 +557,7 @@
 }
 
 .guide-agent-skills__tab-chip:hover {
-  background: var(--hair-light);
+  background: var(--subtle);
   color: var(--ink);
   border-color: var(--hair-strong);
 }
@@ -1020,7 +1063,7 @@
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: var(--subtle);
-  border: 1px solid var(--hair-weak);
+  border: 1px solid var(--hair);
   border-radius: var(--r-md);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1072,10 +1115,11 @@
   gap: var(--sp-2);
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: var(--fs-xl);
-  line-height: var(--lh-tight);
+  font-size: var(--fs-h3);
+  letter-spacing: -0.01em;
+  line-height: var(--lh-h3);
   margin: 0 0 var(--sp-6);
-  color: var(--ink);
+  color: var(--ink-blackletter);
 }
 
 .guide-workflows-grid {
@@ -1182,5 +1226,16 @@
   }
   .guide-agent-card__chevron {
     display: none;
+  }
+  /* initial-letter is unreliable in print engines — force the float drop cap so
+     the lead cap survives a printed guide. */
+  .guide__subtitle--lead::first-letter {
+    -webkit-initial-letter: initial;
+    initial-letter: normal;
+    float: left;
+    font-size: 2.6em;
+    line-height: 0.8;
+    padding: 0.05em 0.1em 0 0;
+    color: #000;
   }
 }

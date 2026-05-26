@@ -18,28 +18,41 @@
   padding: 0 0 var(--sp-10);
 }
 
-/* ---- Hero ---- */
+/* ---- Hero (first-edition masthead) ---- */
 .onboarding__head {
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-8);
 }
 
+/* Column kicker: mono caps over a folio rule. Self-sufficient so the hero
+   reads as a masthead even without the shared review__eyebrow rule. */
 .onboarding__eyebrow {
-  margin: 0 0 var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  color: var(--muted-2);
+  text-transform: uppercase;
+  margin: 0 0 var(--sp-3);
+  padding-top: 10px;
+  border-top: 2px solid var(--folio-line);
+  display: inline-block;
+  min-width: 220px;
 }
 
 .onboarding__title {
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: clamp(28px, 4vw, 36px);
-  letter-spacing: 0;
-  line-height: var(--lh-tight);
+  font-size: var(--fs-h1);
+  letter-spacing: var(--ls-h1);
+  line-height: var(--lh-h1);
+  color: var(--ink-blackletter);
   margin: 0;
+  text-wrap: balance;
 }
 
 .onboarding__subtitle {
-  color: var(--muted);
-  font-size: var(--fs-base);
-  margin: var(--sp-2) 0 0;
+  color: var(--muted-strong);
+  font-size: var(--fs-md);
+  margin: var(--sp-3) 0 0;
   line-height: var(--lh-relaxed);
   max-width: var(--mw-prose);
 }
@@ -58,11 +71,11 @@
 /* ---- Section nav (hash chips) ---- */
 .onboarding-nav {
   margin: 0 0 var(--sp-10);
-  padding: 0;
+  padding: 0 0 var(--sp-6);
   border: none;
   background: transparent;
-  border-bottom: 1px solid var(--hair-strong);
-  padding-bottom: var(--sp-6);
+  /* Classic newsroom heavy separator beneath the masthead/index. */
+  border-bottom: 4px double var(--hair-strong);
 }
 
 .onboarding-nav__list {
@@ -107,9 +120,10 @@
 
 .onboarding-nav__chip-index {
   flex-shrink: 0;
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-style: italic;
   font-size: 16px;
+  font-variant-numeric: tabular-nums lining-nums;
   color: var(--accent-ink);
   opacity: 1;
   transition: opacity var(--dur-fast) var(--ease-out-quart);
@@ -199,16 +213,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: var(--r-full);
   background: transparent;
   border: 1px solid var(--hair-strong);
   color: var(--muted-strong);
-  font-family: "Newsreader", var(--font-serif);
-  font-size: 14px;
+  font-family: var(--font-serif);
+  font-size: 15px;
   font-style: italic;
   font-weight: 500;
+  font-variant-numeric: tabular-nums lining-nums;
   line-height: 1;
   transition: all var(--dur-base) var(--ease-out-quart);
 }
@@ -236,11 +251,12 @@
 }
 
 .onboarding-steps__title {
-  font-family: "Newsreader", var(--font-serif);
-  font-size: 18px;
+  font-family: var(--font-serif);
+  font-size: var(--fs-h3);
   font-weight: 500;
   color: var(--ink-blackletter);
   letter-spacing: -0.01em;
+  line-height: var(--lh-h3);
 }
 
 .onboarding-steps__desc {
@@ -420,11 +436,12 @@
   gap: var(--sp-2);
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: var(--fs-xl);
-  letter-spacing: 0;
-  line-height: var(--lh-tight);
+  font-size: var(--fs-h2);
+  letter-spacing: var(--ls-h2);
+  line-height: var(--lh-h2);
   margin: 0 0 var(--sp-1);
-  color: var(--ink);
+  color: var(--ink-blackletter);
+  text-wrap: balance;
 }
 
 .onboarding-diag__title-icon {
@@ -516,11 +533,12 @@
   gap: var(--sp-2);
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: var(--fs-xl);
-  letter-spacing: 0;
-  line-height: var(--lh-tight);
+  font-size: var(--fs-h2);
+  letter-spacing: var(--ls-h2);
+  line-height: var(--lh-h2);
   margin: 0;
-  color: var(--ink);
+  color: var(--ink-blackletter);
+  text-wrap: balance;
 }
 
 .onboarding-preview__title-icon {
@@ -598,8 +616,10 @@
   margin: 0 0 var(--sp-2);
   font-family: var(--font-serif);
   font-weight: 500;
-  font-size: var(--fs-xl);
-  color: var(--ink);
+  font-size: var(--fs-h3);
+  letter-spacing: -0.01em;
+  line-height: var(--lh-h3);
+  color: var(--ink-blackletter);
 }
 
 .onboarding-completion__desc {

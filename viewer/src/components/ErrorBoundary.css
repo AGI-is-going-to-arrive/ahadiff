@@ -2,12 +2,12 @@
   padding: var(--sp-6);
   margin: var(--sp-6) auto;
   max-width: 720px;
-  border: 1px solid var(--danger-hair, var(--hair-strong));
-  border-left: 3px solid var(--danger, #c44);
+  border: 1px solid var(--danger-hair);
+  border-left: 3px solid var(--danger);
   border-radius: var(--r-md);
-  background: var(--surface-2, var(--elevated));
+  background: var(--surface-2);
   color: var(--ink);
-  box-shadow: var(--elev-2, var(--sh-md));
+  box-shadow: var(--elev-2);
 }
 
 .error-boundary__header {
@@ -20,22 +20,22 @@
 
 .error-boundary__title {
   font-family: var(--font-serif);
-  font-size: var(--fs-xl, 20px);
+  font-size: var(--fs-xl);
   margin: 0;
-  color: var(--ink-strong, var(--ink));
+  color: var(--ink-strong);
 }
 
 .error-boundary__meta {
   font-family: var(--font-mono);
-  font-size: var(--fs-2xs, 10px);
+  font-size: var(--fs-2xs);
   letter-spacing: 0.08em;
   color: var(--muted);
 }
 
 .error-boundary__body {
   margin: 0 0 var(--sp-3);
-  color: var(--ink-2, var(--ink));
-  line-height: var(--lh-relaxed, 1.6);
+  color: var(--ink-2);
+  line-height: var(--lh-relaxed);
 }
 
 .error-boundary__details {
@@ -47,7 +47,7 @@
 .error-boundary__details summary {
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: var(--fs-xs, 12px);
+  font-size: var(--fs-xs);
   color: var(--muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -63,17 +63,17 @@
   background: var(--subtle);
   border-radius: var(--r-sm);
   font-family: var(--font-mono);
-  font-size: var(--fs-xs, 12px);
-  line-height: var(--lh-snug, 1.4);
-  color: var(--ink-2, var(--ink));
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+  color: var(--ink-2);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .error-boundary__exhausted {
   margin: var(--sp-3) 0;
-  font-size: var(--fs-sm, 13px);
-  color: var(--danger, #c44);
+  font-size: var(--fs-sm);
+  color: var(--danger);
   font-style: italic;
 }
 
@@ -91,10 +91,10 @@
   background: var(--elevated);
   color: var(--ink);
   font: inherit;
-  font-size: var(--fs-sm, 13px);
+  font-size: var(--fs-sm);
   cursor: pointer;
-  transition: background var(--dur-fast, 0.15s) var(--ease-out, ease-out),
-              border-color var(--dur-fast, 0.15s) var(--ease-out, ease-out);
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
 }
 
 .error-boundary__btn--primary {
@@ -115,9 +115,9 @@
 }
 
 .error-boundary__btn--copied {
-  background: var(--success-soft, #e8f5e9);
-  color: var(--success, #2e7d32);
-  border-color: var(--success, #2e7d32);
+  background: var(--success-soft);
+  color: var(--success);
+  border-color: var(--success);
 }
 
 @media (forced-colors: active) {

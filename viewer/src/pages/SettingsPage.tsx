@@ -131,12 +131,17 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [printMode, setPrintMode] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const hasLoadedRef = useRef(false);
 
   const fetchAll = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setLoading(true);
+    // Only show the full-page skeleton (which unmounts the tab tree) on the
+    // first load. Locale-triggered refetches must keep tabs mounted so that
+    // in-progress local state (provider draft/edit mode, quiz mode toggle) is
+    // not reset out from under the user.
+    if (!hasLoadedRef.current) setLoading(true);
     setError(null);
     try {
       const s = { signal: controller.signal };
@@ -165,7 +170,10 @@ export default function SettingsPage() {
       if (controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : 'fetch_failed');
     } finally {
-      if (!controller.signal.aborted) setLoading(false);
+      if (!controller.signal.aborted) {
+        hasLoadedRef.current = true;
+        setLoading(false);
+      }
     }
   }, [locale]);
 
@@ -1489,11 +1497,27 @@ function PreferencesTab({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
+  const seededConfigRef = useRef<PreferencesForm | null>(null);
 
+  // Seed the form on first config load, and re-seed only when the persisted
+  // config values actually change. A locale-triggered refetch returns the
+  // same config object identity-fresh but value-identical, so this guard keeps
+  // the user's in-progress local edits (e.g. the quiz mode toggle) intact.
   useEffect(() => {
-    if (config) {
-      setForm(preferencesFormFromConfig(config));
-    }
+    if (!config) return;
+    const next = preferencesFormFromConfig(config);
+    const prev = seededConfigRef.current;
+    const unchanged = prev
+      && prev.output_lang === next.output_lang
+      && prev.learnability_threshold === next.learnability_threshold
+      && prev.desired_retention === next.desired_retention
+      && prev.quiz_question_count === next.quiz_question_count
+      && prev.quiz_question_count_mode === next.quiz_question_count_mode
+      && prev.quiz_auto_range_min === next.quiz_auto_range_min
+      && prev.quiz_auto_range_max === next.quiz_auto_range_max;
+    if (unchanged) return;
+    seededConfigRef.current = next;
+    setForm(next);
   }, [config]);
 
   const applyTheme = (mode: ThemeMode) => {

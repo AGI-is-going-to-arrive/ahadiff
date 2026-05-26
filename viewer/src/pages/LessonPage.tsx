@@ -932,7 +932,7 @@ export default function LessonPage() {
             </div>
           ) : (
             <div className="lesson__layout">
-            <aside className="lesson__toc" aria-label={t('Lesson.toc.title')}>
+            <aside className="lesson__toc toc-archival" aria-label={t('Lesson.toc.title')}>
               <div className="lesson__toc-title">{t('Lesson.toc.title')}</div>
               {tocEntries.length === 0 ? (
                 <div className="lesson__toc-empty">{t('Lesson.toc.empty')}</div>
@@ -962,12 +962,12 @@ export default function LessonPage() {
             </aside>
 
             <div className="lesson__center">
-              <article className="lesson__prose">
+              <article className="lesson__prose lesson__prose--editorial">
                 {renderedProse}
               </article>
             </div>
 
-            <aside className="lesson__rail" aria-label={t('Lesson.rail.title')}>
+            <aside className="lesson__rail lesson__rail--marginalia" aria-label={t('Lesson.rail.title')}>
               <section className="lesson__rail-card" aria-labelledby="lesson-rail-claims">
                 <h2 id="lesson-rail-claims" className="lesson__rail-card-title">
                   {t('Lesson.rail.claims_summary')}

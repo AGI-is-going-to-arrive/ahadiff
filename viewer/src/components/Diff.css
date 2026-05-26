@@ -8,7 +8,13 @@
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 22px;
-  background: var(--surface-diff);
+  /* Printed-proof paper: warm cream wash over the diff surface so the code
+     column reads like a typeset galley rather than a flat white pane. The
+     accent-softest tint is the faintest warm token; layering it on
+     --surface-diff keeps light/dark parity (both resolve via tokens). */
+  background:
+    linear-gradient(var(--accent-softest), var(--accent-softest)),
+    var(--surface-diff);
   border-radius: 10px;
   border: 1px solid var(--hair);
   position: relative;
@@ -411,9 +417,15 @@ button.diff-line {
 
 .diff-line--hunk {
   position: relative;
-  background: var(--accent-soft);
-  color: var(--muted);
+  /* Section break in the galley: a warm hairline-bounded band with the
+     @@ range set in serif italic, like a typeset sub-head. */
+  background: var(--accent-softer);
+  color: var(--accent-ink);
+  font-family: var(--font-serif);
   font-style: italic;
+  font-size: 13.5px;
+  letter-spacing: 0.01em;
+  border-block: 1px solid var(--accent-hair);
 }
 
 .diff-line--hunk[data-hunk-mark]::before {
@@ -457,32 +469,35 @@ button.diff-line {
   outline-offset: -2px;
 }
 
+/* Selected claim: soft warm editorial band rather than a harsh ring. A
+   thin accent rail in the gutter marks the annotated line like a margin
+   note; the warm wash (accent-soft) continues the "soft row band" idiom. */
 .diff-line--claim-selected {
-  box-shadow: inset 2.5px 0 0 var(--stamp-verified-frame);
-  background: var(--stamp-verified-tint);
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
   scroll-margin-top: 64px;
 }
 
 .diff-line--add.diff-line--claim-selected {
-  background: color-mix(in srgb, var(--add-bg) 80%, var(--stamp-verified-tint));
+  background: color-mix(in srgb, var(--add-bg) 76%, var(--accent-soft));
 }
 
 .diff-line--del.diff-line--claim-selected {
-  background: color-mix(in srgb, var(--del-bg) 80%, var(--stamp-verified-tint));
+  background: color-mix(in srgb, var(--del-bg) 76%, var(--accent-soft));
 }
 
 .diff-split-cell--add.diff-line--claim-selected {
-  background: color-mix(in srgb, var(--add-bg) 80%, var(--stamp-verified-tint));
+  background: color-mix(in srgb, var(--add-bg) 76%, var(--accent-soft));
 }
 
 .diff-split-cell--del.diff-line--claim-selected {
-  background: color-mix(in srgb, var(--del-bg) 80%, var(--stamp-verified-tint));
+  background: color-mix(in srgb, var(--del-bg) 76%, var(--accent-soft));
 }
 
 @keyframes diff-claim-pulse {
-  0% { box-shadow: inset 2.5px 0 0 var(--stamp-verified-frame); }
-  40% { box-shadow: inset 2.5px 0 0 var(--stamp-verified), 0 0 0 1px var(--stamp-verified-tint); }
-  100% { box-shadow: inset 2.5px 0 0 var(--stamp-verified-frame); }
+  0% { box-shadow: inset 3px 0 0 var(--accent); }
+  40% { box-shadow: inset 3px 0 0 var(--accent-ink), 0 0 0 1px var(--accent-soft); }
+  100% { box-shadow: inset 3px 0 0 var(--accent); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -501,8 +516,9 @@ button.diff-line {
   width: 32px;
   min-width: 32px;
   padding-inline-end: 6px;
-  font-weight: 700;
-  font-size: 0.8125rem;
+  /* Heavy inky +/− that prints like a proofreader's mark. */
+  font-weight: 800;
+  font-size: 0.875rem;
   line-height: 1;
   user-select: none;
   pointer-events: none;
@@ -517,8 +533,8 @@ button.diff-line {
   justify-content: center;
   width: 16px;
   min-width: 16px;
-  font-weight: 600;
-  font-size: 0.75rem;
+  font-weight: 800;
+  font-size: 0.8125rem;
   user-select: none;
   pointer-events: none;
   color: var(--muted);
@@ -539,7 +555,9 @@ button.diff-line {
   font-variant-numeric: tabular-nums;
   -webkit-user-select: none;
   user-select: none;
-  border-inline-end: 1px solid var(--hair);
+  /* Dashed gutter rule — archival ledger feel, distinct from the solid
+     section borders so the line-number column reads as a margin. */
+  border-inline-end: 1px dashed var(--hair-strong);
   flex-shrink: 0;
 }
 
@@ -701,7 +719,7 @@ button.diff-split-cell {
 }
 
 .diff-split-cell--old {
-  border-inline-end: 1px solid var(--hair);
+  border-inline-end: 1px dashed var(--hair-strong);
 }
 
 .diff-split-cell--ctx {
@@ -794,7 +812,7 @@ button.diff-split-cell {
   margin-bottom: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--warning-hair);
-  border-radius: var(--radius-sm);
+  border-radius: var(--r-sm);
   background: var(--warning-soft);
   color: var(--warning);
   font-size: var(--fs-sm);
@@ -938,6 +956,10 @@ button.diff-split-cell {
 /* ── Accessibility ────────────────────────────────────────── */
 
 @media (forced-colors: active) {
+  /* In forced colors the warm add/del background washes collapse to the
+     system Canvas, so the only differentiator left is the +/− glyph and
+     the row edge. Outline each changed row and lean on a heavier,
+     system-colored marker so add vs del stays legible without color. */
   .diff-line--add,
   .diff-line--del,
   .diff-line--hunk,
@@ -945,10 +967,33 @@ button.diff-split-cell {
     border: 1px solid CanvasText;
   }
 
+  /* Keep the +/− marks vivid and non-overridable; CanvasText guarantees a
+     readable foreground against the forced Canvas. A leading edge on the
+     row reinforces add (start rail) vs del (dashed start rail). */
+  .diff-line__change-indicator,
+  .diff-line__marker {
+    forced-color-adjust: none;
+    color: CanvasText;
+    font-weight: 800;
+  }
+
+  .diff-line--add {
+    border-inline-start: 3px solid CanvasText;
+  }
+
+  .diff-line--del {
+    border-inline-start: 3px dashed CanvasText;
+  }
+
   .diff-line--claim-linked:focus-visible,
   .diff-line--claim-selected {
     outline: 2px solid Highlight;
     outline-offset: -2px;
+  }
+
+  /* Re-assert the claim band's gutter rail in high contrast. */
+  .diff-line--claim-selected {
+    box-shadow: inset 3px 0 0 Highlight;
   }
 
   .mini-panel {

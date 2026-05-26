@@ -42,10 +42,10 @@
 
 .calendar-heatmap__meta {
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--muted-2);
 }
 
 .calendar-heatmap__grid {
@@ -97,7 +97,7 @@
   background: linear-gradient(
     90deg,
     var(--subtle) 0%,
-    var(--paper-deep, var(--subtle)) 50%,
+    var(--paper-deep) 50%,
     var(--subtle) 100%
   );
   background-size: 200% 100%;
@@ -119,8 +119,8 @@
   gap: 6px;
   margin-top: var(--sp-3);
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.12em;
   color: var(--muted);
 }
 

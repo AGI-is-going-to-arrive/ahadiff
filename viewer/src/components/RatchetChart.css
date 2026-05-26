@@ -47,8 +47,9 @@
   gap: var(--sp-2) var(--sp-4);
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .ratchet-chart__legend span {

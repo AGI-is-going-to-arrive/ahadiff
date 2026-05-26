@@ -78,7 +78,7 @@
   font-weight: 600;
   line-height: 1;
   color: var(--muted);
-  background: var(--subtle, #f2efe7);
+  background: var(--subtle);
   cursor: help;
   margin-left: 6px;
   vertical-align: middle;
@@ -512,9 +512,9 @@
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--surface-veil);
   border: 1px solid var(--hair);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   padding: 9px 14px;
   font-size: var(--fs-xs);
   -webkit-backdrop-filter: blur(4px);
@@ -551,13 +551,13 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--concept-kind-fill, #F2EFE7);
-  border: 2px solid var(--concept-kind-stroke, #8E8778);
+  background: var(--concept-kind-fill, var(--subtle));
+  border: 2px solid var(--concept-kind-stroke, var(--muted));
 }
 
 .concept-graph__legend-swatch--ring {
-  background: var(--subtle, #F2EFE7);
-  border-color: var(--muted, #8E8778);
+  background: var(--subtle);
+  border-color: var(--muted);
   border-width: 2px;
 }
 
@@ -802,7 +802,7 @@
   border-radius: 6px;
   font-family: var(--font-sans);
   font-size: var(--fs-sm);
-  color: var(--accent-ink, #B04E28);
+  color: var(--accent-ink);
   text-decoration: none;
   transition: background var(--dur-fast) var(--ease-out-quart);
 }
@@ -815,7 +815,7 @@
 }
 
 .concept-graph__quick-link:hover {
-  background: var(--accent-softer, var(--accent-softest));
+  background: var(--accent-softer);
 }
 
 .concept-graph__quick-link:focus-visible {
@@ -846,13 +846,13 @@
 }
 
 .concept-graph__freshness--fresh {
-  background: var(--success-soft, #e8f5e9);
-  color: var(--success, #2e7d32);
+  background: var(--success-soft);
+  color: var(--success);
 }
 
 .concept-graph__freshness--stale {
-  background: var(--warning-soft, #fff3e0);
-  color: var(--warning, #e65100);
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .concept-graph__freshness--unavailable {
@@ -935,8 +935,8 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--concept-kind-fill, #F2EFE7);
-  border: 1.5px solid var(--concept-kind-stroke, #8E8778);
+  background: var(--concept-kind-fill, var(--subtle));
+  border: 1.5px solid var(--concept-kind-stroke, var(--muted));
   flex: 0 0 auto;
 }
 
@@ -1482,13 +1482,12 @@
    Dark mode
    ========================================================================== */
 
+/* Legend tracks --surface-veil (dark override lives in tokens.css). The
+   graph-wrap / src-card get a faint surface fill in dark mode so the canvas
+   area separates from the page. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .concept-graph__graph-wrap {
     background: var(--subtle);
-  }
-
-  :root:not([data-theme="light"]) .concept-graph__legend {
-    background: rgba(30, 30, 30, 0.94);
   }
 
   :root:not([data-theme="light"]) .concept-graph__src-card {
@@ -1498,10 +1497,6 @@
 
 [data-theme="dark"] .concept-graph__graph-wrap {
   background: var(--subtle);
-}
-
-[data-theme="dark"] .concept-graph__legend {
-  background: rgba(30, 30, 30, 0.94);
 }
 
 [data-theme="dark"] .concept-graph__src-card {

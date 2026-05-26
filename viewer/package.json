@@ -15,6 +15,7 @@
     "test:e2e:real-serve": "playwright test -c playwright.real-serve.config.ts"
   },
   "dependencies": {
+    "@fontsource/cormorant-garamond": "^5.2.11",
     "lucide-react": "^1.14.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -26,10 +27,10 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
     "@playwright/test": "^1.49.0",
-    "@vitest/coverage-v8": "^2.1.9",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.9",
     "typescript": "^5.6.0",
     "vite": "^5.4.0",
     "vite-plugin-pwa": "^1.2.0",

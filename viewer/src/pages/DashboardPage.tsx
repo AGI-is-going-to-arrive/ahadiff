@@ -754,6 +754,12 @@ export default function DashboardPage() {
           onSourceFilterChange={setSourceFilter}
           onLoadMore={() => { loadMoreRuns().catch(() => { /* handled by store */ }); }}
         />
+        <p className="folio-line dashboard__folio" aria-hidden="true">
+          <span className="folio-line__page">§</span>
+          <span>{t('Brand.name')}</span>
+          <span className="folio-line__sep">·</span>
+          <span>{t('Brand.tagline')}</span>
+        </p>
         {isLearnDialogOpen ? (
           <Suspense fallback={null}>
             <LearnModeDialog open={isLearnDialogOpen} onClose={() => setIsLearnDialogOpen(false)} />

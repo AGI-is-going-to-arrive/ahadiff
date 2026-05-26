@@ -140,13 +140,13 @@
 }
 
 .claim-inspector__chip--rejected {
-  background: var(--danger-soft, #fdf1ec);
-  border-color: var(--danger-hair, #e4b8ae);
+  background: var(--danger-soft);
+  border-color: var(--danger-hair);
   color: var(--danger);
 }
 
 .claim-inspector__chip--rejected.claim-inspector__chip--on {
-  background: var(--danger-soft, #fdf1ec);
+  background: var(--danger-soft);
   border-color: var(--danger);
   color: var(--danger);
 }
@@ -396,8 +396,8 @@
 
 .claim-inspector__item--contradicted,
 .claim-inspector__item--rejected {
-  background: var(--danger-soft, #fdf1ec);
-  border-color: var(--danger-hair, #e4b8ae);
+  background: var(--danger-soft);
+  border-color: var(--danger-hair);
 }
 
 .claim-inspector__item--contradicted:hover,
@@ -408,7 +408,7 @@
 .claim-inspector__item--contradicted.claim-inspector__item--selected,
 .claim-inspector__item--rejected.claim-inspector__item--selected {
   border-color: var(--danger);
-  box-shadow: 0 0 0 3px var(--danger-soft, #fdf1ec), inset 3px 0 0 var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft), inset 3px 0 0 var(--danger);
 }
 
 .claim-inspector__item--contradicted .claim-inspector__item-id,

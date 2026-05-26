@@ -36,14 +36,14 @@
   height: 38px;
   border-radius: 10px;
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-ink) 100%);
-  color: #fff;
+  color: var(--on-accent);
   display: grid;
   place-items: center;
   font-family: var(--font-serif);
   font-weight: 600;
   font-size: 18px;
   letter-spacing: -0.02em;
-  box-shadow: 0 2px 6px -2px rgba(176, 78, 40, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  box-shadow: var(--shadow-brand);
   flex-shrink: 0;
 }
 
@@ -54,17 +54,17 @@
   height: 100%;
   border-radius: inherit;
   background: var(--accent-ink);
-  color: #fff;
+  color: var(--on-accent);
   transform: translateY(-1px);
 }
 
 .brand-name {
   font-family: var(--font-serif);
-  font-size: 17px;
+  font-size: var(--fs-h3);
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
-  line-height: 1.2;
+  line-height: var(--lh-tight);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -89,8 +89,8 @@
 
 .nav-label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
   text-transform: uppercase;
   color: var(--muted-strong);
   padding: 6px 10px;
@@ -126,7 +126,7 @@
 }
 
 .nav-item.active {
-  background: #fff;
+  background: var(--elevated);
   color: var(--ink);
   box-shadow: 0 1px 0 var(--hair), 0 4px 12px -8px rgba(120, 80, 50, 0.22);
 }

@@ -23,9 +23,19 @@
 
 .concepts-page__title {
   font-family: var(--font-serif);
-  font-size: var(--fs-2xl);
-  color: var(--ink-strong);
+  font-weight: 500;
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  letter-spacing: var(--ls-h2);
+  color: var(--ink-blackletter);
   margin: 0;
+  text-wrap: balance;
+}
+
+@supports not (text-wrap: balance) {
+  .concepts-page__title {
+    text-wrap: initial;
+  }
 }
 
 .concepts-page__loading {
@@ -151,7 +161,7 @@
 }
 
 .concepts-page__cancel-btn:hover:not(:disabled) {
-  background: var(--surface-2, rgba(0, 0, 0, 0.04));
+  background: var(--subtle);
   border-color: var(--muted);
 }
 
@@ -171,7 +181,7 @@
 
 /* ---------- Elapsed time indicator ---------- */
 .concepts-page__elapsed {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-family: var(--font-mono);
   font-size: var(--fs-sm);
   color: var(--muted);
   font-variant-numeric: tabular-nums;

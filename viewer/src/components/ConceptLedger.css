@@ -14,12 +14,13 @@
 .concept-ledger__table th {
   text-align: start;
   padding: var(--sp-2) var(--sp-3);
-  color: var(--muted);
+  color: var(--muted-2);
+  font-family: var(--font-mono);
   font-weight: 600;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-2xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.16em;
+  border-bottom: 2px solid var(--hair-strong);
   white-space: nowrap;
 }
 
@@ -141,7 +142,10 @@
 }
 
 .concept-ledger__count {
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--fs-md);
+  color: var(--ink-strong);
   text-align: end;
 }
 

@@ -1139,27 +1139,33 @@ test.describe('walkthrough: full-app functional test', () => {
     await tabs.nth(0).click();
     await expect(page.locator('.guide-agent-card')).toHaveCount(15);
 
-    // Verify tool cards with usage panels
-    const usagePanels = page.locator('.guide-agent-card__usage-panel-wrapper');
-    await expect(usagePanels.first()).toBeVisible();
+    // Agent cards are collapsible: the usage panel and manifest preview only
+    // render once a card is expanded. Expand a card by name, then assert its
+    // panel content is visible.
+    const expandCard = async (name: string) => {
+      const card = page.locator('.guide-agent-card').filter({ hasText: name }).first();
+      if ((await card.getAttribute('class'))?.includes('is-expanded')) return card;
+      await card.locator('.guide-agent-card__header').click();
+      await expect(card).toHaveClass(/is-expanded/);
+      return card;
+    };
+
+    // Verify tool cards expose a usage panel once expanded
+    const antigravityCard = await expandCard('Antigravity IDE');
+    await expect(antigravityCard.locator('.guide-agent-card__usage-panel-wrapper')).toBeVisible();
+    await expect(antigravityCard.locator('.guide-agent-card__manifest-preview')).toBeVisible();
+    await expect(antigravityCard).toContainText('.agents/skills/ahadiff-antigravity/SKILL.md');
+
+    // Only one card expands at a time, so expand each named card before its assertion
+    const antigravityCliCard = await expandCard('Antigravity CLI');
+    await expect(antigravityCliCard).toContainText('.agents/skills/ahadiff-antigravity-cli/SKILL.md');
+
+    const codexCard = await expandCard('Codex CLI');
+    await expect(codexCard).toContainText('AGENTS.md');
 
     // Verify common workflows section
     const workflowsSection = page.locator('.guide-workflows-section');
     await expect(workflowsSection).toBeVisible();
-
-    // Manifest previews showing agent tool paths
-    const manifestPreviews = page.locator('.guide-agent-card__manifest-preview');
-    await expect(manifestPreviews.first()).toBeVisible();
-
-    await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity IDE' })).toContainText(
-      '.agents/skills/ahadiff-antigravity/SKILL.md',
-    );
-    await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity CLI' })).toContainText(
-      '.agents/skills/ahadiff-antigravity-cli/SKILL.md',
-    );
-    await expect(page.locator('.guide-agent-card').filter({ hasText: 'Codex CLI' })).toContainText(
-      'AGENTS.md',
-    );
 
     // Copy button on at least one command block
     const copyBtns = page.locator('.command-block__copy-btn');

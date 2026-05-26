@@ -30,10 +30,10 @@
 .search-overlay__panel {
   position: relative;
   width: min(560px, 100%);
-  background: var(--surface-4, var(--paper));
+  background: var(--surface-4);
   border: 1px solid var(--hair);
   border-radius: 14px;
-  box-shadow: var(--elev-4, var(--sh-lg));
+  box-shadow: var(--elev-4);
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -191,7 +191,7 @@
 .search-overlay__section-header {
   position: sticky;
   top: 0;
-  background: var(--surface-3, var(--subtle));
+  background: var(--surface-3);
   padding: var(--sp-1) var(--sp-4);
   font-family: var(--font-mono);
   font-size: 10px;
@@ -214,7 +214,7 @@
   overflow-y: auto;
   max-height: min(50vh, 360px);
   padding: var(--sp-4) var(--sp-5);
-  background: var(--surface-3, var(--subtle));
+  background: var(--surface-3);
 }
 
 .search-overlay__panel--wide .search-overlay__preview-col {
@@ -236,7 +236,7 @@
   grid-template-columns: auto minmax(0, 1fr);
   gap: var(--sp-1) var(--sp-3);
   font-size: 13px;
-  color: var(--ink-2, var(--ink));
+  color: var(--ink-2);
   line-height: 1.5;
 }
 
@@ -367,21 +367,21 @@
 
 .search-overlay__chip--concept {
   color: var(--success);
-  border-color: var(--success-hair, var(--hair));
+  border-color: var(--success-hair);
 }
 
 .search-overlay__chip--claim {
   color: var(--accent-ink);
-  border-color: var(--accent-hair, var(--hair));
+  border-color: var(--accent-hair);
 }
 
 .search-overlay__chip--run {
-  color: var(--info, var(--ink-2));
+  color: var(--info);
 }
 
 .search-overlay__chip--card {
-  color: var(--warning, var(--accent-ink));
-  border-color: var(--warning-hair, var(--hair));
+  color: var(--warning);
+  border-color: var(--warning-hair);
 }
 
 .search-overlay__title {

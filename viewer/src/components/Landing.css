@@ -7,28 +7,36 @@
   margin: 0 auto;
 }
 
-/* ---- Hero section ---- */
+/* ---- Hero section — newspaper masthead ---- */
 .hero {
   position: relative;
-  padding: clamp(68px, 8vw, 128px) clamp(24px, 5vw, 56px) clamp(56px, 7vw, 104px);
-  border-top: 1px solid var(--folio-line, var(--ink));
+  padding: clamp(78px, 8vw, 138px) clamp(24px, 5vw, 56px) clamp(56px, 7vw, 104px);
+  /* Classic double-rule masthead band across the top of the front page. The
+     deck below it is closed by a second hairline (::after) so the nameplate
+     reads as a framed broadsheet header. */
+  border-top: 4px double var(--hair-strong);
   overflow: hidden;
   background:
-    radial-gradient(1200px 320px at 20% -10%, rgba(210, 112, 80, 0.07), transparent 60%),
-    linear-gradient(180deg, rgba(255, 253, 247, 0.95), rgba(255, 253, 247, 0) 40%),
+    radial-gradient(1200px 320px at 20% -10%, rgba(var(--accent-rgb), 0.07), transparent 60%),
+    linear-gradient(180deg, var(--elevated), transparent 42%),
     var(--paper);
 }
 
+/* Nameplate folio — the broadsheet masthead crumb pinned to the top edge,
+   carried on a hairline. Decorative brand text, so it needs no i18n string. */
 .hero::before {
   content: 'AHADIFF FOLIO · VERIFIED DIFF LEARNING';
   position: absolute;
-  top: var(--sp-3);
+  top: var(--sp-4);
   left: clamp(20px, 4vw, 64px);
+  right: clamp(20px, 4vw, 64px);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--hair);
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.34em;
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--muted-2);
 }
 
 .hero-grid {
@@ -40,22 +48,24 @@
   align-items: center;
 }
 
-.hero__eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
+/* Hero eyebrow — masthead kicker on a folio rule (anchored onto the .eyebrow
+   the page renders in the hero column). */
+.hero .eyebrow {
+  display: inline-block;
   margin-bottom: var(--sp-4);
+  padding-top: var(--sp-2);
+  border-top: 2px solid var(--folio-line);
+  min-width: 220px;
+  color: var(--muted-2);
 }
 
 .hero__title {
-  font-family: "Newsreader", "Noto Serif SC", var(--font-serif);
+  font-family: var(--font-serif);
   font-style: italic;
   font-weight: var(--bolder-thin, 260);
   font-size: clamp(2.35rem, 3.8vw + 1rem, 5.8rem);
-  line-height: 0.98;
-  letter-spacing: -0.028em;
+  line-height: var(--lh-display);
+  letter-spacing: var(--ls-display);
   margin: 0;
   font-variation-settings: "opsz" 72;
   color: var(--ink-blackletter);
@@ -67,14 +77,15 @@
   font-style: normal;
   background-image: linear-gradient(
     transparent 72%,
-    rgba(210, 112, 80, 0.22) 72%,
-    rgba(210, 112, 80, 0.22) 92%,
+    rgba(var(--accent-rgb), 0.22) 72%,
+    rgba(var(--accent-rgb), 0.22) 92%,
     transparent 92%
   );
   padding: 0 0.08em;
 }
 
-.hero__en {
+/* Bilingual standfirst — italic serif tagline under the masthead. */
+.hero .en {
   font-family: var(--font-serif);
   font-style: italic;
   font-weight: 400;
@@ -83,7 +94,8 @@
   margin-top: var(--sp-3);
 }
 
-.hero__lead {
+/* Lead paragraph — the front-page deck. */
+.hero .lead {
   font-size: clamp(15.5px, 1vw + 10px, 18px);
   line-height: 1.72;
   max-width: 56ch;
@@ -91,18 +103,33 @@
   color: var(--ink-2, var(--ink));
 }
 
-.hero__lead::first-letter {
-  font-family: "Newsreader", "Noto Serif SC", var(--font-serif);
-  font-weight: 700;
+/* Drop cap on the lead — modern initial-letter with a float fallback for
+   Firefox (mirrors the Stage B .first-letter-drop helper, scoped here so the
+   hero lead opts in without a TSX class change). */
+.hero .lead::first-letter {
+  -webkit-initial-letter: 3 2;
+  initial-letter: 3 2;
+  font-family: var(--font-serif);
+  font-weight: 600;
   font-style: normal;
-  font-size: 2.6em;
-  float: left;
-  line-height: 1;
-  padding: 2px 10px 0 0;
-  margin-top: 0.08em;
   color: var(--ink-blackletter);
+  margin-right: 0.08em;
   font-synthesis: none;
-  vertical-align: baseline;
+}
+
+/* Joint check: Safari supports only -webkit-initial-letter, so testing the
+   unprefixed form alone would fire this fallback AND keep the webkit sunk cap,
+   double-rendering. Only Firefox (neither prefix) should fall through. */
+@supports not ((initial-letter: 3) or (-webkit-initial-letter: 3)) {
+  .hero .lead::first-letter {
+    -webkit-initial-letter: normal;
+    initial-letter: normal;
+    float: left;
+    font-size: 3.4em;
+    line-height: 0.85;
+    padding: 2px 0.09em 0 0;
+    margin-top: 0.02em;
+  }
 }
 
 /* ---- CTA buttons ---- */
@@ -177,6 +204,12 @@
   max-width: min(640px, 100%);
 }
 
+/* Front-page folio crumb closing the hero column (decorative; .folio-line base
+   from bolder.css carries the hairline + mono caps). */
+.hero__folio {
+  margin: var(--sp-8) 0 0;
+}
+
 .hero-learn-status .learn-banner {
   margin: 0;
   max-width: none;
@@ -225,7 +258,7 @@
   gap: 8px;
   padding: 8px var(--sp-5);
   border-bottom: 1px solid var(--hair);
-  background: var(--wash);
+  background: var(--subtle);
   color: var(--muted);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -248,7 +281,7 @@
   padding: var(--sp-4);
   border: 1px dashed var(--hair);
   border-radius: var(--r-md);
-  background: var(--wash);
+  background: var(--subtle);
   color: var(--muted);
   font-family: var(--font-sans);
   font-size: 13px;
@@ -357,45 +390,45 @@
   line-height: var(--lh-relaxed);
 }
 
-/* ---- Pipeline section ---- */
-.landing-section {
+/* ---- Editorial sections (anchored onto the .section markup the page renders;
+   .landing scope lifts specificity above components.css base rules) ---- */
+.landing .section {
   padding: var(--sp-16) clamp(20px, 4vw, 64px);
   max-width: var(--mw-page);
   margin: 0 auto;
 }
 
-.landing-section__eyebrow {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: var(--sp-2);
+/* Section eyebrow — mono kicker sitting on a hairline column rule, echoing a
+   newspaper department label above the headline. */
+.landing .section > .eyebrow {
+  display: inline-block;
+  margin-bottom: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--folio-line);
+  min-width: 200px;
+  color: var(--muted-2);
 }
 
-.landing-section h2 {
-  font-family: "Newsreader", var(--font-serif);
-  font-size: 32px;
-  font-weight: 440;
-  letter-spacing: -0.015em;
-  line-height: 1.1;
+.landing .section h2 {
+  font-family: var(--font-serif);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  font-weight: 500;
+  letter-spacing: var(--ls-h2);
   color: var(--ink-blackletter);
   margin: 0 0 var(--sp-2);
+  text-wrap: balance;
 }
 
-.landing-section__sub {
+.landing .section > .sub {
   color: var(--muted);
   font-size: 15px;
   max-width: var(--mw-prose);
   margin-bottom: var(--sp-8);
-  line-height: 1.65;
+  line-height: 1.68;
 }
 
-/* ---- Feature cards ---- */
-.landing-section--features {
-  padding-top: clamp(44px, 6vw, 88px);
-}
-
+/* ---- Feature cards — four evidence cards in a broadsheet row ---- */
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -470,48 +503,51 @@
   margin: 0;
 }
 
-/* ---- Steps grid ---- */
-.steps-grid {
+/* ---- Pipeline steps — five framed columns reading like a printed broadsheet
+   strip (anchored onto the .steps > .st markup the page renders). ---- */
+.landing .steps {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 0;
-  border: 1px solid var(--hair);
-  border-radius: var(--r-lg);
+  border: 1px solid var(--hair-strong);
+  border-radius: var(--r-md);
   overflow: hidden;
   background: var(--elevated);
 }
 
-.step {
+.landing .steps .st {
   padding: var(--sp-6);
   border-right: 1px solid var(--hair);
-  transition: background var(--dur-fast);
+  transition: background var(--dur-fast) var(--ease-out);
 }
 
-.step:last-child {
+.landing .steps .st:last-child {
   border-right: none;
 }
 
-.step:hover {
+.landing .steps .st:hover {
   background: var(--accent-softest);
 }
 
-.step__number {
+/* Step number — small-caps mono index, the column ordinal. */
+.landing .steps .st .n {
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: var(--sp-2);
+  color: var(--accent-ink);
+  margin-bottom: var(--sp-3);
 }
 
-.step h3 {
+.landing .steps .st h3 {
   font-family: var(--font-serif);
   font-size: 17px;
   font-weight: 500;
+  letter-spacing: -0.01em;
   margin: 0 0 var(--sp-2);
 }
 
-.step p {
+.landing .steps .st p {
   font-size: 13px;
   color: var(--muted-2, var(--muted));
   line-height: 1.6;
@@ -587,7 +623,7 @@
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--muted);
-  background: var(--bg, #fff);
+  background: var(--elevated);
   padding: 2px 10px;
   border-radius: 99px;
   border: 1px solid var(--hair);
@@ -605,7 +641,7 @@
   border-top: 1px solid var(--hair);
   background: var(--subtle, #f5f0ea);
   color: var(--accent-ink, #9b4420);
-  font-family: var(--font-body, system-ui);
+  font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -671,7 +707,9 @@
   font-weight: 700;
 }
 
-.benchmark-grid {
+/* ---- Benchmark / trust KPIs — a four-column figures table (anchored onto the
+   .kpi-grid > .kpi.benchmark-card markup the page renders). ---- */
+.landing .section .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--sp-4);
@@ -679,35 +717,30 @@
 
 .benchmark-card {
   background: var(--elevated);
-  border: 1px solid var(--hair);
+  border: 1px solid var(--hair-strong);
   border-radius: var(--r-md);
   padding: var(--sp-6);
   text-align: left;
-  transition: border-color var(--dur-fast);
+  overflow: visible;
+  transition: border-color var(--dur-fast) var(--ease-out);
 }
 
 .benchmark-card:hover {
-  border-color: var(--accent-hair);
+  border-color: var(--accent-tint);
 }
 
-.benchmark-card__label-row {
-  display: flex;
-  align-items: flex-start;
+/* Label row — mono caption flexing the source stamp to the right. */
+.benchmark-card .lb {
   justify-content: space-between;
-  gap: var(--sp-2);
   min-height: 30px;
-  margin-bottom: var(--sp-4);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
-.benchmark-card__demo {
-  flex: 0 0 auto;
-  padding: 1px 5px;
-  font-size: 9px;
-  letter-spacing: 0.12em;
-}
-
-.benchmark-card__value {
-  font-family: "Newsreader", var(--font-serif);
+/* Headline figure — large serif italic numeral, the table's lead value. */
+.benchmark-card .vl {
+  font-family: var(--font-serif);
   font-size: 34px;
   font-weight: 400;
   font-style: italic;
@@ -716,15 +749,7 @@
   letter-spacing: -0.005em;
   color: var(--ink-strong);
   line-height: 1;
-  margin-bottom: var(--sp-2);
-}
-
-.benchmark-card__label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
+  margin-top: var(--sp-3);
 }
 
 .benchmark-card__delta {
@@ -734,7 +759,7 @@
   line-height: 1.5;
 }
 
-.benchmark-card__delta--up {
+.benchmark-card__delta .up {
   color: var(--success);
 }
 
@@ -744,25 +769,25 @@
     grid-template-columns: 1fr;
   }
 
-  .feature-grid {
+  .landing .feature-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .steps-grid {
+  .landing .steps {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .step:nth-child(even) {
+  .landing .steps .st:nth-child(even) {
     border-right: none;
   }
 
-  .step:nth-child(n+3) {
+  .landing .steps .st:nth-child(n+3) {
     border-top: 1px solid var(--hair);
   }
 }
 
 @media (max-width: 900px) {
-  .benchmark-grid {
+  .landing .section .kpi-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -772,30 +797,32 @@
     padding: 60px var(--sp-5) 44px;
   }
 
-  .hero__lead::first-letter {
-    font-size: 2.3em;
-    padding-right: var(--sp-2);
+  @supports not ((initial-letter: 3) or (-webkit-initial-letter: 3)) {
+    .hero .lead::first-letter {
+      font-size: 3em;
+      padding-right: var(--sp-2);
+    }
   }
 
-  .steps-grid {
+  .landing .steps {
     grid-template-columns: 1fr;
   }
 
-  .feature-grid {
+  .landing .feature-grid {
     grid-template-columns: 1fr;
   }
 
-  .benchmark-grid {
+  .landing .section .kpi-grid {
     grid-template-columns: 1fr;
   }
 
-  .step {
+  .landing .steps .st {
     border-right: none;
     border-top: none;
     border-bottom: 1px solid var(--hair);
   }
 
-  .step:last-child {
+  .landing .steps .st:last-child {
     border-bottom: none;
   }
 
@@ -812,7 +839,7 @@
     color: Highlight;
   }
 
-  .step {
+  .landing .steps .st {
     border-color: CanvasText;
   }
 
@@ -877,16 +904,16 @@
   }
 
   .hero-grid,
-  .feature-grid,
-  .steps-grid,
+  .landing .feature-grid,
+  .landing .steps,
   .ba-grid,
-  .benchmark-grid {
+  .landing .section .kpi-grid {
     grid-template-columns: 1fr;
   }
 
   .benchmark-card,
   .feature-card,
-  .step,
+  .landing .steps .st,
   .ba-col {
     break-inside: avoid;
   }
@@ -916,7 +943,7 @@
   .hero-ctas .btn-primary,
   .feature-card,
   .feature-card::before,
-  .step,
+  .landing .steps .st,
   .hero-demo__accordion-summary,
   .hero-demo__accordion-chevron,
   .hero-demo__lesson-link a {

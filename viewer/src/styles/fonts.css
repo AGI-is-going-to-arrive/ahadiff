@@ -1,22 +1,8 @@
-/* V6 font-face declarations using local() only.
-   No external CDN — local-first principle. Fonts render when installed;
-   the fallback chain in tokens.css handles the rest. */
-
-@font-face {
-  font-family: 'Newsreader';
-  font-style: normal;
-  font-weight: 200 800;
-  font-display: swap;
-  src: local('Newsreader'), local('Newsreader-Regular');
-}
-
-@font-face {
-  font-family: 'Newsreader';
-  font-style: italic;
-  font-weight: 200 800;
-  font-display: swap;
-  src: local('Newsreader Italic'), local('Newsreader-Italic');
-}
+/* Font-face declarations.
+   Latin serif (Cormorant Garamond, SIL OFL) is loaded via @fontsource and
+   bundled by Vite — see main.tsx — so no external CDN, local-first principle.
+   Inter / JetBrains Mono use local() only; the fallback chain in tokens.css
+   handles platforms where they are not installed. Cormorant Garamond is SIL OFL (license bundled with @fontsource). */
 
 @font-face {
   font-family: 'Inter';

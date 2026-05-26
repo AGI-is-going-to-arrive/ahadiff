@@ -1,7 +1,9 @@
 /* ==========================================================================
-   BOLDER OVERLAY · editorial-terminal · v1
-   Ported from the Warm v6 design pass.
+   BOLDER OVERLAY · editorial-newspaper · v2
+   High-end light newspaper editorial primitives.
    Additive CSS only — no component logic changes.
+   All values flow through tokens.css (var(--token)) so the dark tri-state and
+   forced-colors overrides keep working. No hardcoded hex.
    Rollback: remove this file + its import in main.tsx.
    ========================================================================== */
 
@@ -27,7 +29,7 @@
   align-items: center;
   transform: rotate(-3deg);
   box-shadow: inset 0 0 0 1px var(--stamp-verified-shadow);
-  transition: transform 0.32s var(--ease-out-quart);
+  transition: transform var(--dur-fast) var(--ease-out-quart);
 }
 
 .badge-stamp::after {
@@ -50,19 +52,24 @@
   }
 }
 
-/* ---- C: Page-head editorial serif ---- */
+/* ---- C: Page-head editorial serif — masthead scale ---- */
 .page-head-editorial {
-  font-family: "Newsreader", var(--font-serif);
-  font-weight: 420;
-  font-size: clamp(1.85rem, 2.6vw + 0.5rem, 2.9rem);
-  letter-spacing: -0.02em;
-  line-height: 1.05;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-h1);
+  line-height: var(--lh-h1);
+  letter-spacing: var(--ls-h1);
   color: var(--ink-blackletter);
+  text-wrap: balance;
 }
 
-.page-head-eyebrow {
-  font-size: 10.5px;
-  letter-spacing: 0.26em;
+/* Kicker / eyebrow — mono, all-caps, wide tracking above a masthead rule. */
+.page-head-eyebrow,
+.kicker {
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
   color: var(--muted-2);
   padding-top: 10px;
   border-top: 2px solid var(--folio-line);
@@ -108,7 +115,26 @@
   }
 }
 
-/* ---- E: Ornament divider ---- */
+/* ---- E: Newspaper rules — hairline / classic double ---- */
+
+/* Plain hairline column/section rule. */
+.rule-hair {
+  border: 0;
+  border-top: 1px solid var(--hair);
+  margin: var(--sp-6) 0;
+}
+
+/* Classic newsroom heavy separator — the 4px double rule used between major
+   editorial blocks (masthead / lead / section breaks). */
+.rule-double {
+  border: 0;
+  border-bottom: 4px double var(--hair-strong);
+  margin: var(--sp-8) 0 var(--sp-6);
+  height: 0;
+}
+
+/* Ornament divider — two hairlines flanking a serif italic fleuron. The glyph
+   is purely decorative (CSS content), so it needs no i18n string. */
 .ornament-rule {
   display: flex;
   align-items: center;
@@ -125,16 +151,89 @@
 }
 
 .ornament-rule > span {
-  font-family: "Newsreader", serif;
+  font-family: var(--font-serif);
   font-size: 22px;
   font-style: italic;
   color: var(--ornament-ink);
   line-height: 1;
 }
 
+/* Bare ornament with no inner markup — render the fleuron via ::after so a
+   plain <hr class="ornament-rule"> still gets the centre glyph. */
+.ornament-rule:not(:has(> span))::after {
+  content: "❖";
+  flex: 0 0 auto;
+  border-top: 0;
+  order: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-style: italic;
+  color: var(--ornament-ink);
+  line-height: 1;
+}
+
+/* ---- E.1: Folio line — page-edge archival crumb ---- */
+/* Extra-fine ruled line carrying page number · date · version · workspace,
+   echoing a printed newspaper folio. */
+.folio-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--folio-line);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.folio-line__sep {
+  color: var(--hair-strong);
+  font-style: normal;
+}
+
+.folio-line__page {
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* ---- E.2: First-letter drop cap helper (opt-in) ---- */
+/* Lesson/article Builders add .first-letter-drop to a leading paragraph.
+   Modern path uses initial-letter (3 lines, 2-line sink). Firefox lacks
+   initial-letter, so @supports not (...) gives the classic float fallback. */
+.first-letter-drop::first-letter {
+  -webkit-initial-letter: 3 2;
+  initial-letter: 3 2;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-style: normal;
+  color: var(--ink-blackletter);
+  margin-right: 0.08em;
+  font-synthesis: none;
+}
+
+/* Safari supports only -webkit-initial-letter, not the unprefixed form. The
+   condition must test BOTH, otherwise Safari fails the unprefixed check, fires
+   this float fallback, AND still applies -webkit-initial-letter above —
+   double-rendering the cap. Joint check keeps Safari on the clean sunk cap and
+   only Firefox (neither prefix) falls through. */
+@supports not ((initial-letter: 3) or (-webkit-initial-letter: 3)) {
+  .first-letter-drop::first-letter {
+    -webkit-initial-letter: normal;
+    initial-letter: normal;
+    float: left;
+    font-size: 3.6em;
+    line-height: 0.85;
+    padding: 0 0.08em 0 0;
+    margin-top: 0.02em;
+  }
+}
+
 /* ---- F: Tabular italic numerals (metric) ---- */
 .metric-value {
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum", "lnum";
   font-weight: 400;
@@ -152,7 +251,7 @@
   position: absolute;
   left: -22px;
   top: 14px;
-  font-family: "Newsreader", serif;
+  font-family: var(--font-serif);
   font-style: italic;
   font-size: 22px;
   color: var(--accent);
@@ -165,7 +264,7 @@
 .topbar-crumb,
 .topbar-crumb li:first-child span,
 .topbar-crumb li[aria-current="page"] {
-  font-family: "Newsreader", var(--font-serif);
+  font-family: var(--font-serif);
   font-size: 14.5px;
   font-style: italic;
   letter-spacing: 0.005em;
@@ -182,7 +281,7 @@
 /* ---- I: Primary button — inkstone dark ---- */
 .btn-inkstone {
   background: var(--ink-blackletter);
-  color: #FBF5EE;
+  color: var(--paper);
   border-color: var(--ink-blackletter);
   letter-spacing: 0.01em;
   font-weight: 600;
@@ -191,8 +290,8 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 8px 22px -14px rgba(28, 27, 24, 0.55);
   transition:
-    transform 0.22s var(--ease-expo),
-    box-shadow 0.22s var(--ease-expo);
+    transform var(--dur-fast) var(--ease-expo),
+    box-shadow var(--dur-fast) var(--ease-expo);
 }
 
 .btn-inkstone:hover {
@@ -215,14 +314,26 @@
   }
 }
 
-/* ---- J: Section title serif ---- */
+/* ---- J: Section title serif — editorial heading scale ---- */
 .section-serif {
-  font-family: "Newsreader", var(--font-serif);
-  font-weight: 440;
-  font-size: clamp(1.5rem, 1.8vw + 0.5rem, 2.1rem);
-  letter-spacing: -0.015em;
-  line-height: 1.1;
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
+  letter-spacing: var(--ls-h2);
   color: var(--ink-blackletter);
+  text-wrap: balance;
+}
+
+/* Display masthead scale — opt-in for hero/lead splashes. */
+.display-serif {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: var(--fs-display);
+  line-height: var(--lh-display);
+  letter-spacing: var(--ls-display);
+  color: var(--ink-display);
+  text-wrap: balance;
 }
 
 /* ---- K: Brand mark — chisel lift ---- */
@@ -242,7 +353,7 @@
 /* ---- L: TOC — archival index ---- */
 .toc-archival .toc-heading,
 .lesson__toc-title {
-  font-family: "Newsreader", serif;
+  font-family: var(--font-serif);
   font-style: italic;
   font-weight: 500;
   font-size: 14px;
@@ -269,7 +380,7 @@
   height: 1px;
   background: var(--hair-strong);
   transform: translateY(-50%);
-  transition: width 0.22s var(--ease-expo), background 0.22s var(--ease-expo);
+  transition: width var(--dur-fast) var(--ease-expo), background var(--dur-fast) var(--ease-expo);
 }
 
 .toc-archival a:hover::before,
@@ -310,6 +421,29 @@
     color: #fff !important;
     box-shadow: none !important;
   }
+  /* Keep the double rule and folio crumb as crisp black on paper. */
+  .rule-double {
+    border-bottom-color: #000;
+  }
+  .folio-line {
+    border-top-color: #000;
+    color: #000;
+  }
+  /* Drop cap stays readable in print via the float fallback (initial-letter
+     is unreliable across print engines). */
+  .first-letter-drop::first-letter {
+    -webkit-initial-letter: initial;
+    initial-letter: normal;
+    float: left;
+    font-size: 3.4em;
+    line-height: 0.85;
+    padding: 0 0.08em 0 0;
+    color: #000;
+  }
+  .ornament-rule > span,
+  .ornament-rule:not(:has(> span))::after {
+    color: #000;
+  }
 }
 
 /* ---- P: Forced-colors overrides ---- */
@@ -334,6 +468,18 @@
   .lesson__toc-link::before {
     background: LinkText !important;
   }
+  /* Newspaper rules / folio / ornament / drop-cap all resolve through the
+     editorial tokens (--folio-line, --ornament-ink, --hair-strong, ...) which
+     forced-colors.css remaps to CanvasText. No per-class override needed. */
+}
+
+/* ---- O: Reduced transparency ---- */
+@media (prefers-reduced-transparency: reduce) {
+  /* Rules/folio/drop-cap are fully opaque already — nothing to flatten here,
+     but keep the block so the editorial layer stays self-documenting. */
+  .badge-stamp {
+    background: var(--elevated);
+  }
 }
 
 /* ---- Q: Small screens guard ---- */
@@ -344,6 +490,12 @@
   .page-head-editorial {
     font-size: clamp(1.6rem, 6vw, 2.1rem);
   }
+  /* Tighten the drop cap sink on phones so it doesn't swallow short lines. */
+  @supports not ((initial-letter: 3) or (-webkit-initial-letter: 3)) {
+    .first-letter-drop::first-letter {
+      font-size: 3.1em;
+    }
+  }
 }
 
 /* ---- R: High-density displays — hairline crisp ---- */
@@ -351,6 +503,14 @@
   .badge-stamp {
     box-shadow: inset 0 0 0 0.5px rgba(47, 111, 79, 0.3);
   }
+}
+
+/* ---- S: Windows ClearType — antialias large serif display ---- */
+.page-head-editorial,
+.display-serif,
+.section-serif {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---- Cross-cutting: smooth anchor scrolling ---- */
@@ -361,6 +521,8 @@
 }
 
 /* ---- Cross-cutting: scrollbar-gutter stable ---- */
-html {
-  scrollbar-gutter: stable;
+@supports (scrollbar-gutter: stable) {
+  html {
+    scrollbar-gutter: stable;
+  }
 }

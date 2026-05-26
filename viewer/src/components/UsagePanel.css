@@ -13,10 +13,12 @@
 
 .usage-panel__heading {
   margin: 0 0 var(--sp-2);
-  font-family: inherit;
-  font-size: var(--fs-base);
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
   font-weight: 600;
-  color: var(--ink-muted);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--muted-2);
 }
 
 .usage-panel__list,
@@ -34,7 +36,7 @@
 .usage-panel__list li,
 .usage-panel__text {
   margin: 0;
-  color: var(--ink-2, var(--ink));
+  color: var(--ink-2);
   font-size: var(--fs-sm);
   line-height: var(--lh-relaxed);
   overflow-wrap: anywhere;
@@ -67,7 +69,7 @@
   border: 1px solid var(--hair);
   border-radius: var(--r-xs);
   background: var(--elevated);
-  color: var(--accent-ink, var(--accent));
+  color: var(--accent-ink);
   cursor: pointer;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);

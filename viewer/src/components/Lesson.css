@@ -365,6 +365,42 @@
   padding-left: 24px;
 }
 
+/* Archival index numbering — top-level entries carry a mono serial like a
+   filed document. Nested (l2/l3) entries stay unnumbered so the hierarchy
+   reads as sub-clauses. Counter lives on the list; the serial renders in the
+   link's left gutter alongside the existing hairline marker. */
+.toc-archival .lesson__toc-list {
+  counter-reset: lesson-toc;
+  list-style: none;
+}
+
+.toc-archival .lesson__toc-list > li:not(.lesson__toc-item--l2):not(.lesson__toc-item--l3) {
+  counter-increment: lesson-toc;
+}
+
+.toc-archival .lesson__toc-list > li:not(.lesson__toc-item--l2):not(.lesson__toc-item--l3) > .lesson__toc-link {
+  padding-left: 30px;
+}
+
+.toc-archival .lesson__toc-list > li:not(.lesson__toc-item--l2):not(.lesson__toc-item--l3) > .lesson__toc-link::after {
+  content: counter(lesson-toc, decimal-leading-zero);
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-3);
+  transition: color var(--dur-fast) var(--ease-out-quart);
+}
+
+.toc-archival .lesson__toc-list > li > .lesson__toc-link--active::after,
+.toc-archival .lesson__toc-list > li > .lesson__toc-link:hover::after {
+  color: var(--accent-ink);
+}
+
 .lesson__toc-empty {
   font-size: 13px;
   color: var(--muted);
@@ -381,9 +417,9 @@
 }
 
 .lesson__prose {
-  font-family: "Newsreader", Georgia, var(--font-serif);
-  font-size: 17px;
-  line-height: 1.8;
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: var(--lh-relaxed);
   color: var(--ink);
   min-width: 0;
   max-width: 100%;
@@ -391,25 +427,45 @@
   overflow-wrap: anywhere;
 }
 
+/* Editorial reading rhythm: a comfortable measure (~66ch) keeps long-form
+   serif prose readable; the center column still fills available width up to
+   that cap. EN sits at 1.6, CJK loosens to 1.75 for square-glyph breathing. */
+.lesson__prose--editorial {
+  max-width: 66ch;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
 :lang(zh-Hans) .lesson__prose,
-:lang(zh-CN) .lesson__prose {
+:lang(zh-CN) .lesson__prose,
+:lang(zh-Hans) .lesson__prose--editorial,
+:lang(zh-CN) .lesson__prose--editorial {
   line-height: 1.75;
 }
 
 .lesson__prose h2 {
-  font-size: 28px;
+  font-family: var(--font-serif);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-h2);
   font-weight: 500;
-  letter-spacing: -0.02em;
-  margin: 32px 0 12px;
+  letter-spacing: var(--ls-h2);
+  text-wrap: balance;
+  margin: 2rem 0 0.75rem;
   border-bottom: 1px solid var(--hair);
-  padding-bottom: 8px;
+  padding-bottom: 0.5rem;
   color: var(--ink-blackletter);
 }
 
 .lesson__prose h3 {
-  font-size: 20px;
+  font-family: var(--font-serif);
+  font-size: var(--fs-h3);
+  line-height: var(--lh-h3);
   font-weight: 500;
-  margin: 24px 0 8px;
+  font-style: italic;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  margin: 1.5rem 0 0.5rem;
+  color: var(--ink-strong);
 }
 
 .lesson__section-heading {
@@ -432,6 +488,40 @@
 .lesson__prose p:last-child,
 .lesson__paragraph:last-child {
   margin-bottom: 0;
+}
+
+/* ==========================================================================
+   Editorial drop-cap — lead paragraph of the lesson reads like a magazine
+   opener. Scoped to the first paragraph of the editorial prose only.
+   initial-letter is the clean modern path (sinks + baseline-aligns the glyph
+   across N lines); Firefox lacks it, so @supports not falls back to the
+   float technique used elsewhere in the codebase. CJK-friendly: moderate size,
+   Noto Serif SC fallback, font-synthesis off so square glyphs stay crisp.
+   ========================================================================== */
+.lesson__prose--editorial > .lesson__paragraph:first-of-type::first-letter {
+  -webkit-initial-letter: 2;
+  initial-letter: 2;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-style: normal;
+  font-synthesis: none;
+  color: var(--accent-deep);
+  margin-inline-end: 0.1em;
+}
+
+/* Firefox has neither prefixed nor unprefixed initial-letter, so it falls
+   through to the float technique. Safari/Chromium keep the clean sunk cap. */
+@supports not ((initial-letter: 2) or (-webkit-initial-letter: 2)) {
+  .lesson__prose--editorial > .lesson__paragraph:first-of-type::first-letter {
+    -webkit-initial-letter: normal;
+    initial-letter: normal;
+    float: left;
+    font-size: 2.6em;
+    line-height: 0.8;
+    padding: 0.05em 0.1em 0 0;
+    margin-top: 0.02em;
+    vertical-align: baseline;
+  }
 }
 
 .lesson__prose ul,
@@ -470,12 +560,33 @@
   border-radius: 0;
 }
 
+/* Claim highlight — a restrained warm tint band marking verified/weak claims
+   inline. Reads like an editor's pencil underline: soft accent wash plus a
+   thin baseline rule, deepening on hover/focus. Box-decoration-break keeps the
+   band intact when a claim wraps across lines. */
 .lesson__prose .highlight {
-  background: var(--accent-soft);
-  padding: 1px 4px;
-  border-radius: 3px;
+  background: linear-gradient(var(--accent-softest), var(--accent-soft));
+  padding: 0.05em 0.2em;
+  border-radius: 2px;
   cursor: pointer;
-  border-bottom: 1px dashed var(--accent);
+  color: var(--ink);
+  box-shadow: inset 0 -0.08em 0 var(--accent-hair);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition:
+    background var(--dur-fast) var(--ease-out-quart),
+    box-shadow var(--dur-fast) var(--ease-out-quart);
+}
+
+.lesson__prose .highlight:hover,
+.lesson__prose .highlight:focus-visible {
+  background: var(--accent-soft);
+  box-shadow: inset 0 -0.1em 0 var(--accent);
+}
+
+.lesson__prose .highlight:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
 }
 
 .lesson__prose a[href]::after {
@@ -495,6 +606,38 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+/* Marginalia rail — the evidence/claims column reads like a newspaper's narrow
+   margin notes: a hairline column rule separates it from the body, card titles
+   carry an italic serif accent flag, and prose notes drop to caption italic. */
+.lesson__rail--marginalia {
+  padding-left: 22px;
+  border-left: 1px solid var(--hair);
+}
+
+.lesson__rail--marginalia .lesson__rail-card-title {
+  position: relative;
+  padding-left: 12px;
+}
+
+.lesson__rail--marginalia .lesson__rail-card-title::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.1em;
+  bottom: 0.1em;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+}
+
+.lesson__rail--marginalia .lesson__rail-note {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted-strong);
 }
 
 
@@ -1013,7 +1156,7 @@
 .lesson-page__skipped-example {
   font-family: var(--font-mono);
   font-size: 13px;
-  background: var(--surface-raised);
+  background: var(--elevated);
   border: 1px solid var(--hair);
   border-radius: 6px;
   padding: var(--sp-2) var(--sp-4);
@@ -1038,6 +1181,20 @@
   }
   .lesson__toc {
     display: none;
+  }
+  /* Stacked single column: drop the marginalia column rule so the rail reads
+     as full-width cards below the prose, not a dangling margin note. */
+  .lesson__rail--marginalia {
+    padding-left: 0;
+    border-left: none;
+  }
+}
+
+/* The editorial measure is a reading aid on wide screens; once the layout
+   stacks, let prose fill the column so it doesn't sit oddly narrow. */
+@media (max-width: 900px) {
+  .lesson__prose--editorial {
+    max-width: none;
   }
 }
 
@@ -1095,6 +1252,23 @@
     max-height: none;
     overflow: visible;
     margin-top: 18pt;
+  }
+  .lesson__rail--marginalia {
+    padding-left: 0;
+    border-left: none;
+  }
+  .lesson__prose--editorial {
+    max-width: none;
+  }
+  /* Keep the drop-cap but ink it so it survives monochrome printing. */
+  .lesson__prose--editorial > .lesson__paragraph:first-of-type::first-letter {
+    color: var(--ink-blackletter);
+  }
+  /* Claim highlights print as a thin underline rather than a tint band. */
+  .lesson__prose .highlight {
+    background: transparent;
+    box-shadow: none;
+    border-bottom: 1px solid var(--ink-blackletter);
   }
 }
 
@@ -1356,7 +1530,10 @@
   .lesson-page__always-link,
   .lesson-page__action-btn,
   .claim-card,
-  .claim-popover {
+  .claim-popover,
+  .lesson__prose .highlight,
+  .lesson__toc-link::before,
+  .lesson__toc-link::after {
     animation: none;
     transition: none;
   }
@@ -1390,6 +1567,24 @@
   .lesson__compact-list li::before,
   .lesson__risk-list li::before {
     background: CanvasText;
+  }
+  /* Claim highlight is a clickable anchor — render as a LinkText underline
+     since the tint band and inset shadow are dropped in forced-colors. */
+  .lesson__prose .highlight {
+    background: transparent;
+    box-shadow: none;
+    color: LinkText;
+    border-bottom: 1px solid LinkText;
+  }
+  /* Marginalia column rule + archival serial stay visible. */
+  .lesson__rail--marginalia {
+    border-left-color: CanvasText;
+  }
+  .lesson__rail--marginalia .lesson__rail-card-title::before {
+    background: CanvasText;
+  }
+  .toc-archival .lesson__toc-list > li > .lesson__toc-link::after {
+    color: CanvasText;
   }
 }
 
