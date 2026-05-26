@@ -842,8 +842,7 @@
 }
 
 .learn-dialog__btn--primary:hover:not(:disabled) {
-  background: #b85f42;
-  background: color-mix(in srgb, var(--accent) 85%, #000);
+  background: var(--accent-deep);
 }
 
 .learn-dialog__btn--primary:disabled {

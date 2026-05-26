@@ -288,17 +288,19 @@
     --accent-rgb: 232 132 102;
     /* #F0A58F ≈ 7.66:1 on --elevated #262521 (AAA). */
     --accent-ink: #F0A58F;
-    --accent-soft: rgba(232, 132, 102, 0.14);
+    --accent-soft: rgba(232, 132, 102, 0.15);
     --accent-softer: rgba(210, 112, 80, 0.08);
     --accent-softest: rgba(210, 112, 80, 0.04);
     --accent-tint: rgba(210, 112, 80, 0.12);
     --accent-hair: rgba(210, 112, 80, 0.25);
 
     --add-bg: rgba(47, 111, 79, 0.15);
+    --add-bg-strong: rgba(47, 111, 79, 0.35);
     /* Add/del foregrounds also appear on --elevated (claim badges live in the
        evidence panel), so their AAA target is the worst dark surface. */
     --add-fg: #95D4B4;
     --del-bg: rgba(163, 61, 43, 0.15);
+    --del-bg-strong: rgba(163, 61, 43, 0.35);
     --del-fg: #F4B7AC;
 
     /* Semantic foregrounds lifted to clear WCAG AAA 7:1 on all dark

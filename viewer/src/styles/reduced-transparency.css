@@ -9,4 +9,10 @@
   [data-blur] {
     background: var(--paper) !important;
   }
+
+  .learn-dialog__overlay,
+  .export-modal__overlay,
+  .search-overlay__backdrop {
+    background: var(--paper) !important;
+  }
 }

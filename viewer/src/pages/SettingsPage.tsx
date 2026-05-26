@@ -595,6 +595,26 @@ export function nextModelForProviderSelection(
   return modelOptions.includes(currentModel) ? currentModel : modelOptions[0];
 }
 
+export function providerFormFromConfig(config: ConfigResponse): ProviderForm {
+  return {
+    generate_provider: config.generate_provider ?? '',
+    generate_model: config.generate_model ?? '',
+    judge_provider: config.judge_provider ?? '',
+    judge_model: config.judge_model ?? '',
+    llm: { ...config.llm },
+  };
+}
+
+export function providerFormsEqual(a: ProviderForm, b: ProviderForm): boolean {
+  return (
+    a.generate_provider === b.generate_provider
+    && a.generate_model === b.generate_model
+    && a.judge_provider === b.judge_provider
+    && a.judge_model === b.judge_model
+    && PROVIDER_LLM_CONFIG_KEYS.every((key) => a.llm[key] === b.llm[key])
+  );
+}
+
 export function buildProviderConfigUpdatePayload(
   form: ProviderForm,
   config: ConfigResponse,
@@ -740,17 +760,15 @@ function ProviderTab({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
   const [showNewProvider, setShowNewProvider] = useState(false);
+  const seededProviderConfigRef = useRef<ProviderForm | null>(null);
 
   useEffect(() => {
-    if (config) {
-      setForm({
-        generate_provider: config.generate_provider ?? '',
-        generate_model: config.generate_model ?? '',
-        judge_provider: config.judge_provider ?? '',
-        judge_model: config.judge_model ?? '',
-        llm: { ...config.llm },
-      });
-    }
+    if (!config) return;
+    const next = providerFormFromConfig(config);
+    const prev = seededProviderConfigRef.current;
+    if (prev && providerFormsEqual(prev, next)) return;
+    seededProviderConfigRef.current = next;
+    setForm(next);
   }, [config]);
 
   const dirty = Boolean(

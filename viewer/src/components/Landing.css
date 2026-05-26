@@ -22,21 +22,17 @@
     var(--paper);
 }
 
-/* Nameplate folio — the broadsheet masthead crumb pinned to the top edge,
-   carried on a hairline. Decorative brand text, so it needs no i18n string. */
+/* Nameplate folio rule. Localized folio text is rendered in the DOM; this
+   pseudo-element only draws the masthead hairline so CSS never owns copy. */
 .hero::before {
-  content: 'AHADIFF FOLIO · VERIFIED DIFF LEARNING';
+  content: "";
   position: absolute;
   top: var(--sp-4);
   left: clamp(20px, 4vw, 64px);
   right: clamp(20px, 4vw, 64px);
   padding-bottom: var(--sp-3);
   border-bottom: 1px solid var(--hair);
-  font-family: var(--font-mono);
-  font-size: var(--fs-eyebrow);
-  letter-spacing: var(--ls-eyebrow);
-  text-transform: uppercase;
-  color: var(--muted-2);
+  pointer-events: none;
 }
 
 .hero-grid {
@@ -802,6 +798,19 @@
       font-size: 3em;
       padding-right: var(--sp-2);
     }
+  }
+
+  :lang(zh) .hero .lead::first-letter,
+  :lang(zh-CN) .hero .lead::first-letter {
+    -webkit-initial-letter: normal;
+    initial-letter: normal;
+    float: none;
+    font-size: inherit;
+    line-height: inherit;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    font-weight: inherit;
   }
 
   .landing .steps {

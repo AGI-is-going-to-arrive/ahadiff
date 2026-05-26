@@ -10,6 +10,8 @@ import {
   isPreferencesFormDirty,
   modelOptionsForProvider,
   nextModelForProviderSelection,
+  providerFormFromConfig,
+  providerFormsEqual,
   preferencesFormFromConfig,
   type ProviderForm,
 } from '../SettingsPage';
@@ -71,11 +73,7 @@ function makeConfig(overrides: Partial<ConfigResponse> = {}): ConfigResponse {
 
 function formFromConfig(config: ConfigResponse, overrides: Partial<ProviderForm> = {}): ProviderForm {
   return {
-    generate_provider: config.generate_provider ?? '',
-    generate_model: config.generate_model ?? '',
-    judge_provider: config.judge_provider ?? '',
-    judge_model: config.judge_model ?? '',
-    llm: { ...config.llm },
+    ...providerFormFromConfig(config),
     ...overrides,
   };
 }
@@ -135,6 +133,32 @@ describe('SettingsPage provider/model helpers', () => {
       generate_model: 'gpt-5.5',
       judge_model: 'gpt-5.5-judge',
     });
+  });
+
+  it('compares provider form seed values by persisted config instead of object identity', () => {
+    const config = makeConfig();
+    const first = providerFormFromConfig(config);
+    const identityFresh = providerFormFromConfig({
+      ...config,
+      llm: { ...config.llm },
+      learn: { ...config.learn },
+      quiz: { ...config.quiz },
+    });
+
+    expect(providerFormsEqual(first, identityFresh)).toBe(true);
+    expect(providerFormsEqual(first, { ...identityFresh, generate_model: 'gpt-5.5' })).toBe(false);
+    expect(providerFormsEqual(first, {
+      ...identityFresh,
+      llm: { ...identityFresh.llm, max_concurrent: identityFresh.llm.max_concurrent + 1 },
+    })).toBe(false);
+  });
+
+  it('ProviderTab source guards config reseeding during locale-triggered refetches', () => {
+    const src = readFileSync(resolve(__dirname, '../SettingsPage.tsx'), 'utf-8');
+
+    expect(src).toContain('const seededProviderConfigRef = useRef<ProviderForm | null>(null);');
+    expect(src).toContain('if (prev && providerFormsEqual(prev, next)) return;');
+    expect(src).toContain('setForm(next);');
   });
 
   it('guards integration actions against unmounting while async work is pending', () => {

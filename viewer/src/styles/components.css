@@ -107,17 +107,6 @@ hr.rule{border:0;border-top:1px solid var(--hair);margin:24px 0}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--hair-strong);border-radius:10px;border:2px solid var(--paper)}
 
-/* Landing */
-.hero{padding:72px 40px 56px;border-bottom:1px solid var(--hair);position:relative;overflow:hidden}
-.hero::after{content:"";position:absolute;top:-40%;right:-10%;width:420px;height:420px;background:radial-gradient(circle,var(--accent-soft) 0%,transparent 65%);opacity:.5;pointer-events:none;z-index:0}
-.hero-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:64px;align-items:center;max-width:1280px;position:relative;z-index:1}
-.hero h1{font-family:var(--font-serif);font-weight:500;font-size:68px;letter-spacing:-.032em;line-height:1.02;margin:0}
-.hero h1 em{font-style:italic;color:var(--accent-ink)}
-.hero .en{font-family:var(--font-serif);font-style:italic;color:var(--muted);font-size:18px;margin-top:18px}
-.hero .lead{margin-top:24px;font-size:16.5px;color:var(--ink-2);max-width:540px;line-height:1.75}
-.hero-ctas{display:flex;gap:12px;margin-top:32px;align-items:center;flex-wrap:wrap}
-.hero-ctas .text{color:var(--muted);font-size:13px;font-family:var(--font-mono)}
-
 .hero-demo{position:relative;border:1px solid var(--hair);border-radius:14px;background:#fff;padding:18px;box-shadow:0 30px 60px -40px rgba(120,80,40,.45),0 2px 6px -4px rgba(120,80,40,.1)}
 .hero-demo .tabs{display:flex;gap:6px;margin-bottom:12px}
 .hero-demo .tab{padding:6px 13px;border-radius:8px;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--subtle);cursor:pointer;transition:all .15s}
@@ -788,106 +777,6 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 
 /* BOLDER OVERLAY tokens are defined in tokens.css (authoritative) */
 
-/* ================ A · Landing Hero — editorial drama ============ */
-[data-page="landing"] .hero{
-  padding: clamp(68px, 8vw, 128px) clamp(24px, 5vw, 56px) clamp(56px, 7vw, 104px);
-  border-top: 1px solid var(--folio-line);
-  background:
-    radial-gradient(1200px 320px at 20% -10%, rgba(210,112,80,.07), transparent 60%),
-    linear-gradient(180deg, rgba(255,253,247,.95), rgba(255,253,247,0) 40%),
-    var(--paper);
-}
-[data-page="landing"] .hero::before{
-  content:"AHADIFF · FOLIO № 01 · VERIFIED DIFF LEARNING";
-  position:absolute;
-  top: 14px;
-  left: clamp(24px, 5vw, 56px);
-  right: clamp(24px, 5vw, 56px);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: .34em;
-  text-transform: uppercase;
-  color: var(--muted-2);
-  display:flex; align-items:center; gap: 14px;
-  z-index: 2;
-  padding-top: 12px;
-  border-top: 1px solid transparent;
-}
-/* 巨大衬线 italic h1，bold 实心高亮 em，老牌报刊 folio 感
-   (Gemini review fix: 平滑 clamp 跨桌面/平板/移动，单一公式消除 768px 断层) */
-[data-page="landing"] .hero h1{
-  font-family: var(--font-serif);
-  font-size: clamp(2.35rem, 3.8vw + 1rem, 5.8rem);
-  font-weight: var(--bolder-thin);
-  font-style: italic;
-  line-height: .98;
-  letter-spacing: -.028em;
-  font-variation-settings: "opsz" 72;
-  color: var(--ink-blackletter);
-  margin-top: 8px;
-}
-[data-page="landing"] .hero h1 em{
-  font-weight: var(--bolder-bold);
-  font-style: normal;
-  color: var(--accent-ink);
-  background-image: linear-gradient(
-    transparent 72%,
-    rgba(210,112,80,.22) 72%,
-    rgba(210,112,80,.22) 92%,
-    transparent 92%);
-  padding: 0 .08em;
-}
-
-[data-page="landing"] .hero .en{
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: clamp(15px, 1.3vw + 6px, 22px);
-  letter-spacing: .005em;
-  color: var(--muted);
-  margin-top: 20px;
-  opacity: .92;
-}
-
-/* drop-cap + 更细腻的 lead */
-[data-page="landing"] .hero .lead{
-  font-size: clamp(15.5px, 1vw + 10px, 18px);
-  max-width: 56ch;
-  color: var(--ink-2);
-  line-height: 1.72;
-}
-/* Drop-cap (Gemini review fix: CJK 方块字友好——首字符"知"不被切裁
-   策略: 字号适度(2.6em)、line-height 1、padding 顶部 2px 让方块字顶边气眼、
-   vertical-align baseline 保持基线；Noto Serif SC 700 已加载用于兜底) */
-[data-page="landing"] .hero .lead::first-letter{
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-style: normal;
-  font-size: 2.6em;
-  float: left;
-  line-height: 1;
-  padding: 2px 10px 0 0;
-  margin-top: .08em;
-  color: var(--ink-blackletter);
-  font-synthesis: none;
-  vertical-align: baseline;
-}
-
-/* CLI-style CTA label — 终端黑底色带 */
-[data-page="landing"] .hero-ctas .text{
-  background: var(--ink-blackletter);
-  color: #FBEADD;
-  padding: 7px 12px;
-  border-radius: 4px;
-  font-weight: 500;
-  font-feature-settings: "ss01","tnum";
-  letter-spacing: .02em;
-  box-shadow:
-    0 1px 0 rgba(0,0,0,.28),
-    inset 0 1px 0 rgba(255,255,255,.08),
-    inset 0 0 0 1px rgba(250,240,232,.05);
-}
-
 /* ================ B · Verified 印章 ============================== */
 [data-page="landing"] .badge.verified,
 [data-page="lesson"] .badge.verified,
@@ -1055,17 +944,6 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
   pointer-events:none;
 }
 
-/* ================ H · Topbar — archival crumb =================== */
-.topbar{ border-bottom: 1px solid var(--hair); }
-.topbar .crumb{
-  font-family: var(--font-serif);
-  font-size: 14.5px;
-  font-style: italic;
-  letter-spacing: .005em;
-  color: var(--ink-2);
-}
-.topbar .crumb .sep{ color: var(--accent); font-style: normal; padding: 0 6px; font-weight: 500; }
-
 /* ================ I · Primary button — inkstone ================= */
 .btn.primary{
   background: var(--ink-blackletter);
@@ -1155,15 +1033,6 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
     -webkit-print-color-adjust:exact;
     print-color-adjust:exact;
   }
-  [data-page="landing"] .hero::before{
-    color: #000 !important;
-    border-top-color: #000 !important;
-    background: transparent !important;
-    letter-spacing: .36em;
-    -webkit-print-color-adjust:exact;
-    print-color-adjust:exact;
-  }
-  [data-page="landing"] .hero::after{ display: none; }
   .card::before{ display: none; }
   .btn.primary{
     background: #000 !important;
@@ -1174,8 +1043,6 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
 
 /* ================ O · Reduced transparency ===================== */
 @media (prefers-reduced-transparency: reduce){
-  [data-page="landing"] .hero{ background: var(--paper); }
-  [data-page="landing"] .hero::after{ display: none; }
   .hero::after{ display: none; }
 }
 
@@ -1192,9 +1059,6 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
     color: CanvasText !important;
   }
   [data-page="landing"] .badge.verified::after{ display:none; }
-  [data-page="landing"] .hero h1 em{
-    background-image: none; color: LinkText;
-  }
   .card::before{ background: LinkText; }
 }
 
@@ -1202,13 +1066,6 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
    Gemini review fix: 不再 override h1 font-size（现用单一 clamp 流式跨段），
    只调 padding、folio label、drop-cap 与 stamp 的微调 */
 @media (max-width: 768px){
-  [data-page="landing"] .hero{ padding: 60px 20px 44px; }
-  [data-page="landing"] .hero::before{
-    font-size: 9px; letter-spacing: .26em; top: 10px;
-  }
-  [data-page="landing"] .hero .lead::first-letter{
-    font-size: 2.3em; padding-right: 8px;
-  }
   [data-page="landing"] .badge.verified,
   [data-page="lesson"] .badge.verified{ transform: rotate(-2deg); }
   .page-head h1{ font-size: clamp(1.6rem, 6vw, 2.1rem); }

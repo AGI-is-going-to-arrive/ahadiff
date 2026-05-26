@@ -11,10 +11,12 @@ type WebManifestIcon = {
 };
 
 type WebManifest = {
+  background_color?: string;
   id?: string;
   start_url?: string;
   scope?: string;
   display?: string;
+  theme_color?: string;
   icons?: WebManifestIcon[];
 };
 
@@ -38,6 +40,8 @@ describe('PWA manifest', () => {
     expect(manifest.start_url).toBe('./');
     expect(manifest.scope).toBe('./');
     expect(manifest.display).toBe('standalone');
+    expect(manifest.background_color).toBe('#FAF8F2');
+    expect(manifest.theme_color).toBe('#FAF8F2');
     expect(icons).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
