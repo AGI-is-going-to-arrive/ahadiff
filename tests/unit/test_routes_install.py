@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from starlette.testclient import TestClient
 
@@ -623,6 +623,89 @@ def test_install_and_uninstall_mutations_write_only_tmp_repo(tmp_path: Path) -> 
     assert "AHADIFF:BEGIN target=codex" not in agents_path.read_text(encoding="utf-8")
     assert uninstalled.json()["target"]["detected"] is False
     assert uninstalled.json()["target"]["usage_hint"] == installed.json()["target"]["usage_hint"]
+
+
+def test_install_mutation_rolls_back_partial_write_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import os
+    import stat
+
+    import pytest
+
+    from ahadiff.contracts.serve_install import InstallMutationRequest
+    from ahadiff.install.base import InstallAction, InstallContext, InstallPlan
+
+    if os.name == "nt":
+        pytest.skip("POSIX executable mode bits are not portable on Windows")
+
+    state_dir = tmp_path / "repo" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    existing = state_dir.parent / "AGENTS.md"
+    created = state_dir.parent / ".agents" / "skills" / "ahadiff" / "SKILL.md"
+    existing.write_text("user text", encoding="utf-8")
+    existing.chmod(0o750)
+
+    class FailingTarget:
+        name = "codex"
+
+        def detect(self, _context: InstallContext) -> bool:
+            return False
+
+        def preview(self, _context: InstallContext) -> str:
+            return "preview\n"
+
+        def preview_uninstall(self, _context: InstallContext) -> str:
+            return "preview uninstall\n"
+
+        def _plan(self, context: InstallContext) -> InstallPlan:
+            return InstallPlan(
+                target="codex",
+                summary="Write Codex instructions.",
+                actions=(
+                    InstallAction(path=context.repo_root / "AGENTS.md", action="write"),
+                    InstallAction(
+                        path=context.repo_root / ".agents" / "skills" / "ahadiff" / "SKILL.md",
+                        action="write",
+                    ),
+                ),
+            )
+
+        def write(self, _context: InstallContext) -> list[Path]:
+            existing.write_text("partial\n", encoding="utf-8")
+            created.parent.mkdir(parents=True)
+            created.write_text("partial\n", encoding="utf-8")
+            raise RuntimeError("boom")
+
+        def uninstall(self, _context: InstallContext) -> list[Path]:
+            raise AssertionError("not used")
+
+    target = FailingTarget()
+    state = ServeState(state_dir=state_dir, token="test-token").with_runtime_lock()
+    context = cast("Any", routes_install_module)._target_context(state)  # pyright: ignore[reportPrivateUsage]
+    _, manifest_hash = cast("Any", routes_install_module)._manifest_preview_payload(  # pyright: ignore[reportPrivateUsage]
+        target,
+        context,
+    )
+
+    def fake_get_target(_name: str) -> FailingTarget:
+        return target
+
+    monkeypatch.setattr(routes_install_module, "get_target", fake_get_target)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        cast("Any", routes_install_module)._mutate_target_sync(  # pyright: ignore[reportPrivateUsage]
+            state,
+            "codex",
+            InstallMutationRequest(confirmed_manifest_hash=manifest_hash),
+            "install",
+            "en",
+        )
+
+    assert existing.read_text(encoding="utf-8") == "user text"
+    assert stat.S_IMODE(existing.stat().st_mode) == 0o750
+    assert not created.exists()
 
 
 def test_install_mutation_rejects_repo_root_override(tmp_path: Path) -> None:

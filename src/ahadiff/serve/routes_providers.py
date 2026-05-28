@@ -18,6 +18,7 @@ from anyio import to_thread
 from pydantic import ValidationError
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.run_source import ProviderConfig
 from ahadiff.contracts.serve_providers import (
     ModelLimitsPreviewRequest,
@@ -51,6 +52,7 @@ from ahadiff.llm.cost import resolve_model_limits
 from ahadiff.llm.probe import probe_provider
 from ahadiff.safety.audit import append_audit_record
 
+from ._errors import error_response
 from .auth import require_write_token, serve_state
 from .lock import serve_repo_write_lock
 from .routes_stats import provider_summary_from_mapping
@@ -141,7 +143,14 @@ def _clean_optional_provider_text(value: str | None, *, field_name: str) -> str 
 
 
 def _error(message: str, *, status: int) -> JSONResponse:
-    return JSONResponse({"error": message, "status": status}, status_code=status)
+    code = ErrorCode.INPUT_BAD_FIELD
+    if status == 404:
+        code = (
+            ErrorCode.PROVIDER_NOT_FOUND if message == "provider_not_found" else ErrorCode.NOT_FOUND
+        )
+    elif status >= 500:
+        code = ErrorCode.INTERNAL_ERROR
+    return error_response(code, message, status=status)
 
 
 def _provider_base_url_error(prefix: str, base_url: str) -> str:
@@ -152,9 +161,11 @@ def _provider_base_url_error(prefix: str, base_url: str) -> str:
 
 
 def _validation_error(exc: ValidationError, *, status: int = 422) -> JSONResponse:
-    return JSONResponse(
-        {"error": exc.errors(include_context=False, include_input=False), "status": status},
-        status_code=status,
+    return error_response(
+        ErrorCode.INPUT_VALIDATION,
+        "validation_error",
+        status=status,
+        details={"errors": exc.errors(include_context=False, include_input=False)},
     )
 
 

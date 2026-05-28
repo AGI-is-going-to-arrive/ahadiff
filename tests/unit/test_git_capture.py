@@ -1386,6 +1386,30 @@ def test_patch_url_rejects_oversize_chunk_before_reading_body(
         )
 
 
+def test_patch_url_rejects_negative_chunk_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    response = (
+        b"HTTP/1.1 200 OK\r\n"
+        b"Content-Type: text/plain\r\n"
+        b"Transfer-Encoding: chunked\r\n"
+        b"\r\n"
+        b"-1\r\n"
+        b"unsafe\r\n"
+    )
+    _install_fake_http(monkeypatch, [response])
+
+    with pytest.raises(InputError, match="invalid chunked response"):
+        capture_module.capture_patch(
+            workspace_root=workspace_root,
+            patch_url="http://patch.example/chunked.diff",
+            max_patch_bytes=10,
+        )
+
+
 def test_patch_url_rejects_wrong_content_type(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -170,6 +170,34 @@ def test_resolve_provider_keeps_distinct_implicit_aliases_ambiguous() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("base_url", "message"),
+    [
+        ("http://169.254.169.254/latest/meta-data", "metadata host"),
+        ("http://0.0.0.0:8318/v1", "non-routable IP literal"),
+    ],
+)
+def test_resolve_provider_rejects_non_opt_in_localish_runtime_base_url(
+    base_url: str,
+    message: str,
+) -> None:
+    snapshot = _FakeConfigSnapshot()
+
+    with pytest.raises(AhaDiffError, match=message):
+        _resolve_provider_from_config(
+            snapshot=snapshot,
+            operation_label="lesson generation",
+            provider_name=None,
+            provider_class="openai",
+            base_url=base_url,
+            model=None,
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            privacy_mode="strict_local",
+            local_hosts=("127.0.0.1",),
+            strict_local_hosts=("127.0.0.1",),
+        )
+
+
 def test_resolve_provider_uses_configured_role_model_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2139,6 +2167,7 @@ def test_cancellation_after_persist_rolls_back_run_artifacts_and_skips_append_co
 
     cancelled = False
     append_called = False
+    import_cards_called = False
     run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
     finalized_path = run_path / "finalized.json"
     score_path = run_path / "score.json"
@@ -2157,12 +2186,19 @@ def test_cancellation_after_persist_rolls_back_run_artifacts_and_skips_append_co
         output_path.write_text("{}\n", encoding="utf-8")
         return output_path
 
+    def _import_cards_from_jsonl(*args: object, **kwargs: object) -> int:
+        nonlocal import_cards_called
+        del args, kwargs
+        import_cards_called = True
+        return 0
+
     _patch_completed_pipeline(
         monkeypatch,
         fake_repo,
         capture,
         on_persist=_persist_and_cancel,
     )
+    monkeypatch.setattr("ahadiff.review.database.import_cards_from_jsonl", _import_cards_from_jsonl)
     monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
 
     req = LearnRequest(workspace_root=fake_repo)
@@ -2170,6 +2206,7 @@ def test_cancellation_after_persist_rolls_back_run_artifacts_and_skips_append_co
         run_learn_pipeline(req, is_cancelled=lambda: cancelled)
 
     assert append_called is False
+    assert import_cards_called is False
     assert not finalized_path.exists()
     assert not score_path.exists()
     assert not run_path.exists()

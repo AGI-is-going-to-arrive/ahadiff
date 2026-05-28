@@ -7,6 +7,8 @@ import json
 import logging
 import subprocess
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from anyio import to_thread
@@ -20,6 +22,7 @@ from ahadiff.contracts.serve_install import (
     InstallTargetsResponse,
 )
 from ahadiff.core.errors import InputError
+from ahadiff.install import base as install_base
 from ahadiff.install.base import InstallContext
 from ahadiff.install.common import manifest_preview_for
 from ahadiff.install.registry import available_targets, get_target
@@ -35,6 +38,13 @@ if TYPE_CHECKING:
     from .state import ServeState
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _InstallPathSnapshot:
+    content: bytes | None
+    mode: int | None
+
 
 _TARGET_DESCRIPTIONS = {
     "aider": "Write AhaDiff guidance for Aider.",
@@ -146,6 +156,60 @@ def _relative_paths(paths: list[Any], repo_root: Any) -> list[str]:
         except ValueError:
             result.append(str(path))
     return result
+
+
+def _manifest_paths_for_operation(
+    actions: dict[str, Any],
+    *,
+    operation: Literal["install", "uninstall"],
+    repo_root: Path,
+) -> list[Path]:
+    action_key = "write" if operation == "install" else "uninstall"
+    raw_actions = actions.get(action_key)
+    if not isinstance(raw_actions, list):
+        return []
+    paths: list[Path] = []
+    for raw_action in cast("list[object]", raw_actions):
+        if not isinstance(raw_action, dict):
+            continue
+        action_map = cast("dict[object, object]", raw_action)
+        raw_path = action_map.get("path")
+        if not isinstance(raw_path, str) or not raw_path:
+            continue
+        path = Path(raw_path)
+        paths.append(path if path.is_absolute() else repo_root / path)
+    return paths
+
+
+def _snapshot_install_paths(paths: list[Path]) -> dict[Path, _InstallPathSnapshot]:
+    snapshots: dict[Path, _InstallPathSnapshot] = {}
+    for path in paths:
+        try:
+            content, mode = install_base.read_bytes_and_mode_no_follow_regular(
+                path,
+                "install rollback target",
+            )
+            snapshots[path] = _InstallPathSnapshot(content=content, mode=mode)
+        except FileNotFoundError:
+            snapshots[path] = _InstallPathSnapshot(content=None, mode=None)
+    return snapshots
+
+
+def _restore_install_snapshots(snapshots: dict[Path, _InstallPathSnapshot]) -> None:
+    for path, snapshot in snapshots.items():
+        if snapshot.content is None:
+            if path.exists():
+                install_base._prepare_install_file_write(  # pyright: ignore[reportPrivateUsage]
+                    path,
+                    "install rollback target",
+                )
+                path.unlink()
+            continue
+        install_base._prepare_install_file_write(  # pyright: ignore[reportPrivateUsage]
+            path,
+            "install rollback target",
+        )
+        install_base.atomic_write_bytes(path, snapshot.content, mode=snapshot.mode)
 
 
 def _validate_install_options(name: str, *, layer2: bool) -> None:
@@ -265,14 +329,27 @@ def _mutate_target_sync(
         target = get_target(name)
     except ValueError as exc:
         raise InputError(str(exc)) from exc
-    _actions, manifest_hash = _manifest_preview_payload(target, context)
+    actions, manifest_hash = _manifest_preview_payload(target, context)
     if body.confirmed_manifest_hash != manifest_hash:
         raise InputError("confirmed_manifest_hash does not match current install manifest")
+    operation_paths = _manifest_paths_for_operation(
+        actions,
+        operation=operation,
+        repo_root=context.repo_root,
+    )
     with serve_repo_write_lock(state, command=f"serve {operation} {name}"):
-        if operation == "install":
-            updated_paths = target.write(context)
-        else:
-            updated_paths = target.uninstall(context)
+        snapshots = _snapshot_install_paths(operation_paths)
+        try:
+            if operation == "install":
+                updated_paths = target.write(context)
+            else:
+                updated_paths = target.uninstall(context)
+        except Exception:
+            try:
+                _restore_install_snapshots(snapshots)
+            except Exception:
+                log.exception("failed to roll back partial install mutation")
+            raise
         entry = _target_entry(name, state, context)
     normalized = _normalize_install_target_entry(entry, locale=locale)
     return InstallTargetMutationResponse.model_validate(

@@ -1031,15 +1031,17 @@ def test_classify_error_empty_connection_error_is_network() -> None:
 
 
 def test_classify_error_project_error_types() -> None:
-    from ahadiff.core.errors import ConfigError, SafetyError, VerificationError
+    from ahadiff.contracts import ErrorCode
+    from ahadiff.core.errors import AhaDiffError, ConfigError, SafetyError, VerificationError
 
     async def _inner() -> None:
-        runner = TaskRunner(max_concurrent=3)
+        runner = TaskRunner(max_concurrent=4)
 
         cases = [
             (ConfigError(), "config_error"),
             (SafetyError(), "permission_error"),
             (VerificationError(), "claim_error"),
+            (AhaDiffError(code=ErrorCode.LOCK_CONFLICT), "lock_conflict"),
         ]
         task_ids: list[tuple[str, str]] = []
         for exc, expected_code in cases:

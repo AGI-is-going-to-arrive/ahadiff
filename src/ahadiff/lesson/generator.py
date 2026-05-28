@@ -11,6 +11,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast
 
+from ahadiff.claims.extract import read_artifact_text_no_follow
 from ahadiff.contracts import PrivacyMode, ProviderConfig, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 
 LessonVariant = Literal["full", "hint", "compact"]
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
+_MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
 _PROMPT_FILENAMES: dict[LessonVariant, str] = {
     "full": "lesson_generate.md",
     "hint": "lesson_hint.md",
@@ -953,7 +955,7 @@ def _load_run_json(path: Path) -> dict[str, Any]:
 def _read_required_text(path: Path) -> str:
     if not path.exists():
         raise InputError(f"required run artifact is missing: {path}")
-    return path.read_text(encoding="utf-8")
+    return read_artifact_text_no_follow(path, max_bytes=_MAX_RUN_ARTIFACT_TEXT_BYTES)
 
 
 def _privacy_mode_from_metadata(metadata: dict[str, Any]) -> PrivacyMode:

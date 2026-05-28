@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from ahadiff.claims.extract import read_artifact_text_no_follow
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 
@@ -12,12 +13,14 @@ if TYPE_CHECKING:
     from ahadiff.eval.evaluator import ScoreReport
 
 CORE_TARGETED_DIMENSIONS = ("accuracy", "evidence", "safety_privacy")
+_MAX_SCORE_ARTIFACT_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
 class ScoreSnapshot:
     overall: float
     dimensions: dict[str, float]
+    verdict: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,7 +58,11 @@ def snapshot_from_report(report: ScoreReport) -> ScoreSnapshot:
     dimensions = {item.name: float(item.score) for item in report.dimensions}
     if not dimensions:
         raise InputError("score report does not contain dimension scores")
-    return ScoreSnapshot(overall=float(report.overall), dimensions=dimensions)
+    return ScoreSnapshot(
+        overall=float(report.overall),
+        dimensions=dimensions,
+        verdict=report.verdict,
+    )
 
 
 def load_score_snapshot(
@@ -95,7 +102,14 @@ def load_score_snapshot(
     overall = payload.get("overall")
     if not isinstance(overall, int | float):
         raise InputError(f"score.json overall must be numeric: {target}")
-    return ScoreSnapshot(overall=float(overall), dimensions=dimensions)
+    verdict = payload.get("verdict")
+    if verdict is not None and not isinstance(verdict, str):
+        raise InputError(f"score.json verdict must be a string: {target}")
+    return ScoreSnapshot(
+        overall=float(overall),
+        dimensions=dimensions,
+        verdict=verdict,
+    )
 
 
 def _validate_score_snapshot_identity(
@@ -127,7 +141,11 @@ def verify_targeted_dimensions(
     baseline_score = _score_for_dimensions(baseline, dimensions)
     candidate_score = _score_for_dimensions(candidate, dimensions)
     reason: str | None = None
-    if failed_gates:
+    if baseline.verdict not in {None, "PASS"}:
+        reason = "baseline_verdict_not_pass"
+    elif candidate.verdict not in {None, "PASS"}:
+        reason = "candidate_verdict_not_pass"
+    elif failed_gates:
         reason = "hard_gates_failed"
     elif candidate_score <= baseline_score:
         reason = "targeted_score_not_improved"
@@ -152,7 +170,10 @@ def _score_for_dimensions(snapshot: ScoreSnapshot, dimensions: tuple[str, ...]) 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
     try:
-        payload = safe_json_loads(path.read_text(encoding="utf-8"))
+        payload = safe_json_loads(
+            read_artifact_text_no_follow(path, max_bytes=_MAX_SCORE_ARTIFACT_BYTES),
+            max_input_bytes=_MAX_SCORE_ARTIFACT_BYTES,
+        )
     except ValueError as exc:
         raise InputError(f"invalid JSON file: {path}") from exc
     if not isinstance(payload, dict):

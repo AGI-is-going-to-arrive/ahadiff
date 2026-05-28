@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import cast
@@ -44,6 +45,38 @@ def test_benchmark_digest_detects_fixture_drift(tmp_path: Path) -> None:
     manifest = load_benchmark_manifest(manifest_path)
 
     assert compute_suite_digest(manifest) != manifest.suite_digest
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_benchmark_digest_rejects_symlink_fixture_file(tmp_path: Path) -> None:
+    local_benchmarks = tmp_path / "benchmarks"
+    shutil.copytree(_REPO_ROOT / "benchmarks", local_benchmarks)
+    manifest_path = local_benchmarks / "manifest.json"
+    fixture = local_benchmarks / "fixtures" / "eval" / "eval_001_python_retry" / "ground_truth.md"
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret\n", encoding="utf-8")
+    fixture.unlink()
+    fixture.symlink_to(outside)
+    manifest = load_benchmark_manifest(manifest_path)
+
+    with pytest.raises(InputError, match="must not be a symlink"):
+        compute_suite_digest(manifest)
+
+
+@pytest.mark.skipif(not hasattr(os, "link"), reason="requires hardlink support")
+def test_benchmark_digest_rejects_hardlinked_fixture_file(tmp_path: Path) -> None:
+    local_benchmarks = tmp_path / "benchmarks"
+    shutil.copytree(_REPO_ROOT / "benchmarks", local_benchmarks)
+    manifest_path = local_benchmarks / "manifest.json"
+    fixture = local_benchmarks / "fixtures" / "eval" / "eval_001_python_retry" / "ground_truth.md"
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret\n", encoding="utf-8")
+    fixture.unlink()
+    os.link(outside, fixture)
+    manifest = load_benchmark_manifest(manifest_path)
+
+    with pytest.raises(InputError, match="must not be a hardlink"):
+        compute_suite_digest(manifest)
 
 
 def test_benchmark_digest_detects_graph_fixture_drift(tmp_path: Path) -> None:

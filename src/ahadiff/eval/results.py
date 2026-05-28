@@ -23,6 +23,7 @@ from ahadiff.review.database import (
     select_result_tsv_rows,
     sync_result_event,
 )
+from ahadiff.safety.audit import _open_state_file_no_follow  # pyright: ignore[reportPrivateUsage]
 
 if TYPE_CHECKING:
     from .evaluator import ScoreReport
@@ -345,7 +346,8 @@ def _insert_result_event(db_path: Path, event: ResultEvent) -> bool:
 def _append_results_tsv(path: Path, event: ResultEvent) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     file_exists = path.exists()
-    with path.open("a", encoding="utf-8", newline="") as handle:
+    fd = _open_state_file_no_follow(path, os.O_CREAT | os.O_WRONLY | os.O_APPEND)
+    with os.fdopen(fd, "a", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
             handle,
             fieldnames=list(RESULTS_TSV_COLUMNS),

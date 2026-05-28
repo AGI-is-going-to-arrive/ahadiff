@@ -316,8 +316,17 @@ class TaskRunner:
             return "network_error"
         if isinstance(exc, PermissionError):
             return "permission_error"
-        from ahadiff.core.errors import ConfigError, ProviderError, SafetyError, VerificationError
+        from ahadiff.contracts import ErrorCode
+        from ahadiff.core.errors import (
+            AhaDiffError,
+            ConfigError,
+            ProviderError,
+            SafetyError,
+            VerificationError,
+        )
 
+        if isinstance(exc, AhaDiffError) and exc.code is ErrorCode.LOCK_CONFLICT:
+            return "lock_conflict"
         if isinstance(exc, ConfigError):
             return "config_error"
         if isinstance(exc, ProviderError):

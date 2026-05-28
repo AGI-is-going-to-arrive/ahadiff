@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.claims import load_line_map_records
+from ahadiff.claims.extract import read_artifact_text_no_follow
 from ahadiff.contracts import ClaimRecord, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
@@ -43,6 +44,7 @@ _JSON_FENCE_RE = re.compile(
 _LLM_JUDGE_PROMPT_FILENAME = "eval_judge.md"
 _LLM_JUDGE_OUTPUT_TOKEN_CAP = 4_000
 _SAFETY_FINDINGS_ARTIFACTS = ("safety_findings.json", "safety_findings.jsonl")
+_MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -820,13 +822,13 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 def _read_text(path: Path) -> str:
     if not path.exists():
         raise InputError(f"required run artifact is missing: {path}")
-    return path.read_text(encoding="utf-8")
+    return read_artifact_text_no_follow(path, max_bytes=_MAX_RUN_ARTIFACT_TEXT_BYTES)
 
 
 def _read_optional_text(path: Path) -> str:
     if not path.exists():
         return ""
-    return path.read_text(encoding="utf-8")
+    return read_artifact_text_no_follow(path, max_bytes=_MAX_RUN_ARTIFACT_TEXT_BYTES)
 
 
 def _sha256_short(text: str) -> str:
@@ -877,7 +879,10 @@ def _load_lesson_artifacts(lesson_dir: Path) -> dict[str, str]:
         "compact": lesson_dir / "lesson.compact.md",
     }
     return {
-        key: target.read_text(encoding="utf-8")
+        key: read_artifact_text_no_follow(
+            target,
+            max_bytes=_MAX_RUN_ARTIFACT_TEXT_BYTES,
+        )
         for key, target in lesson_files.items()
         if target.exists()
     }
@@ -889,7 +894,7 @@ def _load_jsonl_objects(path: Path, *, required: bool) -> tuple[dict[str, Any], 
             raise InputError(f"required run artifact is missing: {path}")
         return ()
     payloads: list[dict[str, Any]] = []
-    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for index, line in enumerate(_read_text(path).splitlines(), start=1):
         stripped = line.strip()
         if not stripped:
             continue
@@ -908,17 +913,6 @@ def _load_safety_findings(run_path: Path) -> tuple[dict[str, Any], ...]:
     for relative_path in _SAFETY_FINDINGS_ARTIFACTS:
         path = run_path / relative_path
         if not path.exists():
-            continue
-        if path.is_symlink():
-            findings.append(_safety_findings_load_failure(path, "symlink artifact rejected"))
-            continue
-        try:
-            stat = path.stat()
-        except OSError as exc:
-            findings.append(_safety_findings_load_failure(path, f"artifact stat failed: {exc}"))
-            continue
-        if getattr(stat, "st_nlink", 1) > 1:
-            findings.append(_safety_findings_load_failure(path, "hardlinked artifact rejected"))
             continue
         if path.suffix == ".jsonl":
             try:

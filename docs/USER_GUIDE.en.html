@@ -194,7 +194,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>What if the lesson gets skipped?</h3>
   <p>The diff might be too small, learnability might be too low, or there aren't enough verified claims. If you're sure this is the change you want to study, re-run with <code>--force-learn</code>.</p>
   <h3>How do I change quiz question count?</h3>
-  <p>Use Settings → Preferences. Fixed mode always asks the configured number of questions, from 1 to 30. Adaptive mode uses the captured diff stats; its default range is 3-12, and old runs without those stats fall back to the fixed count. Compatibility note: older AhaDiff versions reject saved values above 10.</p>
+  <p>Use Settings → Preferences. Fixed mode always asks the configured number of questions, from 1 to 30. Adaptive mode uses the captured diff stats; its default range is 3-12, and old runs without those stats fall back to the fixed count.</p>
   <h3>How are capture limits chosen?</h3>
   <p>New repos use auto capture sizing. AhaDiff first uses live provider probe data when available, then the bundled model registry, then conservative defaults. Total context, input limit, and output limit are resolved separately; the output reserve is subtracted from the input budget once. The only registry rows that deliberately store input plus output as total context are explicit split-envelope rows such as Gemini. Manual mode keeps the numbers you set in config or Settings. In Settings, the provider form previews these limits from the unsaved draft without remote probing, so changing provider class, model, or limits profile updates the hint before you save.</p>
   <h3>Does the LLM judge decide the final verdict?</h3>

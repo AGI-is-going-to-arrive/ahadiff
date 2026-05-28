@@ -36,6 +36,7 @@ from ahadiff.core.config import (
     load_workspace_security_config,
     local_hosts_for_privacy_mode,
     resolve_provider_api_key,
+    validate_provider_base_url,
 )
 from ahadiff.core.errors import AhaDiffError, ConfigError
 from ahadiff.core.paths import (
@@ -126,6 +127,7 @@ _TOTAL_STEPS = 10
 _DEFAULT_MAX_STEP_RETRIES = 2
 _LLM_STEP_MAX_RETRIES = 1
 _DEFAULT_ERROR_BUDGET = 8
+_DEFAULT_PROVIDER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 _MAX_BACKOFF_SECONDS = 30.0
 _TIMEOUT_OR_NETWORK_ERROR_MARKERS = (
     "connection",
@@ -518,6 +520,32 @@ def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
     return normalized
 
 
+def _runtime_allowed_provider_hosts(
+    *,
+    local_hosts: tuple[str, ...],
+    strict_local_hosts: tuple[str, ...],
+    privacy_mode: str,
+) -> tuple[str, ...]:
+    return (
+        *local_hosts_for_privacy_mode(
+            SecurityConfig(local_hosts=local_hosts, strict_local_hosts=strict_local_hosts),
+            privacy_mode,
+        ),
+        *_DEFAULT_PROVIDER_LOCAL_HOSTS,
+    )
+
+
+def _validate_runtime_provider_base_url(
+    base_url: str,
+    *,
+    allowed_local_hosts: tuple[str, ...],
+) -> str:
+    try:
+        return validate_provider_base_url(base_url, allowed_local_hosts=allowed_local_hosts)
+    except ConfigError as exc:
+        raise AhaDiffError(str(exc)) from exc
+
+
 def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:
     runtime_payload = {
         key: value for key, value in payload.items() if key in ProviderConfig.model_fields
@@ -616,9 +644,17 @@ def _resolve_provider_from_config(
     )
     provider_selection_explicit = base_url is not None or provider_name is not None
     provider_selection_from_config = False
+    allowed_local_hosts = _runtime_allowed_provider_hosts(
+        local_hosts=local_hosts,
+        strict_local_hosts=strict_local_hosts,
+        privacy_mode=privacy_mode,
+    )
 
     if base_url is not None:
-        normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
+        normalized_base_url = _validate_runtime_provider_base_url(
+            _normalize_provider_base_url(base_url, provider_class=provider_class),
+            allowed_local_hosts=allowed_local_hosts,
+        )
         provider_config = _provider_config_from_payload(
             {
                 "provider_class": provider_class,
@@ -667,9 +703,12 @@ def _resolve_provider_from_config(
             raise AhaDiffError(f"configured provider is missing or invalid: {resolved_name}")
         config_payload = cast("dict[str, Any]", raw_config_payload)
         normalized_payload = dict(config_payload)
-        normalized_payload["base_url"] = _normalize_provider_base_url(
-            str(normalized_payload["base_url"]),
-            provider_class=str(normalized_payload["provider_class"]),
+        normalized_payload["base_url"] = _validate_runtime_provider_base_url(
+            _normalize_provider_base_url(
+                str(normalized_payload["base_url"]),
+                provider_class=str(normalized_payload["provider_class"]),
+            ),
+            allowed_local_hosts=allowed_local_hosts,
         )
         if configured_model_override is not None:
             normalized_payload["model_name"] = configured_model_override
@@ -1801,6 +1840,16 @@ def run_learn_pipeline(
                     )
                     learn_warnings = _append_new_warnings(learn_warnings, persist_warnings)
 
+                    # ------------------------------------------------------------------
+                    # Step 10: append concepts + register repo
+                    # ------------------------------------------------------------------
+                    _emit(10, "Updating concepts")
+                    _check_cancelled(_cancelled)
+
+                    # Step 10 is the commit boundary for published learn results.
+                    # Once concepts write starts, late cancellation must not roll back
+                    # finalized artifacts or global concept state.
+
                     try:
                         from ahadiff.review.database import import_cards_from_jsonl
 
@@ -1811,16 +1860,6 @@ def run_learn_pipeline(
                         )
                     except Exception as review_import_error:
                         learn_warnings.append(f"review card import failed: {review_import_error}")
-
-                    # ------------------------------------------------------------------
-                    # Step 10: append concepts + register repo
-                    # ------------------------------------------------------------------
-                    _emit(10, "Updating concepts")
-                    _check_cancelled(_cancelled)
-
-                    # Step 10 is the commit boundary for published learn results.
-                    # Once concepts write starts, late cancellation must not roll back
-                    # finalized artifacts or global concept state.
 
                     try:
                         from ahadiff.git.capture import (

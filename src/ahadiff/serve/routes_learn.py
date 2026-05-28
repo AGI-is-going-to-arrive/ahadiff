@@ -28,6 +28,7 @@ from ahadiff.safety.ignore import resolve_safe_path_from_root
 
 from ._errors import error_response
 from .auth import require_write_token, serve_state
+from .lock import serve_repo_write_lock
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -502,26 +503,44 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
             content_lang=content_lang,
         )
 
-    capture = capture_with_limits(effective_capture_limits)
-    patch_text = str(capture.persisted_patch_text)
-    patch_bytes = len(patch_text.encode("utf-8"))
-    if effective_capture_limits.mode == "auto":
-        adjusted_capture_limits = _capture_recommendation_for_estimate(
-            root=root,
-            has_git_repo=has_git_repo,
-            snapshot=snapshot,
-            capture_config=capture_config,
-            cjk_factor=compute_cjk_factor(patch_text),
-        )
-        if (
-            adjusted_capture_limits.max_patch_bytes < effective_capture_limits.max_patch_bytes
-            and patch_bytes > adjusted_capture_limits.max_patch_bytes
-        ):
-            capture = capture_with_limits(adjusted_capture_limits)
+    def _capture_estimate_with_lock() -> tuple[Any, str, int, CaptureRecommendation, int]:
+        locked_limits = effective_capture_limits
+        locked_max_patch_bytes = max_patch_bytes
+        with serve_repo_write_lock(state, command="serve learn estimate"):
+            capture = capture_with_limits(locked_limits)
             patch_text = str(capture.persisted_patch_text)
             patch_bytes = len(patch_text.encode("utf-8"))
-        effective_capture_limits = adjusted_capture_limits
-        max_patch_bytes = effective_capture_limits.max_patch_bytes
+            if locked_limits.mode != "auto":
+                return capture, patch_text, patch_bytes, locked_limits, locked_max_patch_bytes
+            adjusted_capture_limits = _capture_recommendation_for_estimate(
+                root=root,
+                has_git_repo=has_git_repo,
+                snapshot=snapshot,
+                capture_config=capture_config,
+                cjk_factor=compute_cjk_factor(patch_text),
+            )
+            if (
+                adjusted_capture_limits.max_patch_bytes < locked_limits.max_patch_bytes
+                and patch_bytes > adjusted_capture_limits.max_patch_bytes
+            ):
+                capture = capture_with_limits(adjusted_capture_limits)
+                patch_text = str(capture.persisted_patch_text)
+                patch_bytes = len(patch_text.encode("utf-8"))
+            return (
+                capture,
+                patch_text,
+                patch_bytes,
+                adjusted_capture_limits,
+                adjusted_capture_limits.max_patch_bytes,
+            )
+
+    (
+        capture,
+        patch_text,
+        patch_bytes,
+        effective_capture_limits,
+        max_patch_bytes,
+    ) = await run_sync_in_thread(_capture_estimate_with_lock)
     file_count = _file_count_from_capture(capture)
     total_lines = len(patch_text.splitlines())
     estimated_tokens = estimate_text_tokens(patch_text, "char_div_4")

@@ -54,7 +54,7 @@ def test_task_detail_not_found(tmp_path: Path) -> None:
     response = client.get("/api/tasks/missing-task")
 
     assert response.status_code == 404
-    assert response.json() == {"error": "not_found", "status": 404}
+    assert response.json() == {"error_code": "NOT_FOUND", "error": "not_found", "status": 404}
 
 
 def test_task_cancel_without_token_returns_403(tmp_path: Path) -> None:
@@ -76,7 +76,7 @@ def test_task_cancel_with_token_returns_not_found_for_missing_task(tmp_path: Pat
     response = client.post("/api/tasks/missing-task/cancel", headers=_AUTH)
 
     assert response.status_code == 404
-    assert response.json() == {"error": "not_found", "status": 404}
+    assert response.json() == {"error_code": "NOT_FOUND", "error": "not_found", "status": 404}
 
 
 def test_task_progress_sse_not_found(tmp_path: Path) -> None:

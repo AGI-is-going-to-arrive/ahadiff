@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from ahadiff.claims.extract import read_artifact_text_no_follow
 from ahadiff.contracts import ClaimRecord, SourceHunk, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
@@ -30,6 +33,8 @@ _REQUIRED_INTEGRATION_FILES = (
     "expected_results_snapshot.json",
 )
 _OPTIONAL_INTEGRATION_DIGEST_FILES = ("graph.json",)
+_MAX_BENCHMARK_FIXTURE_BYTES = 16 * 1024 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 @dataclass(frozen=True)
@@ -158,11 +163,11 @@ def compute_suite_digest(manifest: BenchmarkManifest) -> str:
         digest_files = list(entry.required_files)
         if entry.kind == "integration":
             for filename in _OPTIONAL_INTEGRATION_DIGEST_FILES:
-                if (manifest.root / entry.path / filename).is_file():
+                if _fixture_file_exists(manifest.root / entry.path / filename):
                     digest_files.append(filename)
         for filename in digest_files:
             fixture_path = manifest.root / entry.path / filename
-            if not fixture_path.is_file():
+            if not _fixture_file_exists(fixture_path):
                 raise InputError(
                     f"benchmark fixture {entry.entry_id} is missing required file: {filename}"
                 )
@@ -170,7 +175,7 @@ def compute_suite_digest(manifest: BenchmarkManifest) -> str:
             chunks.append(
                 relative_path.encode("utf-8")
                 + b"\n"
-                + hashlib.sha256(fixture_path.read_bytes()).hexdigest().encode("ascii")
+                + hashlib.sha256(_read_fixture_bytes(fixture_path)).hexdigest().encode("ascii")
             )
     return hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()
 
@@ -275,9 +280,7 @@ def _parse_entry(raw_value: object, manifest_root: Path) -> BenchmarkEntry:
     if any(not isinstance(item, str) for item in raw_tag_items):
         raise InputError(f"benchmark manifest entry {entry_id} has invalid tags")
     entry_path = _safe_relative_path(raw_path)
-    fixture_root = manifest_root / entry_path
-    if not fixture_root.is_dir():
-        raise InputError(f"benchmark fixture directory does not exist: {raw_path}")
+    _validate_fixture_directory(manifest_root, entry_path, raw_path=raw_path)
     return BenchmarkEntry(
         entry_id=entry_id,
         kind=cast("BenchmarkEntryKind", kind),
@@ -297,6 +300,54 @@ def _safe_relative_path(raw_path: str) -> Path:
     return path
 
 
+def _validate_fixture_directory(manifest_root: Path, entry_path: Path, *, raw_path: str) -> None:
+    current = manifest_root
+    for part in entry_path.parts:
+        current = current / part
+        try:
+            path_stat = os.lstat(current)
+        except FileNotFoundError:
+            raise InputError(f"benchmark fixture directory does not exist: {raw_path}") from None
+        except OSError as exc:
+            raise InputError(f"benchmark fixture directory is unreadable: {raw_path}") from exc
+        if stat.S_ISLNK(path_stat.st_mode):
+            raise InputError(f"benchmark fixture directory must not be a symlink: {raw_path}")
+        if _has_windows_reparse_point(path_stat):
+            raise InputError(
+                f"benchmark fixture directory must not be a Windows reparse point: {raw_path}"
+            )
+        if not stat.S_ISDIR(path_stat.st_mode):
+            raise InputError(f"benchmark fixture directory does not exist: {raw_path}")
+
+
+def _fixture_file_exists(path: Path) -> bool:
+    try:
+        path_stat = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise InputError(f"benchmark fixture file must not be a symlink: {path}")
+    if _has_windows_reparse_point(path_stat):
+        raise InputError(f"benchmark fixture file must not be a Windows reparse point: {path}")
+    if stat.S_ISREG(path_stat.st_mode) and getattr(path_stat, "st_nlink", 1) > 1:
+        raise InputError(f"benchmark fixture file must not be a hardlink: {path}")
+    return stat.S_ISREG(path_stat.st_mode)
+
+
+def _read_fixture_text(path: Path) -> str:
+    return read_artifact_text_no_follow(path, max_bytes=_MAX_BENCHMARK_FIXTURE_BYTES)
+
+
+def _read_fixture_bytes(path: Path) -> bytes:
+    return _read_fixture_text(path).encode("utf-8")
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
 def _required_string(payload: dict[str, object], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
@@ -306,7 +357,10 @@ def _required_string(payload: dict[str, object], key: str) -> str:
 
 def _load_json_object(path: Path) -> dict[str, Any]:
     try:
-        payload = safe_json_loads(path.read_text(encoding="utf-8"))
+        payload = safe_json_loads(
+            _read_fixture_text(path),
+            max_input_bytes=_MAX_BENCHMARK_FIXTURE_BYTES,
+        )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise InputError(f"benchmark JSON file is invalid: {path}") from exc
     if not isinstance(payload, dict):
@@ -316,7 +370,7 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 def _load_jsonl_objects(path: Path) -> tuple[dict[str, Any], ...]:
     payloads: list[dict[str, Any]] = []
-    for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    for index, line in enumerate(_read_fixture_text(path).splitlines(), start=1):
         stripped = line.strip()
         if not stripped:
             continue
@@ -336,7 +390,7 @@ def _materialize_eval_fixture(
     temp_root: Path,
 ) -> Path:
     fixture_root = manifest_root / entry.path
-    patch_text = (fixture_root / "diff.patch").read_text(encoding="utf-8")
+    patch_text = _read_fixture_text(fixture_root / "diff.patch")
     ground_truth_text = _read_required_text(fixture_root / "ground_truth.md")
     ground_truth = _ground_truth_for_entry(
         entry=entry,
@@ -533,7 +587,7 @@ def _write_quiz_artifacts(
 
 def _claim_verification_rate(run_path: Path) -> float:
     records: list[dict[str, object]] = []
-    for line in (run_path / "claims.jsonl").read_text(encoding="utf-8").splitlines():
+    for line in _read_fixture_text(run_path / "claims.jsonl").splitlines():
         if line.strip():
             payload = safe_json_loads(line)
             if isinstance(payload, dict):
@@ -598,7 +652,7 @@ def _entry_claim_verification_rate(entry: dict[str, object]) -> float | None:
 
 def _read_required_text(path: Path) -> str:
     try:
-        return path.read_text(encoding="utf-8")
+        return _read_fixture_text(path)
     except (OSError, UnicodeDecodeError) as exc:
         raise InputError(f"benchmark text file is invalid: {path}") from exc
 

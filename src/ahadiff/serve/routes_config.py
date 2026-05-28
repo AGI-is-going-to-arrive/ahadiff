@@ -10,9 +10,13 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from anyio import to_thread
 from starlette.responses import JSONResponse
 
+from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.serve_app import ConfigResponse, ConfigUpdateResponse
 from ahadiff.contracts.serve_doctor import DoctorCheck, DoctorResponse
 from ahadiff.core.sqlite_util import safe_sqlite_connect
+
+from ._errors import error_response
+from .lock import serve_repo_write_lock
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -35,6 +39,10 @@ _CAPTURE_DEFAULTS: dict[str, Any] = {
     "file_ranking": "learning_value",
     "symbol_extractor": "auto",
 }
+
+
+def _config_error(message: str, *, status: int = 400) -> JSONResponse:
+    return error_response(ErrorCode.INPUT_BAD_FIELD, message, status=status)
 
 
 def _empty_config_snapshot() -> dict[str, Any]:
@@ -648,16 +656,6 @@ def _validate_effective_quiz_config(values: dict[str, object]) -> str | None:
     return None
 
 
-def _current_quiz_config_for_update(state: ServeState) -> dict[str, object]:
-    from ahadiff.core.config import read_config_data
-
-    config_path = state.state_dir / "config.toml"
-    if not config_path.exists():
-        return {}
-    raw_config = read_config_data(config_path)
-    return _object_mapping(raw_config.get("quiz"))
-
-
 def _validate_quiz_update(
     quiz: object,
     *,
@@ -695,13 +693,58 @@ def _validate_quiz_update(
     return validated
 
 
+def _validate_and_persist_config_with_lock(
+    app_state: Any,
+    state: ServeState,
+    persist_updates: dict[str, Any],
+    provider_alias_updates: dict[str, str],
+    has_quiz_update: bool,
+    quiz_update: object | None,
+    lang_update: Literal["en", "zh-CN"] | None,
+) -> str | None:
+    from ahadiff.core.config import read_config_data, write_config_data
+
+    config_path = state.state_dir.parent / ".ahadiff" / "config.toml"
+    with serve_repo_write_lock(state, command="serve config update"):
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        data = read_config_data(config_path) if config_path.exists() else {}
+        if provider_alias_updates:
+            raw_providers = data.get("providers")
+            providers = (
+                cast("dict[str, object]", raw_providers) if isinstance(raw_providers, dict) else {}
+            )
+            configured_aliases = set(providers)
+            for prov_key, pv_stripped in provider_alias_updates.items():
+                if pv_stripped and pv_stripped not in configured_aliases:
+                    return f"{prov_key} '{pv_stripped}' not found in configured providers"
+                persist_updates.setdefault("llm", {})[prov_key] = pv_stripped
+        if has_quiz_update:
+            current_quiz = _object_mapping(data.get("quiz"))
+            quiz_result = _validate_quiz_update(quiz_update, current_quiz=current_quiz)
+            if isinstance(quiz_result, str):
+                return quiz_result
+            if quiz_result:
+                persist_updates["quiz"] = quiz_result
+        if persist_updates:
+            for key, value in persist_updates.items():
+                if isinstance(value, dict):
+                    section = data.setdefault(key, {})
+                    section.update(value)
+                else:
+                    data[key] = value
+            write_config_data(config_path, data)
+        if lang_update is not None:
+            app_state.ahadiff = state.with_locale(lang_update)
+    return None
+
+
 async def put_config(request: Request) -> JSONResponse:
     from .auth import require_write_token, serve_state
 
     require_write_token(request)
     payload: Any = await request.json()
     if not isinstance(payload, dict):
-        return JSONResponse({"error": "expected JSON object", "status": 400}, status_code=400)
+        return error_response(ErrorCode.INPUT_BAD_FIELD, "expected JSON object", status=400)
 
     body = cast("dict[str, Any]", payload)
     allowed_keys: set[str] = {
@@ -719,157 +762,97 @@ async def put_config(request: Request) -> JSONResponse:
     }
     unknown: set[str] = set(body.keys()) - allowed_keys
     if unknown:
-        return JSONResponse(
-            {"error": f"unknown config keys: {sorted(unknown)}", "status": 400},
-            status_code=400,
-        )
+        return _config_error(f"unknown config keys: {sorted(unknown)}")
 
     state = serve_state(request)
     persist_updates: dict[str, Any] = {}
     lang_update: Literal["en", "zh-CN"] | None = None
+    provider_alias_updates: dict[str, str] = {}
+    has_quiz_update = False
+    quiz_update: object | None = None
 
     if "lang" in body:
         lang: str = str(body["lang"])
         if lang not in _ALLOWED_CONFIG_LANG:
-            return JSONResponse(
-                {"error": f"lang must be one of {sorted(_ALLOWED_CONFIG_LANG)}", "status": 400},
-                status_code=400,
-            )
+            return _config_error(f"lang must be one of {sorted(_ALLOWED_CONFIG_LANG)}")
         lang_update = cast("Literal['en', 'zh-CN']", lang)
         persist_updates["lang"] = lang
 
     if "privacy_mode" in body:
         pm: object = body["privacy_mode"]
         if not isinstance(pm, str) or pm not in _ALLOWED_PRIVACY_MODES:
-            return JSONResponse(
-                {
-                    "error": f"privacy_mode must be one of {sorted(_ALLOWED_PRIVACY_MODES)}",
-                    "status": 400,
-                },
-                status_code=400,
-            )
+            return _config_error(f"privacy_mode must be one of {sorted(_ALLOWED_PRIVACY_MODES)}")
         persist_updates["privacy_mode"] = pm
-
-    config_path = state.state_dir / "config.toml"
-    configured_aliases: set[str] = set()
-    if config_path.exists():
-        try:
-            from ahadiff.core.config import read_config_data
-
-            raw = read_config_data(config_path)
-            raw_providers = raw.get("providers")
-            if isinstance(raw_providers, dict):
-                providers = cast("dict[str, object]", raw_providers)
-                configured_aliases = set(providers)
-        except Exception:
-            pass
 
     for role in ("generate", "judge"):
         prov_key = f"{role}_provider"
         if prov_key in body:
             pv: object = body[prov_key]
             if not isinstance(pv, str):
-                return JSONResponse(
-                    {"error": f"{prov_key} must be a string", "status": 400},
-                    status_code=400,
-                )
+                return _config_error(f"{prov_key} must be a string")
             pv_stripped = pv.strip()
-            if pv_stripped and pv_stripped not in configured_aliases:
-                return JSONResponse(
-                    {
-                        "error": (f"{prov_key} '{pv_stripped}' not found in configured providers"),
-                        "status": 400,
-                    },
-                    status_code=400,
-                )
-            persist_updates.setdefault("llm", {})[prov_key] = pv_stripped
+            provider_alias_updates[prov_key] = pv_stripped
 
     if "generate_model" in body:
         gm: object = body["generate_model"]
         if not isinstance(gm, str) or not gm.strip():
-            return JSONResponse(
-                {"error": "generate_model must be a non-empty string", "status": 400},
-                status_code=400,
-            )
+            return _config_error("generate_model must be a non-empty string")
         persist_updates.setdefault("llm", {})["generate_model"] = gm.strip()
 
     if "judge_model" in body:
         jm: object = body["judge_model"]
         if not isinstance(jm, str) or not jm.strip():
-            return JSONResponse(
-                {"error": "judge_model must be a non-empty string", "status": 400},
-                status_code=400,
-            )
+            return _config_error("judge_model must be a non-empty string")
         persist_updates.setdefault("llm", {})["judge_model"] = jm.strip()
 
     if "serve_port" in body:
         sp: object = body["serve_port"]
         if not isinstance(sp, int) or isinstance(sp, bool):
-            return JSONResponse(
-                {"error": "serve_port must be an integer", "status": 400},
-                status_code=400,
-            )
+            return _config_error("serve_port must be an integer")
         if sp < 1024 or sp > 65535:
-            return JSONResponse(
-                {"error": "serve_port must be between 1024 and 65535", "status": 400},
-                status_code=400,
-            )
+            return _config_error("serve_port must be between 1024 and 65535")
         persist_updates.setdefault("serve", {})["port"] = sp
 
     if "llm" in body:
         llm_result = _validate_llm_update(body["llm"])
         if isinstance(llm_result, str):
-            return JSONResponse({"error": llm_result, "status": 400}, status_code=400)
+            return _config_error(llm_result)
         if llm_result:
             persist_updates.setdefault("llm", {}).update(llm_result)
 
     if "capture" in body:
         result = _validate_capture_update(body["capture"])
         if isinstance(result, str):
-            return JSONResponse({"error": result, "status": 400}, status_code=400)
+            return _config_error(result)
         if result:
             persist_updates["capture"] = result
 
     if "learn" in body:
         learn_result = _validate_learn_update(body["learn"])
         if isinstance(learn_result, str):
-            return JSONResponse({"error": learn_result, "status": 400}, status_code=400)
+            return _config_error(learn_result)
         if learn_result:
             persist_updates["learn"] = learn_result
 
     if "quiz" in body:
+        has_quiz_update = True
+        quiz_update = body["quiz"]
+
+    if persist_updates or provider_alias_updates or has_quiz_update:
         try:
-            current_quiz = await to_thread.run_sync(_current_quiz_config_for_update, state)
-        except Exception as exc:
-            return JSONResponse(
-                {"error": f"cannot read current quiz config: {exc}", "status": 400},
-                status_code=400,
+            config_error = await to_thread.run_sync(
+                _validate_and_persist_config_with_lock,
+                request.app.state,
+                state,
+                persist_updates,
+                provider_alias_updates,
+                has_quiz_update,
+                quiz_update,
+                lang_update,
             )
-        quiz_result = _validate_quiz_update(body["quiz"], current_quiz=current_quiz)
-        if isinstance(quiz_result, str):
-            return JSONResponse({"error": quiz_result, "status": 400}, status_code=400)
-        if quiz_result:
-            persist_updates["quiz"] = quiz_result
-
-    if persist_updates:
-        from ahadiff.core.config import read_config_data, write_config_data
-
-        def _persist_config(s: ServeState) -> None:
-            config_path = s.state_dir.parent / ".ahadiff" / "config.toml"
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            data = read_config_data(config_path) if config_path.exists() else {}
-            for key, value in persist_updates.items():
-                if isinstance(value, dict):
-                    section = data.setdefault(key, {})
-                    section.update(value)
-                else:
-                    data[key] = value
-            write_config_data(config_path, data)
-
-        assert state.write_lock is not None
-        async with state.write_lock:
-            await to_thread.run_sync(_persist_config, state)
-            if lang_update is not None:
-                request.app.state.ahadiff = state.with_locale(lang_update)
+        except Exception as exc:
+            return _config_error(f"cannot update config: {exc}")
+        if config_error is not None:
+            return _config_error(config_error)
 
     return JSONResponse(ConfigUpdateResponse(updated=True, scope="session").model_dump(mode="json"))

@@ -17,6 +17,7 @@ from ahadiff.eval.results import load_result_events, review_db_path_for_run
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 from ahadiff.git.parser import parse_unified_diff
 from ahadiff.git.symbols import extract_symbols, serialize_symbols_payload
+from ahadiff.lesson import generator as lesson_generator_module
 from ahadiff.lesson.generator import (
     LessonArtifactPaths,
     build_lesson_payload,
@@ -34,6 +35,17 @@ from ahadiff.quiz.generator import QuizArtifactPaths, write_quiz_questions_jsonl
 from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
 
 _RUNNER = CliRunner()
+
+
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="requires symlink support")
+def test_lesson_required_artifact_reader_rejects_symlink(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    link = tmp_path / "patch.diff"
+    link.symlink_to(outside)
+
+    with pytest.raises(InputError, match="symlink"):
+        lesson_generator_module._read_required_text(link)  # pyright: ignore[reportPrivateUsage]
 
 
 def _write_lesson_run_artifacts(

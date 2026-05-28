@@ -491,6 +491,29 @@ def test_append_result_catches_non_os_error_in_finalized_write(
     del original_write
 
 
+@pytest.mark.skipif(not hasattr(results_module.os, "symlink"), reason="requires symlink support")
+def test_append_result_does_not_follow_results_tsv_symlink(tmp_path: Path) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_results_tsv_symlink")
+    report = _report_for_run(run_path)
+    outside = tmp_path / "outside-results.tsv"
+    outside.write_text("outside\n", encoding="utf-8")
+    results_tsv_path_for_run(run_path).symlink_to(outside)
+
+    outcome = append_result(
+        run_path=run_path,
+        report=report,
+        status="non_ratcheted",
+        base_ref=None,
+        event_type="verify",
+        event_id="018f0f52-91c0-7abc-8123-000000000199",
+        write_finalized=False,
+    )
+
+    assert outcome.tsv_appended is False
+    assert any("results.tsv append failed" in warning for warning in outcome.warnings)
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+
+
 def test_finalized_artifact_digest_rejects_oversized_artifact(tmp_path: Path) -> None:
     run_path = _write_run_fixture(tmp_path, run_id="run_huge_artifact")
     large_artifact = run_path / "huge.bin"

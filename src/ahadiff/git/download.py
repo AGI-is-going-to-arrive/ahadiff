@@ -341,6 +341,8 @@ def _read_chunked_body(stream: Any, *, max_patch_bytes: int, deadline: float) ->
             chunk_size = int(size_text, 16)
         except ValueError as exc:
             raise InputError("patch URL returned invalid chunked response") from exc
+        if chunk_size < 0:
+            raise InputError("patch URL returned invalid chunked response")
         if chunk_size == 0:
             _consume_trailers(stream, deadline=deadline)
             return b"".join(chunks)

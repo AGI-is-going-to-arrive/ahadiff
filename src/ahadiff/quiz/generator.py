@@ -8,7 +8,11 @@ from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from ahadiff.claims.extract import load_line_map_records, load_symbol_records
+from ahadiff.claims.extract import (
+    load_line_map_records,
+    load_symbol_records,
+    read_artifact_text_no_follow,
+)
 from ahadiff.contracts import (
     ClaimRecord,
     PrivacyMode,
@@ -815,17 +819,7 @@ def _load_run_json(path: Path) -> dict[str, Any]:
 def _read_required_text(path: Path) -> str:
     if not path.exists():
         raise InputError(f"required run artifact is missing: {path}")
-    try:
-        with path.open("rb") as handle:
-            data = handle.read(_MAX_RUN_ARTIFACT_TEXT_BYTES + 1)
-    except OSError as exc:
-        raise InputError(f"required run artifact is unreadable: {path}") from exc
-    if len(data) > _MAX_RUN_ARTIFACT_TEXT_BYTES:
-        raise InputError(f"required run artifact exceeds size limit: {path}")
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise InputError(f"required run artifact is not valid UTF-8: {path}") from exc
+    return read_artifact_text_no_follow(path, max_bytes=_MAX_RUN_ARTIFACT_TEXT_BYTES)
 
 
 __all__ = [

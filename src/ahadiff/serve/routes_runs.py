@@ -21,6 +21,7 @@ from ahadiff.contracts import (
     ConceptLedgerEntry,
     ConceptLedgerPageResponse,
     ConceptsTextPageResponse,
+    ErrorCode,
     LearnabilityInfo,
     RatchetHistoryEntry,
     RunArtifactEnvelope,
@@ -127,6 +128,7 @@ _RATCHET_HISTORY_NOTE_KEYS = frozenset(
 _MAX_FINALIZED_ARTIFACTS = 64
 _MAX_FINALIZED_ARTIFACT_DIRS = 64
 _MAX_FINALIZED_ARTIFACT_BYTES = 16 * 1024 * 1024
+_MAX_FINALIZED_ARTIFACTS_TOTAL_BYTES = 50 * 1024 * 1024
 _CONCEPT_LEDGER_FIELDS = frozenset(
     {
         "term_key",
@@ -378,6 +380,7 @@ def _artifact_payload(
         if not_found_status_code is not None:
             return {
                 "_status_code": not_found_status_code,
+                "error_code": ErrorCode.RUN_ARTIFACT_NOT_FOUND.value,
                 "error": "artifact_not_found",
                 "status": not_found_status_code,
             }
@@ -1297,6 +1300,7 @@ def _bounded_finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
     artifact_paths: list[tuple[str, Path, os.stat_result]] = []
     stack = [run_path]
     dirs_seen = 0
+    total_bytes = 0
     while stack:
         current = stack.pop()
         dirs_seen += 1
@@ -1335,6 +1339,9 @@ def _bounded_finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
                 raise InputError("finalized run has too many artifacts")
             if entry_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
                 raise InputError("finalized run artifact exceeds size limit")
+            total_bytes += entry_stat.st_size
+            if total_bytes > _MAX_FINALIZED_ARTIFACTS_TOTAL_BYTES:
+                raise InputError("finalized run artifacts exceed total size limit")
             artifact_paths.append((relative_path, path, entry_stat))
     chunks = [
         relative_path.encode("utf-8")

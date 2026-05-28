@@ -278,6 +278,80 @@ def test_post_learn_estimate_passes_changed_paths_to_capture(
     assert captured_kwargs["changed_paths"] == ("src/app.py",)
 
 
+def test_post_learn_estimate_captures_under_repo_write_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+    lock_depth = 0
+
+    class RecordingLock:
+        def __enter__(self) -> None:
+            nonlocal lock_depth
+            lock_depth += 1
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            nonlocal lock_depth
+            del exc_type, exc, tb
+            lock_depth -= 1
+
+    def fake_lock(*_args: object, **_kwargs: object) -> RecordingLock:
+        return RecordingLock()
+
+    def fake_capture_patch(**_: object) -> SimpleNamespace:
+        assert lock_depth == 1
+        return SimpleNamespace(
+            persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
+            metadata={"selected_files": ["a.py"]},
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    monkeypatch.setattr(routes_learn, "serve_repo_write_lock", fake_lock)
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
+
+    response = _post_learn_estimate(client)
+
+    assert response.status_code == 200
+    assert lock_depth == 0
+
+
+def test_post_learn_estimate_uses_threadpool_for_capture_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text('[capture]\nmode = "manual"\n', encoding="utf-8")
+    client = _client(state_dir)
+    calls: list[str] = []
+
+    async def recording_run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
+        del kwargs
+        calls.append(getattr(func, "__name__", repr(func)))
+        return func(*args)
+
+    def fake_capture_patch(**_: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
+            metadata={"selected_files": ["a.py"]},
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    monkeypatch.setattr(routes_learn, "run_sync_in_thread", recording_run_sync)
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
+
+    response = _post_learn_estimate(client)
+
+    assert response.status_code == 200
+    assert "_capture_estimate_with_lock" in calls
+
+
 @pytest.mark.parametrize(
     "changed_path",
     [

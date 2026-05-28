@@ -96,7 +96,7 @@ ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch  # 需要安装 ahadiff[watchdog]</pre>
   <div class="demo">
-    <h3>工作流 CSS 动图 demo</h3>
+    <h3>工作流一览</h3>
     <div class="rail">
       <div class="node"><strong>Diff</strong><span>捕获代码改动</span></div>
       <div class="node"><strong>Claims</strong><span>绑定 file:line 证据</span></div>
@@ -194,7 +194,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h3>课程被跳过怎么办？</h3>
   <p>可能是 diff 太小、learnability 太低或 verified claims 不足。确认这是你想学习的改动后，可以使用 <code>--force-learn</code>。</p>
   <h3>怎么改测验题量？</h3>
-  <p>到 Settings → Preferences 里设置。固定模式会始终使用配置的题数，范围是 1 到 30；自适应模式会读取本次捕获到的 diff stats，默认范围是 3-12。旧 run 没有这些 stats 时，会回退到固定题数。兼容说明：旧版 AhaDiff 会拒绝保存的大于 10 的题量。</p>
+  <p>到 Settings → Preferences 里设置。固定模式会始终使用配置的题数，范围是 1 到 30；自适应模式会读取本次捕获到的 diff stats，默认范围是 3-12。旧 run 没有这些 stats 时，会回退到固定题数。</p>
   <h3>捕获上限怎么决定？</h3>
   <p>新 repo 默认使用自动捕获。AhaDiff 会优先使用 live provider probe，拿不到时用内置模型表，再拿不到才用保守默认值。total context、input limit 和 output limit 会分开解析；output reserve 只从 input budget 里扣一次。只有 Gemini 这类显式 split-envelope registry rows 会把 input 加 output 存成 total context。手动模式会继续使用你在 config 或 Settings 里保存的数字。在 Settings 里，provider 表单会按未保存的草稿实时预览这些上限，不会远程探测，所以切换 provider class、model 或 limits profile 后，可以先看到提示再保存。</p>
   <h3>LLM judge 会决定最终通过吗？</h3>

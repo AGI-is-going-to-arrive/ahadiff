@@ -48,6 +48,17 @@ if TYPE_CHECKING:
 _RUNNER = CliRunner()
 
 
+@pytest.mark.skipif(not hasattr(__import__("os"), "symlink"), reason="requires symlink support")
+def test_quiz_required_artifact_reader_rejects_symlink(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    link = tmp_path / "claims.jsonl"
+    link.symlink_to(outside)
+
+    with pytest.raises(InputError, match="symlink"):
+        quiz_generator_module._read_required_text(link)  # pyright: ignore[reportPrivateUsage]
+
+
 def _write_quiz_run_artifacts(workspace_root: Path, run_id: str) -> Path:
     run_path = workspace_root / ".ahadiff" / "runs" / run_id
     run_path.mkdir(parents=True)
@@ -1706,7 +1717,7 @@ def test_load_quiz_questions_rejects_oversized_artifact(
     )
     monkeypatch.setattr(quiz_generator_module, "_MAX_RUN_ARTIFACT_TEXT_BYTES", 8)
 
-    with pytest.raises(InputError, match="artifact exceeds size limit"):
+    with pytest.raises(InputError, match="artifact file too large"):
         load_quiz_questions(quiz_path)
 
 

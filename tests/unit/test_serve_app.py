@@ -427,6 +427,74 @@ def test_put_locale_persists_and_updates_config_lang(tmp_path: Path) -> None:
     assert 'lang = "zh-CN"' in (state_dir / "config.toml").read_text(encoding="utf-8")
 
 
+def test_put_locale_persists_under_repo_write_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    events: list[str] = []
+
+    class RecordingLock:
+        def __enter__(self) -> None:
+            events.append("enter")
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+            events.append("exit")
+
+    def fake_lock(_state: object, *, command: str) -> RecordingLock:
+        events.append(command)
+        return RecordingLock()
+
+    monkeypatch.setattr(routes_locale_module, "serve_repo_write_lock", fake_lock)
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/locale",
+        headers=_WRITE_HEADERS,
+        json={"lang": "zh-CN"},
+    )
+
+    assert response.status_code == 200
+    assert events == ["serve locale update", "enter", "exit"]
+
+
+def test_put_locale_updates_runtime_under_repo_write_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    app = create_app(
+        ServeState(state_dir=state_dir, token="test-token", locale="en", config_lang="en")
+    )
+    events: list[str] = []
+
+    class RecordingLock:
+        def __enter__(self) -> None:
+            events.append("enter")
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+            runtime_state = cast("ServeState", app.state.ahadiff)
+            events.append(f"exit:{runtime_state.config_lang}")
+
+    def fake_lock(_state: object, *, command: str) -> RecordingLock:
+        events.append(command)
+        return RecordingLock()
+
+    monkeypatch.setattr(routes_locale_module, "serve_repo_write_lock", fake_lock)
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    response = client.put(
+        "/api/locale",
+        headers=_WRITE_HEADERS,
+        json={"lang": "zh-CN"},
+    )
+
+    assert response.status_code == 200
+    assert events == ["serve locale update", "enter", "exit:zh-CN"]
+
+
 def test_put_locale_does_not_update_runtime_when_persist_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1011,6 +1079,7 @@ def test_learning_artifact_routes_return_404_when_artifact_is_missing(
     assert response.status_code == 404
     assert response.json() == {
         "error": "artifact_not_found",
+        "error_code": "RUN_ARTIFACT_NOT_FOUND",
         "status": 404,
     }
 
@@ -2456,6 +2525,24 @@ def test_bounded_finalized_artifact_digest_rejects_hardlinked_artifact(tmp_path:
     os.link(outside_path, artifact_path)
 
     with pytest.raises(InputError, match="hardlinked artifact"):
+        routes_runs_module._bounded_finalized_artifact_digest(  # pyright: ignore[reportPrivateUsage]
+            run_path
+        )
+
+
+def test_bounded_finalized_artifact_digest_rejects_aggregate_size_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core.errors import InputError
+
+    run_path = tmp_path / "run_total_limit"
+    run_path.mkdir()
+    (run_path / "one.txt").write_text("12345", encoding="utf-8")
+    (run_path / "two.txt").write_text("67890", encoding="utf-8")
+    monkeypatch.setattr(routes_runs_module, "_MAX_FINALIZED_ARTIFACTS_TOTAL_BYTES", 8)
+
+    with pytest.raises(InputError, match="total size limit"):
         routes_runs_module._bounded_finalized_artifact_digest(  # pyright: ignore[reportPrivateUsage]
             run_path
         )

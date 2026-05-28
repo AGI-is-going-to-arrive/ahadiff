@@ -785,7 +785,7 @@ def _select_anchor_event(*, state_dir: Path, db_path: Path) -> ResultEvent:
     for event in _sorted_events(load_result_events_from_db(db_path)):
         if event.event_type not in _SIGNAL_EVENT_TYPES:
             continue
-        if event.status not in _BASELINE_STATUSES:
+        if not _is_pass_baseline_event(event):
             continue
         run_path = state_dir / "runs" / event.run_id
         if (run_path / "finalized.json").exists():
@@ -799,7 +799,7 @@ def _select_anchor_event_by_run_id(*, state_dir: Path, db_path: Path, run_id: st
             continue
         if event.event_type not in _SIGNAL_EVENT_TYPES:
             continue
-        if event.status not in _BASELINE_STATUSES:
+        if not _is_pass_baseline_event(event):
             continue
         if (state_dir / "runs" / event.run_id / "finalized.json").exists():
             return event
@@ -842,11 +842,15 @@ def _select_baseline_event_for_source(
             continue
         if event.run_id != anchor_run_id:
             continue
-        if event.status in _BASELINE_STATUSES:
+        if _is_pass_baseline_event(event):
             if not (state_dir / "runs" / event.run_id / "finalized.json").exists():
                 continue
             return event
     return None
+
+
+def _is_pass_baseline_event(event: ResultEvent) -> bool:
+    return event.status in _BASELINE_STATUSES and event.verdict == "PASS"
 
 
 def _sorted_events(events: tuple[ResultEvent, ...]) -> list[ResultEvent]:

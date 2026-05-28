@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 from starlette.responses import JSONResponse, StreamingResponse
 
+from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.serve_runtime import (
     RecoveryHint,
     TaskCancelResponse,
@@ -20,6 +21,7 @@ from ahadiff.contracts.serve_runtime import (
 )
 from ahadiff.core.task_runner import TaskStatus
 
+from ._errors import error_response
 from .auth import require_write_token, serve_state
 
 if TYPE_CHECKING:
@@ -35,6 +37,7 @@ _USER_FACING_ERROR_MESSAGES = {
     "lesson_error": "Failed to generate lesson content.",
     "quiz_error": "Failed to generate quiz content.",
     "learnability_error": "Diff was not suitable for learning.",
+    "lock_conflict": "Another AhaDiff process is already running.",
     "cancelled": "Task was cancelled.",
     "internal_error": "Internal error occurred.",
 }
@@ -50,6 +53,7 @@ _RECOVERY_HINTS: dict[TaskErrorCode, RecoveryHint] = {
     "permission_error": "check_permissions",
     "learnability_error": "dismiss",
     "claim_error": "retry",
+    "lock_conflict": "retry",
     "cancelled": "none",
     "internal_error": "none",
 }
@@ -188,10 +192,10 @@ async def get_task(request: Request) -> JSONResponse:
     task_id = request.path_params["task_id"]
     runner = _task_runner(request)
     if runner is None:
-        return JSONResponse({"error": "not_found", "status": 404}, status_code=404)
+        return error_response(ErrorCode.NOT_FOUND, "not_found", status=404)
     info = runner.get_task(task_id)
     if info is None:
-        return JSONResponse({"error": "not_found", "status": 404}, status_code=404)
+        return error_response(ErrorCode.NOT_FOUND, "not_found", status=404)
     payload = TaskInfoResponse.model_validate(_serialize_task(info))
     return JSONResponse(payload.model_dump(mode="json"))
 
@@ -201,10 +205,10 @@ async def cancel_task(request: Request) -> JSONResponse:
     task_id = request.path_params["task_id"]
     runner = _task_runner(request)
     if runner is None:
-        return JSONResponse({"error": "not_found", "status": 404}, status_code=404)
+        return error_response(ErrorCode.NOT_FOUND, "not_found", status=404)
     cancelled = runner.cancel_task(task_id)
     if not cancelled:
-        return JSONResponse({"error": "not_found", "status": 404}, status_code=404)
+        return error_response(ErrorCode.NOT_FOUND, "not_found", status=404)
     return JSONResponse(TaskCancelResponse(cancelled=True).model_dump(mode="json"))
 
 

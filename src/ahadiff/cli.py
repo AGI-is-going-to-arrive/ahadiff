@@ -34,6 +34,7 @@ from .core.config import (
     local_hosts_for_privacy_mode,
     normalize_provider_base_url,
     resolve_provider_api_key,
+    validate_provider_base_url,
     write_default_config,
 )
 from .core.errors import AhaDiffError, ConfigError, InputError, StorageError
@@ -425,6 +426,9 @@ def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
     return project_state_dir(root) if has_git_repo else validate_state_dir_path(root / ".ahadiff")
 
 
+_DEFAULT_PROVIDER_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
 def _resolve_output_lang_from_snapshot(snapshot: Any, *, cli_lang: str | None) -> str:
     llm_config = cast("dict[str, Any]", snapshot.values["llm"])
     configured_output_lang = str(llm_config.get("output_lang", "auto"))
@@ -444,6 +448,32 @@ def _structured_validation_retries(llm_config: dict[str, Any]) -> int:
 
 def _normalize_provider_base_url(base_url: str, *, provider_class: str) -> str:
     return normalize_provider_base_url(base_url, provider_class=provider_class)
+
+
+def _runtime_allowed_provider_hosts(
+    *,
+    local_hosts: tuple[str, ...],
+    strict_local_hosts: tuple[str, ...],
+    privacy_mode: str,
+) -> tuple[str, ...]:
+    return (
+        *local_hosts_for_privacy_mode(
+            SecurityConfig(local_hosts=local_hosts, strict_local_hosts=strict_local_hosts),
+            privacy_mode,
+        ),
+        *_DEFAULT_PROVIDER_LOCAL_HOSTS,
+    )
+
+
+def _validate_runtime_provider_base_url(
+    base_url: str,
+    *,
+    allowed_local_hosts: tuple[str, ...],
+) -> str:
+    try:
+        return validate_provider_base_url(base_url, allowed_local_hosts=allowed_local_hosts)
+    except ConfigError as exc:
+        raise AhaDiffError(str(exc)) from exc
 
 
 def _provider_config_from_payload(payload: dict[str, Any]) -> ProviderConfig:
@@ -484,8 +514,16 @@ def _resolve_runtime_provider(
     )
     provider_selection_explicit = base_url is not None or provider_name is not None
     provider_selection_from_config = False
+    allowed_local_hosts = _runtime_allowed_provider_hosts(
+        local_hosts=local_hosts,
+        strict_local_hosts=strict_local_hosts,
+        privacy_mode=privacy_mode,
+    )
     if base_url is not None:
-        normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
+        normalized_base_url = _validate_runtime_provider_base_url(
+            _normalize_provider_base_url(base_url, provider_class=provider_class),
+            allowed_local_hosts=allowed_local_hosts,
+        )
         provider_config = _provider_config_from_payload(
             {
                 "provider_class": provider_class,
@@ -536,9 +574,12 @@ def _resolve_runtime_provider(
             raise AhaDiffError(f"configured provider is missing or invalid: {resolved_name}")
         config_payload = cast("dict[str, Any]", raw_config_payload)
         normalized_payload = dict(config_payload)
-        normalized_payload["base_url"] = _normalize_provider_base_url(
-            str(normalized_payload["base_url"]),
-            provider_class=str(normalized_payload["provider_class"]),
+        normalized_payload["base_url"] = _validate_runtime_provider_base_url(
+            _normalize_provider_base_url(
+                str(normalized_payload["base_url"]),
+                provider_class=str(normalized_payload["provider_class"]),
+            ),
+            allowed_local_hosts=allowed_local_hosts,
         )
         if configured_model_override is not None:
             normalized_payload["model_name"] = configured_model_override
@@ -3616,7 +3657,14 @@ def provider_test_cmd(
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
         resolved_model = model or str(llm_config["generate_model"])
-        normalized_base_url = _normalize_provider_base_url(base_url, provider_class=provider_class)
+        resolved_privacy_mode = cast("PrivacyMode", str(snapshot.values["privacy_mode"]))
+        normalized_base_url = _validate_runtime_provider_base_url(
+            _normalize_provider_base_url(base_url, provider_class=provider_class),
+            allowed_local_hosts=(
+                *local_hosts_for_privacy_mode(security_config, resolved_privacy_mode),
+                *_DEFAULT_PROVIDER_LOCAL_HOSTS,
+            ),
+        )
         model_limits_name: str | None = None
         raw_providers_table = snapshot.values.get("providers")
         if isinstance(raw_providers_table, dict):
@@ -3636,7 +3684,6 @@ def provider_test_cmd(
                 "api_key_env": api_key_env,
             }
         )
-        resolved_privacy_mode = cast("PrivacyMode", str(snapshot.values["privacy_mode"]))
         transport_target = transport_target_for_base_url(
             normalized_base_url,
             local_hosts=local_hosts_for_privacy_mode(security_config, resolved_privacy_mode),

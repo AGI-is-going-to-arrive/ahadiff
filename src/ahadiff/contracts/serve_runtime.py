@@ -19,6 +19,7 @@ TaskErrorCode = Literal[
     "lesson_error",
     "quiz_error",
     "learnability_error",
+    "lock_conflict",
     "cancelled",
     "internal_error",
 ]

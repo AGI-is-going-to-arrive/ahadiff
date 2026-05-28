@@ -891,13 +891,10 @@ def transport_target_for_base_url(
         if hostname_normalized in {"localhost", "127.0.0.1", "::1", *normalized_local_hosts}:
             return "local"
         return "remote"
-    if hostname_normalized in {"localhost", *normalized_local_hosts}:
+    if hostname_normalized in {"localhost", "127.0.0.1", "::1", *normalized_local_hosts}:
         return "local"
     try:
-        addr = ip_address(hostname)
-        if addr.is_loopback:
-            return "local"
-        if _is_non_public_ip(addr):
+        if str(ip_address(hostname)) in normalized_local_hosts:
             return "local"
     except ValueError:
         pass
@@ -918,6 +915,8 @@ def validate_remote_url(base_url: str) -> str | None:
         raise SafetyError(
             f"local transport scheme {parsed.scheme!r} not allowed in remote privacy mode"
         )
+    if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
+        raise SafetyError("provider base_url must not include URL userinfo")
     hostname = parsed.hostname
     if hostname is None:
         raise SafetyError(f"unable to determine hostname for base_url {base_url!r}")
@@ -958,16 +957,15 @@ def _pin_url_to_ip(
     original_hostname = parsed.hostname
     if not original_hostname:
         raise SafetyError(f"unable to determine hostname for base_url {url!r}")
+    if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
+        raise SafetyError("provider base_url must not include URL userinfo")
     if not pinned_ip:
         raise SafetyError("pinned IP must not be empty")
     # Bracket IPv6 addresses in URLs.
     ip_host = f"[{pinned_ip}]" if ":" in pinned_ip else pinned_ip
-    # Rebuild netloc preserving port and userinfo.
+    # Rebuild netloc preserving only the validated authority port.
     port_suffix = f":{parsed.port}" if parsed.port is not None else ""
-    userinfo = ""
-    if "@" in parsed.netloc:
-        userinfo = parsed.netloc.rsplit("@", 1)[0] + "@"
-    new_netloc = f"{userinfo}{ip_host}{port_suffix}"
+    new_netloc = f"{ip_host}{port_suffix}"
     pinned_url = parsed._replace(netloc=new_netloc).geturl()
     sni_hostname = original_hostname if parsed.scheme == "https" else None
     # Host header must include port when non-default (RFC 7230 §5.4).

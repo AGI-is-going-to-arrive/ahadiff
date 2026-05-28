@@ -2472,7 +2472,11 @@ def test_retry_succeeds_after_remote_protocol_error() -> None:
 
 
 def test_transport_target_accepts_loopback_ips_and_named_pipe_schemes() -> None:
-    assert transport_target_for_base_url("http://127.0.0.2:8000", local_hosts=()) == "local"
+    assert transport_target_for_base_url("http://127.0.0.2:8000", local_hosts=()) == "remote"
+    assert (
+        transport_target_for_base_url("http://127.0.0.2:8000", local_hosts=("127.0.0.2",))
+        == "local"
+    )
     assert transport_target_for_base_url("http://[::1]:8000", local_hosts=()) == "local"
     assert transport_target_for_base_url("npipe://./pipe/ollama", local_hosts=()) == "local"
     assert (

@@ -6,6 +6,7 @@ import subprocess
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
 from typer.testing import CliRunner
 
 from ahadiff import cli as cli_module
@@ -147,6 +148,41 @@ def test_runtime_provider_uses_configured_generate_model_override(
     )
 
     assert provider_config.model_name == "gpt-5.5"
+
+
+@pytest.mark.parametrize(
+    ("base_url", "message"),
+    [
+        ("http://10.0.0.1:8318/v1", "private/reserved IP literal"),
+        ("http://169.254.169.254/latest/meta-data", "metadata host"),
+        ("http://0.0.0.0:8318/v1", "non-routable IP literal"),
+    ],
+)
+def test_runtime_provider_rejects_non_opt_in_localish_literal_base_url(
+    base_url: str,
+    message: str,
+) -> None:
+    from ahadiff.core.errors import AhaDiffError
+
+    snapshot = SimpleNamespace(
+        values={"llm": {"generate_model": "gpt-5.5"}, "providers": {}},
+        resolved={},
+    )
+
+    with pytest.raises(AhaDiffError, match=message):
+        cli_module._resolve_runtime_provider(  # pyright: ignore[reportPrivateUsage]
+            snapshot=snapshot,
+            operation_label="lesson generation",
+            provider_name=None,
+            provider_class="openai",
+            base_url=base_url,
+            model=None,
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            privacy_mode="strict_local",
+            stdin_interactive=False,
+            local_hosts=("127.0.0.1",),
+            strict_local_hosts=("127.0.0.1",),
+        )
 
 
 def test_runtime_provider_treats_single_configured_remote_as_explicit(
@@ -732,3 +768,19 @@ def test_api_key_env_rejects_unsafe_names() -> None:
         validate_repo_api_key_env_name("GITHUB_TOKEN")
     validate_repo_api_key_env_name("AHADIFF_PROVIDER_API_KEY")
     validate_repo_api_key_env_name("OPENAI_API_KEY")
+
+
+def test_resolve_provider_api_key_does_not_send_missing_env_name(
+    monkeypatch: Any,
+) -> None:
+    from ahadiff.core.config import resolve_provider_api_key
+
+    monkeypatch.delenv("AHADIFF_PROVIDER_API_KEY", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("OpenAI_API_KEY", raising=False)
+    monkeypatch.delenv("MFRGGZDFMZTWQ2LK", raising=False)
+    assert resolve_provider_api_key("AHADIFF_PROVIDER_API_KEY") is None
+    assert resolve_provider_api_key("AWS_SECRET_ACCESS_KEY") is None
+    assert resolve_provider_api_key("OpenAI_API_KEY") is None
+    assert resolve_provider_api_key("MFRGGZDFMZTWQ2LK") is None
+    assert resolve_provider_api_key("literal-test-key") == "literal-test-key"

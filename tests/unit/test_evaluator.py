@@ -16,6 +16,7 @@ from ahadiff.contracts.eval_bundle import compute_runtime_eval_bundle_version
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
 from ahadiff.eval import evaluate_run, write_score_report
+from ahadiff.eval import evaluator as evaluator_module
 from ahadiff.eval.evaluator import evaluate_run_for_replay_calibration, run_llm_judge_for_run
 from ahadiff.eval.spec_alignment import (
     merge_semantic_review_into_artifact,
@@ -39,6 +40,17 @@ if TYPE_CHECKING:
 
 _RUNNER = CliRunner()
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_evaluator_read_text_rejects_symlink_artifact(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    link = tmp_path / "artifact.txt"
+    link.symlink_to(outside)
+
+    with pytest.raises(InputError, match="symlink"):
+        evaluator_module._read_text(link)  # pyright: ignore[reportPrivateUsage]
 
 
 def _write_run_fixture(

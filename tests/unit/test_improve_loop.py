@@ -699,6 +699,53 @@ def test_improve_baseline_selection_is_bound_to_source_base_and_anchor(
     assert baseline.run_id == "run_101"
 
 
+def test_improve_anchor_selection_skips_non_pass_events(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    initialize_review_db(db_path)
+    for run_id in ("run_fail", "run_pass"):
+        run_path = state_dir / "runs" / run_id
+        run_path.mkdir(parents=True)
+        (run_path / "finalized.json").write_text("{}\n", encoding="utf-8")
+    sync_result_event(
+        db_path,
+        _baseline_event(
+            run_id="run_fail",
+            source_ref="shared-head",
+            overall=99.0,
+            weakest_dim="accuracy",
+            timestamp="2026-04-24T00:00:02Z",
+            event_id="018f0f52-91c0-7abc-8123-000000000401",
+        ).model_copy(update={"verdict": "FAIL"}),
+    )
+    sync_result_event(
+        db_path,
+        _baseline_event(
+            run_id="run_pass",
+            source_ref="shared-head",
+            overall=70.0,
+            weakest_dim="learnability",
+            timestamp="2026-04-24T00:00:01Z",
+            event_id="018f0f52-91c0-7abc-8123-000000000402",
+        ),
+    )
+
+    anchor = cast("Any", improve_loop_module)._select_anchor_event(
+        state_dir=state_dir,
+        db_path=db_path,
+    )
+    baseline = cast("Any", improve_loop_module)._select_baseline_event_for_source(
+        state_dir=state_dir,
+        db_path=db_path,
+        source_ref="shared-head",
+        base_ref="base-ref",
+        anchor_run_id="run_fail",
+    )
+
+    assert anchor.run_id == "run_pass"
+    assert baseline is None
+
+
 def test_run_improve_loop_records_targeted_verify_and_cherry_picks(
     tmp_path: Path,
     monkeypatch: Any,

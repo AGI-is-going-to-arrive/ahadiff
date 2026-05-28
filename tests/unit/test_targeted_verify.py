@@ -90,6 +90,38 @@ def test_verify_targeted_dimensions_fails_on_hard_gate_failures() -> None:
     assert result.note_payload()["targeted_failed_gates"] == ["secret_leak"]
 
 
+def test_verify_targeted_dimensions_rejects_non_pass_candidate() -> None:
+    baseline = ScoreSnapshot(
+        overall=70.0,
+        verdict="PASS",
+        dimensions={
+            "learnability": 10.0,
+            "accuracy": 18.0,
+            "evidence": 16.0,
+            "safety_privacy": 6.0,
+        },
+    )
+    candidate = ScoreSnapshot(
+        overall=80.0,
+        verdict="FAIL",
+        dimensions={
+            "learnability": 20.0,
+            "accuracy": 18.0,
+            "evidence": 16.0,
+            "safety_privacy": 6.0,
+        },
+    )
+
+    result = verify_targeted_dimensions(
+        baseline=baseline,
+        candidate=candidate,
+        target_dimension="learnability",
+    )
+
+    assert result.passed is False
+    assert result.reason == "candidate_verdict_not_pass"
+
+
 def test_load_score_snapshot_reads_score_json_dimensions(tmp_path: Path) -> None:
     run_path = tmp_path / "run"
     run_path.mkdir()
@@ -103,6 +135,7 @@ def test_load_score_snapshot_reads_score_json_dimensions(tmp_path: Path) -> None
                     "safety_privacy": 6.0,
                     "learnability": {"score": 11.0},
                 },
+                "verdict": "PASS",
             }
         )
         + "\n",
@@ -112,6 +145,7 @@ def test_load_score_snapshot_reads_score_json_dimensions(tmp_path: Path) -> None
     snapshot = load_score_snapshot(run_path)
 
     assert snapshot.overall == 72.5
+    assert snapshot.verdict == "PASS"
     assert snapshot.dimensions["learnability"] == 11.0
 
 

@@ -160,7 +160,11 @@ def test_provider_path_alias_validation_returns_400_before_registry_mutation(
         response = getattr(client, method)(path, headers=_AUTH, json=payload)
 
     assert response.status_code == 400
-    assert response.json() == {"error": "invalid_alias", "status": 400}
+    assert response.json() == {
+        "error": "invalid_alias",
+        "error_code": "INPUT_BAD_FIELD",
+        "status": 400,
+    }
     assert not (state_dir / "config.toml").exists()
 
 
@@ -177,7 +181,11 @@ def test_provider_create_alias_validation_returns_400_before_registry_mutation(
     )
 
     assert response.status_code == 400
-    assert response.json() == {"error": "invalid_alias", "status": 400}
+    assert response.json() == {
+        "error": "invalid_alias",
+        "error_code": "INPUT_BAD_FIELD",
+        "status": 400,
+    }
     assert not (state_dir / "config.toml").exists()
 
 
@@ -524,7 +532,11 @@ def test_get_provider_model_limits_returns_404_for_unknown_alias(tmp_path: Path)
     response = client.get("/api/providers/missing/model-limits", headers=_AUTH)
 
     assert response.status_code == 404
-    assert response.json() == {"error": "provider_not_found", "status": 404}
+    assert response.json() == {
+        "error": "provider_not_found",
+        "error_code": "PROVIDER_NOT_FOUND",
+        "status": 404,
+    }
 
 
 def test_model_limits_preview_reports_local_runtime_as_unknown_limits(

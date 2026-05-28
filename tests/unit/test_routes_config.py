@@ -410,6 +410,173 @@ def test_put_config_rejects_invalid_capture_mode_without_writing_config(tmp_path
     assert config_path.read_text(encoding="utf-8") == original
 
 
+def test_put_config_persists_under_repo_write_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "repo" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    events: list[str] = []
+
+    class RecordingLock:
+        def __enter__(self) -> None:
+            events.append("enter")
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
+            events.append("exit")
+
+    def fake_lock(_state: object, *, command: str) -> RecordingLock:
+        events.append(command)
+        return RecordingLock()
+
+    monkeypatch.setattr(routes_config_module, "serve_repo_write_lock", fake_lock)
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"generate_model": "gpt-5.5-mini"},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 200
+    assert events == ["serve config update", "enter", "exit"]
+    assert 'generate_model = "gpt-5.5-mini"' in (state_dir / "config.toml").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_put_config_reads_validates_and_persists_under_repo_write_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core import config as config_module
+
+    repo_root = tmp_path / "repo"
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    config_path = state_dir / "config.toml"
+    config_path.write_text(
+        "[quiz]\n"
+        "quiz_auto_range_max = 10\n\n"
+        "[providers.local]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "http://127.0.0.1:8318"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    lock_depth = 0
+    read_depths: list[int] = []
+
+    class RecordingLock:
+        def __enter__(self) -> None:
+            nonlocal lock_depth
+            lock_depth += 1
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            nonlocal lock_depth
+            del exc_type, exc, tb
+            lock_depth -= 1
+
+    def fake_lock(_state: object, *, command: str) -> RecordingLock:
+        assert command == "serve config update"
+        return RecordingLock()
+
+    real_read_config_data = config_module.read_config_data
+
+    def recording_read_config_data(path: Path) -> dict[str, Any]:
+        if path == config_path:
+            read_depths.append(lock_depth)
+        return real_read_config_data(path)
+
+    monkeypatch.setattr(routes_config_module, "serve_repo_write_lock", fake_lock)
+    monkeypatch.setattr(config_module, "read_config_data", recording_read_config_data)
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"generate_provider": "local", "quiz": {"quiz_auto_range_min": 9}},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 200
+    assert read_depths
+    assert set(read_depths) == {1}
+
+
+def test_put_config_updates_runtime_locale_under_repo_write_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    state = ServeState(state_dir=state_dir, token="test-token")
+    lock_depth = 0
+    locale_update_depths: list[int] = []
+
+    class RecordingAppState:
+        def __init__(self, initial: ServeState) -> None:
+            self._ahadiff = initial
+
+        @property
+        def ahadiff(self) -> ServeState:
+            return self._ahadiff
+
+        @ahadiff.setter
+        def ahadiff(self, value: ServeState) -> None:
+            locale_update_depths.append(lock_depth)
+            self._ahadiff = value
+
+    class RecordingLock:
+        def __enter__(self) -> None:
+            nonlocal lock_depth
+            lock_depth += 1
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            nonlocal lock_depth
+            del exc_type, exc, tb
+            lock_depth -= 1
+
+    def fake_lock(_state: object, *, command: str) -> RecordingLock:
+        assert command == "serve config update"
+        return RecordingLock()
+
+    monkeypatch.setattr(routes_config_module, "serve_repo_write_lock", fake_lock)
+    app_state = RecordingAppState(state)
+
+    result = cast("Any", routes_config_module)._validate_and_persist_config_with_lock(
+        app_state,
+        state,
+        {"lang": "zh-CN"},
+        {},
+        False,
+        None,
+        "zh-CN",
+    )
+
+    assert result is None
+    assert locale_update_depths == [1]
+    assert app_state.ahadiff.locale == "zh-CN"
+    assert 'lang = "zh-CN"' in (state_dir / "config.toml").read_text(encoding="utf-8")
+
+
+def test_put_config_validation_errors_use_error_code(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"serve_port": 80},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INPUT_BAD_FIELD"
+
+
 def test_validate_quiz_update_accepts_auto_fields() -> None:
     assert _validate_quiz_update_for_test(
         {
@@ -467,7 +634,7 @@ def test_put_config_partial_auto_range_min_uses_current_max_and_threadpool(
     )
 
     assert response.status_code == 200
-    assert "_current_quiz_config_for_update" in calls
+    assert "_validate_and_persist_config_with_lock" in calls
 
 
 def test_put_config_rejects_partial_quiz_update_when_existing_range_is_invalid(

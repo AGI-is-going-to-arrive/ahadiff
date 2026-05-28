@@ -37,7 +37,7 @@ function restoreFocus(target: HTMLElement | null): void {
 
 function isFocusableVisible(el: HTMLElement): boolean {
   if (el.hidden || el.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
-  if (typeof el.checkVisibility === 'function') return el.checkVisibility();
+  if (typeof el.checkVisibility === 'function') return el.checkVisibility({ checkVisibilityCSS: true });
   const style = window.getComputedStyle(el);
   if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') {
     return false;

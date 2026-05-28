@@ -9,7 +9,7 @@ import tempfile
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from ipaddress import ip_address, ip_network
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any, TypeGuard, cast, get_args
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -56,6 +56,7 @@ _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
 )
 _AHADIFF_PROVIDER_API_KEY_ENV_PATTERN = re.compile(r"^AHADIFF_[A-Z0-9_]*$")
 _ENV_VAR_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_ENV_VAR_REFERENCE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SUPPORTED_PROVIDER_CLASSES = frozenset(cast("tuple[str, ...]", get_args(ProviderClass)))
 _THINKING_LEVELS = frozenset(cast("tuple[str, ...]", get_args(ThinkingLevel)))
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -462,9 +463,6 @@ _PROVIDER_METADATA_HOSTS = frozenset(
     {"169.254.169.254", "metadata.google.internal", "metadata.azure.com", "fd00:ec2::254"}
 )
 _PROVIDER_LOCALHOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
-_PROVIDER_RFC1918_NETWORKS = tuple(
-    ip_network(network) for network in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
-)
 _PROVIDER_SENSITIVE_QUERY_KEY_PATTERN = re.compile(
     r"(api[_-]?key|secret|password|token|credential)",
     re.IGNORECASE,
@@ -559,8 +557,15 @@ def validate_provider_base_url(
         return raw
     if str(addr) in _PROVIDER_METADATA_HOSTS:
         raise ConfigError("provider base_url points to a blocked metadata host")
+    if getattr(addr, "is_unspecified", False):
+        raise ConfigError("provider base_url non-routable IP literal is not allowed")
+    if getattr(addr, "is_link_local", False):
+        raise ConfigError("provider base_url link-local IP literal is not allowed")
     if _is_private_provider_ip(addr) and host not in allowed_hosts:
-        raise ConfigError("provider base_url private IP literal requires explicit opt-in")
+        raise ConfigError(
+            "provider base_url private/reserved IP literal requires explicit opt-in "
+            "(private IP literal)"
+        )
     return raw
 
 
@@ -601,9 +606,7 @@ def _is_default_provider_port(scheme: str, port: int) -> bool:
 
 
 def _is_private_provider_ip(addr: object) -> bool:
-    if getattr(addr, "version", None) == 4:
-        return any(addr in network for network in _PROVIDER_RFC1918_NETWORKS)
-    return bool(getattr(addr, "is_private", False))
+    return bool(getattr(addr, "is_global", True) is False)
 
 
 def _mask_provider_query(query: str) -> str:
@@ -1288,17 +1291,30 @@ def validate_repo_api_key_env_name(value: str) -> None:
     )
 
 
+def _looks_like_provider_api_key_env_name(value: str) -> bool:
+    return (
+        value in _SAFE_PROVIDER_API_KEY_ENVS
+        or bool(_AHADIFF_PROVIDER_API_KEY_ENV_PATTERN.fullmatch(value))
+        or bool(_ENV_VAR_REFERENCE_PATTERN.fullmatch(value))
+    )
+
+
 def resolve_provider_api_key(api_key_env: str) -> str | None:
     """Resolve API key from *api_key_env* value.
 
-    Tries environment variable lookup first; falls back to the raw value
-    so callers can store a direct API key instead of an env-var name.
+    Tries environment variable lookup first. Any identifier-form value is
+    treated as an environment-variable name, so a missing variable is treated as
+    missing rather than being sent as a literal bearer token. Literal keys made
+    only of identifier characters must be supplied through an environment
+    variable; this is a fail-closed limitation.
     """
     if not api_key_env:
         return None
     env_value = os.environ.get(api_key_env)
     if env_value:
         return env_value
+    if _looks_like_provider_api_key_env_name(api_key_env):
+        return None
     return api_key_env
 
 

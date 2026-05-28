@@ -92,6 +92,7 @@ def test_get_task_not_found(tmp_path: Path) -> None:
     client = _client(tmp_path)
     resp = client.get("/api/tasks/nonexistent")
     assert resp.status_code == 404
+    assert resp.json()["error_code"] == "NOT_FOUND"
 
 
 def test_cancel_requires_auth(tmp_path: Path) -> None:
@@ -110,6 +111,7 @@ def test_cancel_with_auth_nonexistent(tmp_path: Path) -> None:
         },
     )
     assert resp.status_code == 404
+    assert resp.json()["error_code"] == "NOT_FOUND"
 
 
 def test_progress_sse_not_found(tmp_path: Path) -> None:
@@ -251,6 +253,7 @@ def test_get_task_maps_error_code_to_user_facing_error(tmp_path: Path) -> None:
         ("lesson_error", "Failed to generate lesson content."),
         ("quiz_error", "Failed to generate quiz content."),
         ("learnability_error", "Diff was not suitable for learning."),
+        ("lock_conflict", "Another AhaDiff process is already running."),
         ("cancelled", "Task was cancelled."),
         ("internal_error", "raw internal detail"),
         ("unknown_future_code", "An unexpected error occurred."),
@@ -578,6 +581,27 @@ class TestRecoveryHints:
         resp = client.get("/api/tasks/task-1")
         body = resp.json()
         assert body["recovery_hint"] == "check_config"
+
+    def test_lock_conflict_suggests_retry(self, tmp_path: Path) -> None:
+        info = TaskInfo(
+            task_id="task-1",
+            task_type="learn",
+            status=TaskStatus.FAILED,
+            progress=TaskProgress(current=0, total=0, message=""),
+            error="another AhaDiff operation is already running",
+            error_code="lock_conflict",
+            created_at="2026-05-01T00:00:00+00:00",
+        )
+        runner = _StaticTaskRunner(info)
+        app = create_app(
+            ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner))
+        )
+        client = TestClient(app, base_url="http://localhost:8765")
+
+        body = client.get("/api/tasks/task-1").json()
+
+        assert body["error_code"] == "lock_conflict"
+        assert body["recovery_hint"] == "retry"
 
     def test_learnability_error_suggests_dismiss(self, tmp_path: Path) -> None:
         info = TaskInfo(

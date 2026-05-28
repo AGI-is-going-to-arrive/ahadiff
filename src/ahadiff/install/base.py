@@ -294,6 +294,34 @@ def _read_text_no_follow_regular(path: Path, description: str) -> str:
             os.close(fd)
 
 
+def read_bytes_and_mode_no_follow_regular(path: Path, description: str) -> tuple[bytes, int]:
+    _ensure_existing_directory_chain_safe(path.parent, description)
+    path_stat = path.lstat()
+    _ensure_no_symlink_or_reparse(path, path_stat, description)
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(path), flags)
+    try:
+        opened_stat = os.fstat(fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+        _ensure_no_symlink_or_reparse(path, opened_stat, description)
+        if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise OSError(errno.ELOOP, f"{description} changed during validation", str(path))
+        with os.fdopen(fd, "rb") as handle:
+            fd = -1
+            return handle.read(), opened_stat.st_mode
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def read_bytes_no_follow_regular(path: Path, description: str) -> bytes:
+    content, _mode = read_bytes_and_mode_no_follow_regular(path, description)
+    return content
+
+
 def _prepare_install_file_write(path: Path, description: str) -> None:
     _ensure_safe_parent_dir(path.parent, description)
     try:
@@ -365,6 +393,26 @@ def _atomic_write(path: Path, content: str) -> None:
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(text.encode("utf-8"))
+        _Path(tmp_name).replace(path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            _Path(tmp_name).unlink()
+        raise
+
+
+def atomic_write_bytes(path: Path, content: bytes, *, mode: int | None = None) -> None:
+    import tempfile
+    from pathlib import Path as _Path
+
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=f".{path.name}.", suffix=".ahadiff.tmp"
+    )
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(content)
+            if mode is not None:
+                with contextlib.suppress(OSError, NotImplementedError):
+                    os.fchmod(fh.fileno(), stat.S_IMODE(mode))
         _Path(tmp_name).replace(path)
     except BaseException:
         with contextlib.suppress(OSError):

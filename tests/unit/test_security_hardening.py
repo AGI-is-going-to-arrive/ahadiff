@@ -96,23 +96,29 @@ class TestIsNonPublicIp:
 
 
 class TestTransportTargetPrivateIPs:
-    def test_private_10_network_is_local(self) -> None:
-        assert transport_target_for_base_url("http://10.0.0.5:8000", local_hosts=()) == "local"
+    @pytest.mark.parametrize(
+        "base_url",
+        [
+            "http://10.0.0.5:8000",
+            "http://172.16.0.1:8000",
+            "http://192.168.1.1:8000",
+            "http://169.254.1.1:8000",
+            "http://0.0.0.0:8000",
+            "http://[fe80::1]:8000",
+            "http://[fd00::1]:8000",
+        ],
+    )
+    def test_non_opt_in_non_public_ip_is_remote(self, base_url: str) -> None:
+        assert transport_target_for_base_url(base_url, local_hosts=()) == "remote"
 
-    def test_private_172_network_is_local(self) -> None:
-        assert transport_target_for_base_url("http://172.16.0.1:8000", local_hosts=()) == "local"
-
-    def test_private_192_168_is_local(self) -> None:
-        assert transport_target_for_base_url("http://192.168.1.1:8000", local_hosts=()) == "local"
-
-    def test_link_local_is_local(self) -> None:
-        assert transport_target_for_base_url("http://169.254.1.1:8000", local_hosts=()) == "local"
-
-    def test_ipv6_link_local_is_local(self) -> None:
-        assert transport_target_for_base_url("http://[fe80::1]:8000", local_hosts=()) == "local"
-
-    def test_ipv6_ula_is_local(self) -> None:
-        assert transport_target_for_base_url("http://[fd00::1]:8000", local_hosts=()) == "local"
+    def test_explicit_private_ip_opt_in_is_local(self) -> None:
+        assert (
+            transport_target_for_base_url(
+                "http://10.0.0.5:8000",
+                local_hosts=("10.0.0.5",),
+            )
+            == "local"
+        )
 
     def test_public_ip_is_remote(self) -> None:
         assert transport_target_for_base_url("http://8.8.8.8:8000", local_hosts=()) == "remote"
@@ -245,13 +251,9 @@ class TestPinUrlToIp:
         assert host == "api.example.com"
         assert sni == "api.example.com"
 
-    def test_userinfo_password_is_preserved(self) -> None:
-        pinned_url, host, sni = _pin_url_to_ip(
-            "https://apiuser:secret@api.example.com/v1", "93.184.216.34"
-        )
-        assert pinned_url == "https://apiuser:secret@93.184.216.34/v1"
-        assert host == "api.example.com"
-        assert sni == "api.example.com"
+    def test_userinfo_password_is_rejected(self) -> None:
+        with pytest.raises(SafetyError, match="userinfo"):
+            _pin_url_to_ip("https://apiuser:secret@api.example.com/v1", "93.184.216.34")
 
     @pytest.mark.parametrize("bad_url", ["/v1/chat", "https:///v1"])
     def test_rejects_url_without_hostname(self, bad_url: str) -> None:
@@ -667,38 +669,23 @@ class TestSendOnceDnsPinning:
         assert captured["headers"]["host"] == "api.example.com:9443"
         assert captured["extensions"]["sni_hostname"] == b"api.example.com"
 
-    def test_userinfo_preserved_in_pinned_url(
+    def test_userinfo_is_rejected_before_pinning(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Userinfo (user@ prefix) must survive the pinning rewrite."""
-        captured: dict[str, Any] = {}
-
         def resolve_public(_hostname: str) -> list[IPv4Address | IPv6Address]:
             return [IPv4Address("93.184.216.34")]
 
         monkeypatch.setattr(provider_module, "_resolve_hostname_ips", resolve_public)
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured["url"] = str(request.url)
-            captured["headers"] = dict(request.headers)
-            return httpx.Response(
-                200,
-                json=_openai_chat_success_json(),
-                headers={"x-request-id": "req-pin-5"},
-            )
-
-        client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
         provider = make_provider(
             _remote_provider_config(base_url="https://apiuser@api.example.com/v1"),
             api_key="test-key",
-            client=client,
+            client=httpx.Client(
+                transport=httpx.MockTransport(lambda _request: httpx.Response(200))
+            ),
         )
         try:
-            provider.generate(_remote_request())
+            with pytest.raises(SafetyError, match="userinfo"):
+                provider.generate(_remote_request())
         finally:
             provider.close()
-
-        assert "apiuser@" in captured["url"]
-        assert "93.184.216.34" in captured["url"]
-        assert "api.example.com" not in captured["url"]
