@@ -275,7 +275,7 @@ class TestBuildMisconceptionPromptPayload:
 def test_load_misconception_prompt_reads_prompt_resource() -> None:
     prompt_text = load_misconception_prompt()
 
-    assert "Respond with a JSON array of objects" in prompt_text
+    assert "Respond with a JSON object with a `cards` array" in prompt_text
     assert "run_id" in prompt_text
 
 

@@ -4,7 +4,7 @@
 >
 > 把 AI 写出的每一个 git diff，变成带证据、能出题、会复习、还能推动质量变好的学习课程。
 
-[English](./README.md) · [使用指南](./docs/USER_GUIDE.zh.html) · [中文视频教程](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4) · [英文视频教程](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4)
+[English](./README.md) · [使用指南](./docs/USER_GUIDE.zh.html) · [英文视频教程](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [中文视频教程](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
 
 ---
 
@@ -93,7 +93,7 @@ ahadiff review           # 复习过去生成的卡片
 
 ## 功能
 
-- **学习**：`ahadiff learn` 支持 10 种 diff 捕获来源：工作区、未暂存、已暂存、最近一次提交、提交/范围、时间窗口（`--since`）、patch/stdin、patch URL、文件对比、目录对比。递归目录对比目前需要 macOS/Linux 的安全目录文件描述符。
+- **学习**：`ahadiff learn` 支持 10 种 diff 捕获来源：工作区（`--staged --unstaged --include-untracked`）、未暂存（`--unstaged`）、已暂存（`--staged`）、最近一次提交（`--last`，或不带任何捕获参数）、提交/范围（`REVISION`）、时间窗口（`--since`）、patch 文件/stdin（`--patch FILE|-`）、patch URL（`--patch-url`）、文件对比（`--compare`）、目录对比（`--compare-dir`，仅 macOS/Linux）。递归目录对比依赖仅 macOS/Linux 提供的安全目录文件描述符。
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
 - **结构化 LLM 输出**：生成链路会在支持时按 schema 约束 JSON 输出；默认使用 JSON object mode，并带 1 次有界 validation retry；原有 parser、repair 和 degraded 回退仍保留。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。
 - **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。Settings 会按当前草稿 provider class、model 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。
@@ -103,12 +103,12 @@ ahadiff review           # 复习过去生成的卡片
 - **新建学习对话框**：Dashboard 可直接从工作区、未暂存、已暂存或最近一次提交开始学习；高级卡片覆盖 `--since`、提交/范围、patch URL、粘贴补丁、文件对比和目录对比。
 - **导出**：支持 TSV / JSON、Anki `.apkg`，以及本地静态预览包。
 - **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
-- **AI 工具集成**：为 15 个 CLI / IDE / CI 目标写入项目级指引。Settings 会按目标分组，展示本地化使用提示和确定性的 FastAPI middleware 演示，并继续用 manifest hash 确认保护写入/移除。Guide 只读展示命令，并用默认折叠的 Agent Skills 卡片展示使用场景和 generated / user-managed 文件预览。Claude、Codex、Gemini、Antigravity、Copilot 和 OpenCode 还会写入各自工具能识别的生成文件。
+- **AI 工具集成**：为 15 个 CLI / IDE / CI 目标写入项目级指引。Settings 会按目标分组，展示本地化使用提示和不调用 provider 的本地演示，并继续用确认流程保护写入/移除。Guide 只读展示命令，用折叠卡片说明使用方式，并预览 AhaDiff 会写入哪些文件。支持目标包括 Claude、Codex、Gemini、Antigravity IDE、Antigravity CLI、Copilot、OpenCode、Cursor、Cline、Continue、Roo、Windsurf、Aider、GitHub Actions 和 Git hooks。
 - **自动迭代**：`ahadiff improve` 在隔离 worktree 中优化 prompt，只保留更好的结果。
 - **MCP Server**：只读 stdio MCP server，可供支持 MCP 的本地 agent 使用。
 - **隐私**：三档模式：strict_local、redacted_remote、explicit_remote；默认 strict_local。
-- **i18n**：CLI、WebUI 和 prompt 输出语言都支持中英文。
-- **跨平台**：macOS、Linux、Windows，Python 3.11+。
+- **i18n**：WebUI 与 prompt 输出语言支持中英文；CLI help 与多数 CLI 诊断仍为英文。
+- **跨平台**：macOS 与 Linux 为主要测试与支持平台；Windows 支持核心 CLI 与 serve 流程。`--compare-dir` 与 `hooks` 安装目标仅支持 macOS/Linux。
 - **安全**：URL secret 脱敏、provider URL 校验、输入校验、prompt 注入检测、安全门禁和脱敏后的 judge 失败报告。
 
 ## 界面截图
@@ -161,11 +161,11 @@ ahadiff install claude          # 也支持: cursor, copilot, codex, gemini, ant
 ```
 当前支持 15 个目标。完整列表可运行 `ahadiff install --help`，也可以在 WebUI 的设置 → AI 工具指引中配置。
 
-Settings 会按 CLI / IDE / CI 分组展示这些目标，并显示快速开始步骤、示例提示词、预期输出、平台说明和不调用 provider 的 FastAPI middleware 内置演示。Guide 使用同一套使用提示，并在默认折叠的 Agent Skills 卡片展开后以只读方式展示 manifest 预览；真正写入和移除仍在 Settings 中完成。
+Settings 会按 CLI / IDE / CI 分组展示这些目标，并显示快速开始步骤、示例提示词、预期输出、平台说明和不调用 provider 的本地演示。Guide 使用同一套使用提示，并在折叠卡片展开后展示实际会写入哪些文件；真正写入和移除仍在 Settings 中完成。
 
 Guide 和新建学习对话框在 Windows 高对比 / forced-colors 模式下也会保持卡片、note marker 和底部操作可辨；使用提示沿用 viewer 的 token 化字号体系。
 
-Claude、Codex、Gemini、Antigravity IDE、Antigravity CLI、Copilot 和 OpenCode 安装时会写入工具原生的生成文件。生成文件包括 `.claude/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff/SKILL.md`、`.gemini/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff-antigravity/SKILL.md`、`.agents/skills/ahadiff-antigravity-cli/SKILL.md`、`.agents/rules/ahadiff.md`、`.github/instructions/ahadiff.instructions.md` 和 `.opencode/agents/ahadiff.md`。repo 指引标记段仍写在 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.github/copilot-instructions.md` 等用户管理文件中。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
+部分目标会写入工具原生的生成文件，例如 `.claude/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff/SKILL.md`、`.gemini/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff-antigravity/SKILL.md`、`.agents/skills/ahadiff-antigravity-cli/SKILL.md`、`.agents/rules/ahadiff.md`、`.github/instructions/ahadiff.instructions.md`、`.opencode/agents/ahadiff.md`、`.clinerules/ahadiff.md`、`.continue/rules/ahadiff.md`、`.cursor/rules/ahadiff.mdc`、`.roo/rules/ahadiff.md` 和 `.windsurf/rules/ahadiff.md`。repo 指引标记段仍写在 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.github/copilot-instructions.md` 等用户管理文件中。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
 
 本仓库会忽略生成出来的 `.agents/` 安装产物，所以 repo-local Codex / Antigravity skill 默认只留在本机，除非用户明确把它们纳入 Git。
 

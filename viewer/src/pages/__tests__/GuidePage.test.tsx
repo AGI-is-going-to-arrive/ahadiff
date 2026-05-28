@@ -101,16 +101,15 @@ describe('GuidePage command examples', () => {
 
     expect(commands).toContain('uv tool install --editable .');
     expect(commands).toContain('ahadiff learn HEAD~1..HEAD');
+    expect(commands).toContain('ahadiff learn --staged --unstaged --include-untracked');
     expect(commands).toContain('ahadiff learn --staged');
-    expect(commands).toContain('ahadiff learn --unstaged --include-untracked');
-    expect(commands).toContain('ahadiff learn --unstaged --changed-path src/example.py');
+    expect(commands).toContain('ahadiff learn --unstaged');
     expect(commands).toContain('ahadiff learn --last');
     expect(commands).toContain('ahadiff learn --since "2 hours ago"');
-    expect(commands).toContain('ahadiff learn --patch diff.patch');
+    expect(commands).toContain('ahadiff learn --patch change.diff');
     expect(commands).toContain('ahadiff learn --compare old.py new.py');
-    expect(commands).toContain('ahadiff learn --compare-dir src_old/ src_new/');
+    expect(commands).toContain('ahadiff learn --compare-dir old/ new/');
     expect(commands).toContain('ahadiff learn --patch-url https://example.com/change.diff');
-    expect(commands).toContain('ahadiff learn --against-spec spec.md');
     expect(commands).toContain('ahadiff mcp-server');
     expect(commands).toContain('ahadiff export preview RUN_ID --out ./preview');
     expect(commands).toContain('ahadiff challenge build RUN_ID');
@@ -146,7 +145,7 @@ describe('GuidePage command examples', () => {
     const html = decodeHtmlEntities(renderToStaticMarkup(<GuidePage />));
 
     expect(html).toContain('需要 Python 3.11+');
-    expect(html).toContain('从工作区指定路径的变更中学习');
+    expect(html).toContain('从已暂存、未暂存和未跟踪变更中学习');
     expect(html).toContain('检查挑战循环状态（需 opt-in 配置）');
     expect(html).toContain('图谱状态（可选，读取 graphify-out/graph.json）');
     expect(html).toContain('从 graphify-out/graph.json 刷新图谱');

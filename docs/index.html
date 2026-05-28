@@ -775,7 +775,7 @@ img { max-width: 100%; display: block; }
         <div class="step-num">1</div>
         <div class="step-cmd">git diff</div>
         <h3 data-i18n="how.s1.title">捕获变更</h3>
-        <p data-i18n="how.s1.desc">自动捕获 last / staged / unstaged / range 等多种 diff 模式，支持 patch 文件和 stdin。</p>
+        <p data-i18n="how.s1.desc">捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 来源。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-1">
@@ -872,8 +872,8 @@ img { max-width: 100%; display: block; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
-        <h3 data-i18n="feat.f8.title">Multi-Agent Install</h3>
-        <p data-i18n="feat.f8.desc">Claude Code / Codex CLI / Gemini CLI / Antigravity / OpenCode 一键接入，AI agent 在你的工作流中无缝集成。</p>
+        <h3 data-i18n="feat.f8.title">15 Tool Targets</h3>
+        <p data-i18n="feat.f8.desc">Claude、Codex、Gemini、Cursor、GitHub Actions、Git hooks 等 CLI / IDE / CI 目标都能接入。</p>
       </div>
     </div>
   </div>
@@ -895,8 +895,8 @@ img { max-width: 100%; display: block; }
       <div class="arch-layer al-1 reveal reveal-delay-1">
         <div class="arch-num">1</div>
         <div class="arch-layer-name">Diff Capture</div>
-        <div class="arch-layer-sub" data-i18n="arch.l1">last / since / staged / unstaged / show / range / patch</div>
-        <div class="arch-tooltip" data-i18n="arch.l1.tip">Git diff in 7 modes + patch file + stdin</div>
+        <div class="arch-layer-sub" data-i18n="arch.l1">worktree / range / since / patch / URL / compare</div>
+        <div class="arch-tooltip" data-i18n="arch.l1.tip">10 capture sources, including file and directory compare</div>
       </div>
       <div class="arch-layer al-2 reveal reveal-delay-1">
         <div class="arch-num">2</div>
@@ -1160,8 +1160,8 @@ const T = {
   },
   "how.s1.title": { zh: "捕获变更", en: "Capture Changes" },
   "how.s1.desc": {
-    zh: "自动捕获 last / staged / unstaged / range 等多种 diff 模式，支持 patch 文件和 stdin。",
-    en: "Capture diffs in multiple modes: last / staged / unstaged / range. Supports patch files and stdin."
+    zh: "捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 来源。",
+    en: "Capture 10 diff sources, including worktree, revision ranges, time windows, patch URLs, and file or directory comparisons."
   },
   "how.s2.title": { zh: "AI 验证分析", en: "AI Verified Analysis" },
   "how.s2.desc": {
@@ -1219,10 +1219,10 @@ const T = {
     zh: "OpenAI / Anthropic / Gemini / Azure / Ollama 等 8 种 API 格式。BYOK 自动探测 context length、TPM/RPM。",
     en: "8 API formats: OpenAI / Anthropic / Gemini / Azure / Ollama and more. BYOK with auto-probe for context length and rate limits."
   },
-  "feat.f8.title": { zh: "多 Agent 接入", en: "Multi-Agent Install" },
+  "feat.f8.title": { zh: "15 个工具目标", en: "15 Tool Targets" },
   "feat.f8.desc": {
-    zh: "Claude Code / Codex CLI / Gemini CLI / Antigravity / OpenCode 一键接入，AI agent 在你的工作流中无缝集成。",
-    en: "Claude Code / Codex CLI / Gemini CLI / Antigravity / OpenCode one-command setup. AI agents integrate seamlessly into your workflow."
+    zh: "Claude、Codex、Gemini、Cursor、GitHub Actions、Git hooks 等 CLI / IDE / CI 目标都能接入。",
+    en: "Connect CLI / IDE / CI targets such as Claude, Codex, Gemini, Cursor, GitHub Actions, and Git hooks."
   },
   "arch.eyebrow": { zh: "系统架构", en: "ARCHITECTURE" },
   "arch.title": { zh: "八层分层架构", en: "Eight-Layer Architecture" },
@@ -1232,8 +1232,8 @@ const T = {
   },
   "arch.l0": { zh: "ClaimStatus / RunSource / EvalBundle / EventLog", en: "ClaimStatus / RunSource / EvalBundle / EventLog" },
   "arch.l0.tip": { zh: "核心契约冻结：不可变类型定义", en: "Core contract freeze: immutable type definitions" },
-  "arch.l1": { zh: "last / since / staged / unstaged / show / range / patch", en: "last / since / staged / unstaged / show / range / patch" },
-  "arch.l1.tip": { zh: "7 种 diff 模式 + patch 文件 + stdin", en: "Git diff in 7 modes + patch file + stdin" },
+  "arch.l1": { zh: "worktree / range / since / patch / URL / compare", en: "worktree / range / since / patch / URL / compare" },
+  "arch.l1.tip": { zh: "10 种捕获来源，包含文件和目录对比", en: "10 capture sources, including file and directory compare" },
   "arch.l2": { zh: "2a 上下文组装 + 2b 安全门 + 2c 预算", en: "2a Assembly + 2b Safety Gate + 2c Budget" },
   "arch.l2.tip": { zh: "仓库文件、密钥扫描、token 预算", en: "Repo files, secret scan, token budget" },
   "arch.l3": { zh: "prompts/*.md + claim 提取", en: "prompts/*.md + claim extraction" },

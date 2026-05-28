@@ -93,7 +93,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 
 ## Features
 
-- **Learn**: `ahadiff learn` supports 10 diff capture sources: working tree, unstaged, staged, last commit, revision/range, time-window (`--since`), patch/stdin, patch URL, file compare, and directory compare. Recursive directory compare currently requires macOS/Linux secure directory file descriptors.
+- **Learn**: `ahadiff learn` supports 10 diff capture sources: working tree (`--staged --unstaged --include-untracked`), unstaged (`--unstaged`), staged (`--staged`), last commit (`--last`, or omit a capture-source flag), revision/range (`REVISION`), time-window (`--since`), patch file/stdin (`--patch FILE|-`), patch URL (`--patch-url`), file compare (`--compare`), and directory compare (`--compare-dir`, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, defaults to JSON object mode with one bounded validation retry, and keeps the existing parser, repair, and degraded fallback paths. Truncated or malformed fallback JSON is retried instead of being accepted.
 - **Adaptive capture limits**: fresh configs default to auto capture sizing; existing customized capture settings stay manual. Auto mode uses provider probes, the bundled model registry, output reserves, safety reserves, and CJK diff density, while runtime patch intake remains capped at 50 MiB. Settings previews provider limits from the current draft provider class, model, and optional limits profile before saving, without remote probing on every edit.
@@ -103,12 +103,12 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 - **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
 - **Export**: export results as TSV / JSON, Anki `.apkg`, or a local static preview bundle.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
-- **AI tool integration**: project-level guidance for 15 CLI / IDE / CI targets. Settings groups the targets, shows localized usage hints and a deterministic FastAPI middleware demo, and keeps write/remove behind manifest-hash confirmation. Guide shows commands plus default-collapsed Agent Skills cards with read-only usage scenarios and generated/user-managed file previews. Claude, Codex, Gemini, Antigravity, Copilot, and OpenCode also get tool-native generated files where those tools support them.
+- **AI tool integration**: project-level guidance for 15 CLI / IDE / CI targets. Settings groups the targets, shows localized usage hints and a provider-free local demo, and keeps write/remove behind confirmation. Guide shows commands plus read-only cards that explain usage and preview the files AhaDiff would write. Supported targets include Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, OpenCode, Cursor, Cline, Continue, Roo, Windsurf, Aider, GitHub Actions, and Git hooks.
 - **Auto-iteration**: `ahadiff improve` optimizes prompts in an isolated worktree and keeps only better results.
 - **MCP server**: read-only stdio MCP server for local MCP-capable agents.
 - **Privacy**: three tiers: strict_local, redacted_remote, explicit_remote. The default is strict_local.
-- **i18n**: English and Chinese across CLI, WebUI, and prompt output language.
-- **Cross-platform**: macOS, Linux, Windows, Python 3.11+.
+- **i18n**: English and Chinese for the WebUI and prompt output language. CLI help and most CLI diagnostics are in English.
+- **Cross-platform**: macOS and Linux are the primary tested platforms; Windows is supported for the core CLI and serve flows. `--compare-dir` and the `hooks` install target are macOS/Linux only.
 - **Security**: URL secret redaction, provider URL validation, input validation, prompt injection detection, safety hard gates, and redacted judge-failure reporting.
 
 ## Screenshots
@@ -161,11 +161,11 @@ ahadiff install claude          # also: cursor, copilot, codex, gemini, antigrav
 ```
 15 targets supported. Run `ahadiff install --help` for the full list, or configure in the WebUI under Settings → AI Tool Guidance.
 
-Settings groups targets into CLI / IDE / CI, shows quick-start steps, example prompts, expected behavior, platform notes, and a provider-free FastAPI middleware demo. Guide uses the same usage hints inside default-collapsed Agent Skills cards and shows the manifest preview in read-only form after expansion; actual write/remove stays in Settings.
+Settings groups targets into CLI / IDE / CI, shows quick-start steps, example prompts, expected behavior, platform notes, and a provider-free local demo. Guide uses the same usage hints inside default-collapsed tool cards and shows what files would be written before you apply changes; actual write/remove stays in Settings.
 
 Guide and the New Run dialog keep cards, note markers, and footer actions readable in Windows high-contrast / forced-colors mode; usage hints use the same tokenized type scale as the rest of the viewer.
 
-For Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, and OpenCode, install writes tool-native generated files. The generated paths include `.claude/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff/SKILL.md`, `.gemini/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff-antigravity/SKILL.md`, `.agents/skills/ahadiff-antigravity-cli/SKILL.md`, `.agents/rules/ahadiff.md`, `.github/instructions/ahadiff.instructions.md`, and `.opencode/agents/ahadiff.md`. Repo guidance sections stay in user-managed files such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and `.github/copilot-instructions.md`. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
+Some targets write tool-native generated files. Examples include `.claude/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff/SKILL.md`, `.gemini/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff-antigravity/SKILL.md`, `.agents/skills/ahadiff-antigravity-cli/SKILL.md`, `.agents/rules/ahadiff.md`, `.github/instructions/ahadiff.instructions.md`, `.opencode/agents/ahadiff.md`, `.clinerules/ahadiff.md`, `.continue/rules/ahadiff.md`, `.cursor/rules/ahadiff.mdc`, `.roo/rules/ahadiff.md`, and `.windsurf/rules/ahadiff.md`. Repo guidance sections stay in user-managed files such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and `.github/copilot-instructions.md`. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
 
 This repository ignores generated `.agents/` installs, so repo-local Codex / Antigravity skill output remains local unless a user explicitly tracks it.
 

@@ -66,16 +66,16 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
     labelKey: 'Guide.commands_learn',
   },
   {
+    command: 'ahadiff learn --staged --unstaged --include-untracked',
+    labelKey: 'Guide.commands_learn_worktree',
+  },
+  {
     command: 'ahadiff learn --staged',
     labelKey: 'Guide.commands_learn_staged',
   },
   {
-    command: 'ahadiff learn --unstaged --include-untracked',
+    command: 'ahadiff learn --unstaged',
     labelKey: 'Guide.commands_learn_unstaged',
-  },
-  {
-    command: 'ahadiff learn --unstaged --changed-path src/example.py',
-    labelKey: 'Guide.commands_learn_path',
   },
   { command: 'ahadiff learn --last', labelKey: 'Guide.commands_learn_last' },
   {
@@ -83,7 +83,7 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
     labelKey: 'Guide.commands_learn_since',
   },
   {
-    command: 'ahadiff learn --patch diff.patch',
+    command: 'ahadiff learn --patch change.diff',
     labelKey: 'Guide.commands_learn_patch',
   },
   {
@@ -91,16 +91,12 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
     labelKey: 'Guide.commands_learn_compare',
   },
   {
-    command: 'ahadiff learn --compare-dir src_old/ src_new/',
+    command: 'ahadiff learn --compare-dir old/ new/',
     labelKey: 'Guide.commands_learn_compare_dir',
   },
   {
     command: 'ahadiff learn --patch-url https://example.com/change.diff',
     labelKey: 'Guide.commands_learn_patch_url',
-  },
-  {
-    command: 'ahadiff learn --against-spec spec.md',
-    labelKey: 'Guide.commands_learn_against_spec',
   },
   { command: 'ahadiff serve', labelKey: 'Guide.commands_serve' },
   { command: 'ahadiff quiz RUN_ID', labelKey: 'Guide.commands_quiz' },

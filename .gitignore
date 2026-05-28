@@ -58,6 +58,9 @@ plan/
 *.png
 !viewer/public/icons/ahadiff-192.png
 !viewer/public/icons/ahadiff-512.png
+# Committed media: README/USER_GUIDE-embedded screenshots & burned-subtitles tutorial videos
+!docs/video/public/screenshots/**/*.png
+!docs/video/output/*.burned-subtitles.mp4
 *.patch
 !benchmarks/fixtures/**/*.patch
 
