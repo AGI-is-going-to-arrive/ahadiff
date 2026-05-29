@@ -211,6 +211,13 @@ def _clear_existing_preview_dir(exports_root: Path) -> tuple[str, ...]:
     except OSError as exc:
         raise InputError("export target parent is unreadable") from exc
     _validate_clearable_path(parent_stat, label="export target parent")
+    if not _supports_export_dir_fd_cleanup():
+        not_supported = getattr(errno, "ENOTSUP", errno.EOPNOTSUPP)
+        raise OSError(
+            not_supported,
+            "safe export cleanup requires dir_fd support",
+            str(parent),
+        )
     try:
         parent_fd = _open_clearable_dir_path(parent, parent_stat, label="export target parent")
         try:
@@ -237,6 +244,16 @@ def _clear_existing_preview_dir(exports_root: Path) -> tuple[str, ...]:
             os.close(root_fd)
         if parent_fd is not None:
             os.close(parent_fd)
+
+
+def _supports_export_dir_fd_cleanup() -> bool:
+    return (
+        os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.rmdir in os.supports_dir_fd
+        and os.unlink in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd
+    )
 
 
 def _clear_dir_contents_fd(dir_fd: int, *, rel_prefix: str) -> list[str]:

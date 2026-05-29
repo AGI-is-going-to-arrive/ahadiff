@@ -173,6 +173,18 @@ def _open_safe_parent_dir(parent: Path) -> tuple[int, tuple[int, int]]:
         raise
 
 
+def _supports_export_dir_fd_open() -> bool:
+    return os.open in os.supports_dir_fd and os.unlink in os.supports_dir_fd
+
+
+def _safe_parent_identity(parent: Path) -> tuple[int, int]:
+    parent_stat = parent.lstat()
+    _reject_unsafe_dir(parent)
+    if not stat.S_ISDIR(parent_stat.st_mode):
+        raise OSError(errno.ENOTDIR, "export parent must be a directory", str(parent))
+    return _dir_identity(parent_stat)
+
+
 def _parent_identity_unchanged(parent: Path, expected: tuple[int, int]) -> None:
     parent_stat = parent.lstat()
     _reject_unsafe_dir(parent)
@@ -245,6 +257,9 @@ def safe_write_export_file(
     _reject_unsafe_existing(target)
 
     data = content.encode("utf-8") if isinstance(content, str) else content
+    if not _supports_export_dir_fd_open():
+        return _safe_write_export_file_without_dir_fd(target, data)
+
     parent_fd, parent_identity = _open_safe_parent_dir(target.parent)
     tmp_name = f".{target.name}.{uuid.uuid4().hex}.ahadiff-export.tmp"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
@@ -271,6 +286,15 @@ def safe_write_export_file(
     finally:
         os.close(parent_fd)
     return target
+
+
+def _safe_write_export_file_without_dir_fd(target: Path, data: bytes) -> Path:
+    parent = target.parent
+    parent_identity = _safe_parent_identity(parent)
+    del data
+    _parent_identity_unchanged(parent, parent_identity)
+    not_supported = getattr(errno, "ENOTSUP", errno.EOPNOTSUPP)
+    raise OSError(not_supported, "safe export write requires dir_fd support", str(parent))
 
 
 __all__ = [

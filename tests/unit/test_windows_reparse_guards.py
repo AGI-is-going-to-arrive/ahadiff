@@ -23,6 +23,25 @@ def _reparse_stat(mode: int) -> SimpleNamespace:
     return SimpleNamespace(st_mode=mode, st_file_attributes=FILE_ATTRIBUTE_REPARSE_POINT)
 
 
+def _supports_symlinks(tmp_path: Path) -> bool:
+    target = tmp_path / "_probe_target"
+    target.write_text("x", encoding="utf-8")
+    link = tmp_path / "_probe_link"
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        return False
+    finally:
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        target.unlink()
+    return True
+
+
+def _no_sqlite_fd_path(_fd: int | None) -> Path | None:
+    return None
+
+
 def test_safe_sqlite_connect_rejects_leaf_reparse_point_on_windows(tmp_path: Path) -> None:
     db_path = tmp_path / "review.sqlite"
     db_path.write_bytes(b"")
@@ -39,6 +58,56 @@ def test_safe_sqlite_connect_rejects_leaf_reparse_point_on_windows(tmp_path: Pat
         pytest.raises(PermissionError, match="NTFS reparse point"),
     ):
         sqlite_util.safe_sqlite_connect(db_path)
+
+
+def test_safe_sqlite_connect_missing_database_without_dir_fd_fails_without_fd_bound_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    monkeypatch.setattr(sqlite_util.os, "supports_dir_fd", set[object]())
+    monkeypatch.setattr(sqlite_util, "_sqlite_proc_fd_path", _no_sqlite_fd_path)
+
+    for _ in range(2):
+        with pytest.raises(PermissionError, match="fd-bound open support"):
+            sqlite_util.safe_sqlite_connect(db_path)
+        assert not db_path.exists()
+
+
+def test_safe_sqlite_connect_missing_database_without_dir_fd_rejects_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not _supports_symlinks(tmp_path):
+        pytest.skip("symlinks unsupported on this platform")
+    parent = tmp_path / "db-parent"
+    parent.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    db_path = parent / "review.sqlite"
+    real_open = sqlite_util.os.open
+    swapped = False
+
+    def swapping_open(path: str | Path, flags: int, mode: int = 0o777, /) -> int:
+        nonlocal swapped
+        if not swapped and Path(path) == db_path:
+            real_parent = parent.with_name("db-parent-real")
+            parent.rename(real_parent)
+            parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(sqlite_util.os, "supports_dir_fd", set[object]())
+    monkeypatch.setattr(sqlite_util.os, "open", swapping_open)
+    monkeypatch.setattr(sqlite_util, "_sqlite_proc_fd_path", _no_sqlite_fd_path)
+
+    with pytest.raises(PermissionError, match="parent changed|symlink"):
+        sqlite_util.safe_sqlite_connect(db_path)
+
+    assert swapped
+    outside_db = outside / "review.sqlite"
+    if outside_db.exists():
+        assert not outside_db.read_bytes().startswith(b"SQLite format 3")
 
 
 def test_validate_state_dir_path_rejects_reparse_point_on_windows(tmp_path: Path) -> None:

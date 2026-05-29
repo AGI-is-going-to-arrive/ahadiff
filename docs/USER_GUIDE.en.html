@@ -30,7 +30,7 @@ uv tool install --editable .
 
 # Or run directly from the source directory
 uv run ahadiff --version</pre></div>
-    <div class="card"><h3>Source checkout</h3><pre>uv sync --locked --dev
+    <div class="card"><h3>Develop from source (contributors)</h3><pre>uv sync --locked --dev
 uv run python -m ahadiff --version
 uv run python -m ahadiff doctor</pre></div>
   </div>
@@ -71,7 +71,7 @@ supports_native_json_schema = false</pre>
 <section id="learn">
   <h2>3. Run a Learn Session</h2>
   <div class="steps">
-    <div class="step"><strong>Pick a diff source</strong><br>The 10 supported capture sources are: working tree (<code>--staged --unstaged --include-untracked</code>), unstaged (<code>--unstaged</code>), staged (<code>--staged</code>), last commit (<code>--last</code>, or omit a capture-source flag), revision/range (<code>REVISION</code> positional), time-window (<code>--since</code>), patch file/stdin (<code>--patch FILE|-</code>), patch URL (<code>--patch-url</code>), file compare (<code>--compare</code>), and directory compare (<code>--compare-dir</code>, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux.</div>
+    <div class="step"><strong>Pick a diff source</strong><br>The 10 supported capture sources are: working tree (<code>--staged --unstaged --include-untracked</code>), unstaged (<code>--unstaged</code>), staged (<code>--staged</code>), last commit (<code>--last</code>, or omit a capture-source flag), revision/range (<code>REVISION</code> positional), time-window (<code>--since</code>, optionally with <code>--author</code>), patch file/stdin (<code>--patch FILE|-</code>), patch URL (<code>--patch-url</code>), file compare (<code>--compare</code>), and directory compare (<code>--compare-dir</code>, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux.</div>
     <div class="step"><strong>Generate the lesson and evidence</strong><br>AhaDiff captures the diff, scans for safety issues, and produces claims, lesson, quiz, score and other artifacts.</div>
     <div class="step"><strong>Open the WebUI to learn</strong><br>Read the Lesson for the explanation, jump to Diff for the evidence, take the Quiz to check understanding, and use Review for spaced repetition.</div>
   </div>
@@ -79,6 +79,7 @@ supports_native_json_schema = false</pre>
 ahadiff learn --last --open
 ahadiff learn HEAD~1..HEAD
 ahadiff learn --since "2 hours ago"
+ahadiff learn --since "2 hours ago" --author "Alice|Bob"
 ahadiff learn --staged
 ahadiff learn --unstaged --include-untracked
 ahadiff learn --unstaged --include-untracked --changed-path src/app.py
@@ -88,7 +89,7 @@ ahadiff learn --compare old.py new.py
 ahadiff learn --compare-dir old/ new/
 ahadiff learn --last --against-spec SPEC.md
 ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
-  <p>The Dashboard's New Run dialog mirrors these capture sources. The four quick tiles cover working tree, unstaged, staged, and last commit runs. More capture sources are grouped into Git Advanced, Patch, and File Compare cards, and each card shows the matching CLI shape. Path scope only applies to working-tree modes and accepts repo-relative paths. The WebUI patch field accepts pasted unified diff text up to 4096 bytes; use the CLI for patch files, stdin, or larger patches. Remote patch URLs must pass the same safety checks as the CLI; loopback and private-network URLs are rejected. Patch file/stdin and patch URL runs have no repository symbol index, so hunk-anchored claims may be marked weak while still producing a lesson. Directory compare fails closed on platforms without secure directory file descriptor traversal. Long-running CLI commands show Rich status while they run; treat that as terminal feedback, not a machine-readable output contract.</p>
+  <p>The Dashboard's New Run dialog mirrors these capture sources. The four quick tiles cover working tree, unstaged, staged, and last commit runs. More capture sources are grouped into Git Advanced, Patch, and File Compare cards, and each card shows the matching CLI shape. Path scope only applies to working-tree modes and accepts repo-relative paths. The WebUI patch field accepts pasted unified diff text up to 65536 bytes; use the CLI for patch files, stdin, or larger patches. CLI patch files are resolved inside the repo root; pass <code>--patch -</code> for external generated patches. Remote patch URLs must pass the same safety checks as the CLI; loopback and private-network URLs are rejected. Patch file/stdin and patch URL runs have no repository symbol index, so hunk-anchored claims may be marked weak while still producing a lesson. Directory compare fails closed on platforms without secure directory file descriptor traversal. Long-running CLI commands show Rich status while they run; treat that as terminal feedback, not a machine-readable output contract.</p>
 </section>
 
 <section id="webui">
@@ -214,7 +215,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h2>9. About this document</h2>
   <ul>
     <li>The screenshots in this guide are examples only. They do not include real provider credentials, repository contents, or user data.</li>
-    <li>Cross-platform support: macOS and Linux are the primary tested platforms. Windows is supported for the core CLI and serve flows; <code>--compare-dir</code> requires the secure directory file descriptor available on macOS/Linux only, and the <code>hooks</code> install target uses POSIX shell hooks that are not supported on Windows in v0.1. Install rollback restores mode before atomic replace on POSIX and uses a best-effort mode restore after replace on platforms without <code>fchmod</code>.</li>
+    <li>Cross-platform support: macOS and Linux are the primary tested platforms. Windows is supported for the core CLI and serve flows; <code>--compare-dir</code> requires the secure directory file descriptor available on macOS/Linux only, and the <code>hooks</code> install target uses POSIX shell hooks and is not available on Windows. Install rollback restores mode before atomic replace on POSIX and uses a best-effort mode restore after replace on platforms without <code>fchmod</code>.</li>
     <li>For continuous-integration status, see the GitHub Actions tab of the upstream repository rather than this document.</li>
   </ul>
 </section>

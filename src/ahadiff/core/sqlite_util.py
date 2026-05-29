@@ -29,6 +29,7 @@ class _OpenVerificationState:
     parent_change_token: tuple[int, int] | None = None
     sidecar_state: tuple[tuple[str, tuple[int, int] | None], ...] = ()
     nofollow_fd: int | None = None
+    requires_fd_bound_connect: bool = False
 
 
 class _RetryOpenVerification(Exception):
@@ -82,6 +83,8 @@ def safe_sqlite_connect(
                 connect_uri = _sqlite_file_uri(fd_path, "ro") if fd_path is not None else uri
                 conn = sqlite3.connect(connect_uri, uri=True, timeout=timeout)
             elif attempt_state.expected_identity is not None:
+                if attempt_state.requires_fd_bound_connect and fd_path is None:
+                    raise PermissionError(f"safe SQLite create requires fd-bound open support: {p}")
                 connect_path = fd_path if fd_path is not None else p
                 connect_uri = _read_write_sqlite_uri(connect_path)
                 conn = sqlite3.connect(connect_uri, uri=True, timeout=timeout)
@@ -260,6 +263,9 @@ def _prepare_open_verification(
 
 
 def _prepare_missing_database_file(path: Path) -> _OpenVerificationState:
+    if not _supports_database_dir_fd_create():
+        return _prepare_missing_database_file_without_dir_fd(path)
+
     parent_fd = _open_parent_directory_for_create(path)
     try:
         flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
@@ -294,6 +300,126 @@ def _prepare_missing_database_file(path: Path) -> _OpenVerificationState:
             raise
     finally:
         os.close(parent_fd)
+
+
+def _supports_database_dir_fd_create() -> bool:
+    return os.open in os.supports_dir_fd
+
+
+def _safe_sqlite_create_requires_fd_bound_connect(path: Path) -> PermissionError:
+    return PermissionError(f"safe SQLite create requires fd-bound open support: {path}")
+
+
+def _unlink_created_database_placeholder_without_dir_fd(
+    *,
+    path: Path,
+    parent: Path,
+    parent_identity: tuple[int, int],
+    file_identity: tuple[int, int],
+) -> None:
+    current_parent_stat = os.lstat(parent)
+    _reject_symlink_stat(parent, current_parent_stat)
+    if not stat.S_ISDIR(current_parent_stat.st_mode):
+        raise PermissionError(f"database path parent must be a directory: {parent}")
+    if (current_parent_stat.st_dev, current_parent_stat.st_ino) != parent_identity:
+        raise PermissionError(f"database path parent changed during open: {parent}")
+    path_stat = os.lstat(path)
+    _reject_symlink_stat(path, path_stat)
+    if (path_stat.st_dev, path_stat.st_ino) != file_identity:
+        raise PermissionError(f"database path changed during open: {path}")
+    path.unlink()
+
+
+def _prepare_missing_database_file_without_dir_fd(path: Path) -> _OpenVerificationState:
+    parent = path.parent
+    parent_stat = os.lstat(parent)
+    _reject_symlink_stat(parent, parent_stat)
+    if not stat.S_ISDIR(parent_stat.st_mode):
+        raise PermissionError(f"database path parent must be a directory: {parent}")
+    parent_identity = (parent_stat.st_dev, parent_stat.st_ino)
+
+    flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    fd = -1
+    try:
+        fd = os.open(str(path), flags, 0o600)
+    except FileExistsError:
+        return _prepare_open_verification(path, create_missing=False)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise PermissionError(f"refusing to open symlink: {path}") from exc
+        raise
+
+    try:
+        path_stat, current_parent_stat = _verify_missing_database_without_dir_fd(
+            path=path,
+            fd=fd,
+            parent=parent,
+            parent_identity=parent_identity,
+        )
+        file_stat = os.fstat(fd)
+        fd_path = _sqlite_proc_fd_path(fd)
+        if fd_path is None:
+            os.close(fd)
+            fd = -1
+            _unlink_created_database_placeholder_without_dir_fd(
+                path=path,
+                parent=parent,
+                parent_identity=parent_identity,
+                file_identity=(file_stat.st_dev, file_stat.st_ino),
+            )
+            raise _safe_sqlite_create_requires_fd_bound_connect(path)
+        return _OpenVerificationState(
+            expected_identity=(file_stat.st_dev, file_stat.st_ino),
+            existing_path=True,
+            path_change_token=_stat_change_token(path_stat),
+            parent_identity=parent_identity,
+            parent_change_token=_stat_change_token(current_parent_stat),
+            sidecar_state=_sqlite_sidecar_state(path),
+            nofollow_fd=fd,
+            requires_fd_bound_connect=True,
+        )
+    except Exception:
+        if fd >= 0:
+            os.close(fd)
+        raise
+
+
+def _verify_missing_database_without_dir_fd(
+    *,
+    path: Path,
+    fd: int,
+    parent: Path,
+    parent_identity: tuple[int, int],
+) -> tuple[os.stat_result, os.stat_result]:
+    current_parent_stat = os.lstat(parent)
+    _reject_symlink_stat(parent, current_parent_stat)
+    if not stat.S_ISDIR(current_parent_stat.st_mode):
+        raise PermissionError(f"database path parent must be a directory: {parent}")
+    if (current_parent_stat.st_dev, current_parent_stat.st_ino) != parent_identity:
+        raise PermissionError(f"database path parent changed during open: {parent}")
+
+    file_stat = os.fstat(fd)
+    if not stat.S_ISREG(file_stat.st_mode):
+        raise PermissionError(f"database path changed during open: {path}")
+    if _has_windows_reparse_point(file_stat):
+        raise PermissionError(f"refusing to open NTFS reparse point: {path}")
+    _reject_hardlink_stat(path, file_stat)
+
+    path_stat = os.lstat(path)
+    _reject_symlink_stat(path, path_stat)
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise PermissionError(f"database path changed during open: {path}")
+    _reject_hardlink_stat(path, path_stat)
+    if (path_stat.st_dev, path_stat.st_ino) != (file_stat.st_dev, file_stat.st_ino):
+        raise PermissionError(f"database path changed during open: {path}")
+
+    current_parent_stat = os.lstat(parent)
+    _reject_symlink_stat(parent, current_parent_stat)
+    if not stat.S_ISDIR(current_parent_stat.st_mode):
+        raise PermissionError(f"database path parent must be a directory: {parent}")
+    if (current_parent_stat.st_dev, current_parent_stat.st_ino) != parent_identity:
+        raise PermissionError(f"database path parent changed during open: {parent}")
+    return path_stat, current_parent_stat
 
 
 def _open_parent_directory_for_create(path: Path) -> int:

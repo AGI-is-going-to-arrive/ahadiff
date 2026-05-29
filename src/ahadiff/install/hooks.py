@@ -296,9 +296,7 @@ def _ensure_git_repo(context: InstallContext) -> None:
 
 def _ensure_posix_hooks_supported() -> None:
     if sys.platform == "win32":
-        raise InputError(
-            "hooks target is POSIX-shell only; v0.1 does not support Windows hooks yet"
-        )
+        raise InputError("hooks target is POSIX-shell only and is not supported on Windows")
 
 
 def _git_executable() -> str:

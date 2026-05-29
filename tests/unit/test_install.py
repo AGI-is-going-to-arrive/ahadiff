@@ -84,8 +84,10 @@ _SKILL_CAPTURE_COMMANDS = (
     "`ahadiff learn --compare PATH1 PATH2`",
     "`ahadiff learn --compare-dir DIR1 DIR2`",
     "`ahadiff learn --patch-url URL`",
-    "`ahadiff learn --against-spec PATH`",
-    "`ahadiff learn --changed-path PATH`",
+)
+_SKILL_LEARN_MODIFIER_COMMANDS = (
+    "`ahadiff learn HEAD~1..HEAD --against-spec PATH`",
+    "`ahadiff learn --unstaged --changed-path PATH`",
 )
 _SKILL_CURATED_ADVANCED_COMMANDS = (
     "`ahadiff doctor`",
@@ -279,6 +281,16 @@ def test_install_dry_run_lists_workspace_targets(tmp_path: Path) -> None:
             assert not (repo_root / relative_path).exists()
 
 
+def test_install_help_uses_current_hooks_platform_language() -> None:
+    result = _RUNNER.invoke(app(), ["install", "--help"])
+    normalized_output = " ".join(result.output.split())
+
+    assert result.exit_code == 0, result.output
+    assert "hooks uses POSIX shell hooks and is not" in normalized_output
+    assert "supported on Windows" in normalized_output
+    assert "v0.1" not in result.output
+
+
 @pytest.mark.parametrize(
     ("target", "relative_path", "marker", "generated"),
     _V02_INSTALL_TARGET_CASES,
@@ -363,13 +375,18 @@ def test_install_templates_use_standard_boundaries(template_name: str) -> None:
 def test_skill_templates_document_curated_safe_cli_surface(template_name: str) -> None:
     rendered = render_template(template_name)
 
-    for heading in ("## Core Commands", "### Additional Capture Modes", "## Advanced"):
+    for heading in ("## Core Commands", "### Additional Learn Options / Modifiers", "## Advanced"):
         assert heading in rendered
     assert "`ahadiff learn --staged`" in rendered
     for command in (
-        _SKILL_CORE_COMMANDS + _SKILL_CAPTURE_COMMANDS + _SKILL_CURATED_ADVANCED_COMMANDS
+        _SKILL_CORE_COMMANDS
+        + _SKILL_CAPTURE_COMMANDS
+        + _SKILL_LEARN_MODIFIER_COMMANDS
+        + _SKILL_CURATED_ADVANCED_COMMANDS
     ):
         assert command in rendered
+    assert "`ahadiff learn --against-spec PATH`" not in rendered
+    assert "`ahadiff learn --changed-path PATH`" not in rendered
     for maintenance_command in (
         "`ahadiff db restore PATH/TO/review.sqlite.bak`",
         "`ahadiff unlock --force`",
@@ -1220,7 +1237,8 @@ def test_hooks_install_rejects_windows_platform(
 
     for failed in (dry_run, manifest, uninstall_dry_run, result):
         assert failed.exit_code == 1
-        assert "v0.1 does not support Windows hooks" in failed.output
+        assert "hooks target is POSIX-shell only and is not supported on Windows" in failed.output
+        assert "v0.1" not in failed.output
     assert detect.exit_code == 0
     assert "hooks" in detect.output
     assert not (repo_root / ".git" / "hooks" / "post-commit").exists()

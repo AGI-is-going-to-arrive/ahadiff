@@ -59,7 +59,23 @@ plan/
 !viewer/public/icons/ahadiff-192.png
 !viewer/public/icons/ahadiff-512.png
 # Committed media: README/USER_GUIDE-embedded screenshots & burned-subtitles tutorial videos
-!docs/video/public/screenshots/**/*.png
+# Only the 16 README-embedded screenshots (8 EN + 8 ZH). Other dev/eval captures stay ignored.
+!docs/video/public/screenshots/en/en-concepts-graph.png
+!docs/video/public/screenshots/en/en-dashboard.png
+!docs/video/public/screenshots/en/en-diff.png
+!docs/video/public/screenshots/en/en-lesson.png
+!docs/video/public/screenshots/en/en-quiz.png
+!docs/video/public/screenshots/en/en-review.png
+!docs/video/public/screenshots/en/en-rundetail-overview.png
+!docs/video/public/screenshots/en/en-settings.png
+!docs/video/public/screenshots/zh/zh-concepts-graph.png
+!docs/video/public/screenshots/zh/zh-dashboard.png
+!docs/video/public/screenshots/zh/zh-diff.png
+!docs/video/public/screenshots/zh/zh-lesson.png
+!docs/video/public/screenshots/zh/zh-quiz.png
+!docs/video/public/screenshots/zh/zh-review.png
+!docs/video/public/screenshots/zh/zh-rundetail-overview.png
+!docs/video/public/screenshots/zh/zh-settings.png
 !docs/video/output/*.burned-subtitles.mp4
 *.patch
 !benchmarks/fixtures/**/*.patch
@@ -76,7 +92,7 @@ docs/video/output/*clean*.mp4
 # Local dev output dirs
 /output/
 artifacts/
-screenshots/
+/screenshots/
 .claude-tmp/
 
 # TypeScript incremental cache

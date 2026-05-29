@@ -289,6 +289,38 @@ def test_lesson_error_does_not_echo_raw_llm_payload(tmp_path: Path) -> None:
     assert body["error"] == "Failed to generate lesson content."
 
 
+def test_internal_error_does_not_echo_raw_patch_payload(tmp_path: Path) -> None:
+    sentinel = "SECRET_PATCH_SENTINEL"
+    info = TaskInfo(
+        task_id="task-1",
+        task_type="learn",
+        status=TaskStatus.FAILED,
+        progress=TaskProgress(current=1, total=10, message="failed"),
+        error=(
+            "failed patch:\n"
+            "diff --git a/secret.py b/secret.py\n"
+            "--- a/secret.py\n"
+            "+++ b/secret.py\n"
+            "@@ -1 +1 @@\n"
+            f"+{sentinel}\n"
+        ),
+        error_code="internal_error",
+        created_at="2026-05-01T00:00:00+00:00",
+    )
+    runner = _StaticTaskRunner(info)
+    app = create_app(ServeState(state_dir=tmp_path, token="tok", task_runner=cast("Any", runner)))
+    client = TestClient(app, base_url="http://localhost:8765")
+
+    resp = client.get("/api/tasks/task-1")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    TaskInfoResponse.model_validate(body)
+    assert sentinel not in body["error"]
+    assert "diff --git" not in body["error"]
+    assert body["error"] == "Internal error occurred."
+
+
 @pytest.mark.parametrize(
     ("raw", "should_not_contain"),
     [

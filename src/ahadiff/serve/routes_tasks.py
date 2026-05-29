@@ -69,6 +69,7 @@ _PATH_PATTERN = re.compile(
 )
 _URL_HOST_PATTERN = re.compile(r"https?://[^\s/]+")
 _MAX_WARNING_LEN = 200
+_PATCH_ERROR_MARKERS = ("diff --git", "--- a/", "+++ b/", "\n--- ", "\n+++ ", "\n@@ ", "@@ -")
 
 
 def _sanitize_warning(raw: str) -> str:
@@ -131,6 +132,8 @@ def _optional_str(value: object) -> str | None:
 
 
 def _user_facing_message(error_code: str, raw_error: str) -> str:
+    if any(marker in raw_error for marker in _PATCH_ERROR_MARKERS):
+        return _USER_FACING_ERROR_MESSAGES.get(error_code, _GENERIC_FALLBACK_MESSAGE)
     if raw_error and error_code in ("config_error", "internal_error"):
         return _sanitize_warning(raw_error)
     return _USER_FACING_ERROR_MESSAGES.get(error_code, _GENERIC_FALLBACK_MESSAGE)

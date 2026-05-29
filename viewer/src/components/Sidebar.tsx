@@ -224,7 +224,7 @@ export default function Sidebar({ isOpen, isMobileNav, onNavigate }: SidebarProp
                 className="nav-item sidebar__item nav-item--disabled sidebar__item--disabled"
                 role="link"
                 aria-disabled="true"
-                tabIndex={-1}
+                tabIndex={0}
                 title={`${label} — ${disabledHint}`}
                 aria-label={`${label} (${disabledHint})`}
               >

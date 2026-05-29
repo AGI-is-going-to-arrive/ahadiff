@@ -95,7 +95,7 @@ _APP.add_typer(_CHALLENGE_APP, name="challenge")
 _INSTALL_TARGET_HELP = (
     "Install target: aider, antigravity, antigravity-cli, claude, cline, codex, continue, "
     "copilot, cursor, gemini, github-action, hooks, opencode, roo, or windsurf. "
-    "hooks uses POSIX shell hooks; Windows hooks are not supported in v0.1."
+    "hooks uses POSIX shell hooks and is not supported on Windows."
 )
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] = {
@@ -1646,7 +1646,7 @@ def review_cmd(
     ] = None,
     scheduler: Annotated[
         str,
-        typer.Option("--scheduler", help="Scheduler feature flag; fsrs is the v0.1 default."),
+        typer.Option("--scheduler", help="Scheduler feature flag; fsrs is the default."),
     ] = "fsrs",
     optimize: Annotated[
         bool,
@@ -1665,7 +1665,7 @@ def review_cmd(
 ) -> None:
     try:
         if scheduler != "fsrs":
-            raise AhaDiffError("only the FSRS scheduler is implemented in v0.1")
+            raise AhaDiffError("only the FSRS scheduler is implemented")
         _validate_review_cli_options(
             optimize=optimize,
             action=action,
@@ -1946,7 +1946,7 @@ def serve_cmd(
         serve_config = cast("dict[str, Any]", snapshot.values["serve"])
         bind_host = str(serve_config["bind_host"])
         if bind_host != "127.0.0.1":
-            raise AhaDiffError("serve bind_host must be 127.0.0.1 in v0.1")
+            raise AhaDiffError("serve bind_host must be 127.0.0.1")
         resolved_port = int(serve_config["port"])
         resolved_no_browser = bool(serve_config["no_browser"])
         config_lang = str(base_snapshot.values["lang"])
@@ -2329,7 +2329,7 @@ def mark_cmd(
     ],
     action: Annotated[
         str,
-        typer.Argument(help="Only 'wrong' is supported in v0.1."),
+        typer.Argument(help="Only 'wrong' is supported."),
     ],
     repo_root: Annotated[
         Path,

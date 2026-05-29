@@ -27,6 +27,18 @@ _CORS_ALLOW_METHODS = "GET, HEAD, OPTIONS, POST, PUT, PATCH, DELETE"
 _CORS_ALLOWED_REQUEST_HEADERS = {"content-type", "x-ahadiff-token"}
 _CORS_ALLOW_HEADERS = "Content-Type, X-AhaDiff-Token"
 _CORS_MAX_AGE_SECONDS = "600"
+_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'sha256-34OjdQcdg9PbE7u8eV4uQikDSGeuXXSEvz634GZp/gc='; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "base-uri 'none'; "
+    "form-action 'none'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'"
+)
 _PROXY_TRACE_HEADERS = frozenset(
     {
         "forwarded",
@@ -138,7 +150,7 @@ def _preflight_response(origin: str) -> Response:
 def _apply_security_headers(response: Response) -> Response:
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    response.headers.setdefault("Content-Security-Policy", _CONTENT_SECURITY_POLICY)
     response.headers.setdefault("Referrer-Policy", "same-origin")
     return response
 

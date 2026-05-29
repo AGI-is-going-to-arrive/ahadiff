@@ -865,7 +865,7 @@ img { max-width: 100%; display: block; }
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         </div>
         <h3 data-i18n="feat.f7.title">8 LLM Providers</h3>
-        <p data-i18n="feat.f7.desc">OpenAI / Anthropic / Gemini / Azure / Ollama 等 8 种 API 格式。BYOK 自动探测 context length、TPM/RPM。</p>
+        <p data-i18n="feat.f7.desc">OpenAI / Anthropic / Gemini / Azure / Ollama 等 8 种 API 格式。BYOK，自动探测上下文长度。</p>
       </div>
       <!-- 8: Multi-Agent -->
       <div class="feat-card reveal reveal-delay-3">
@@ -964,6 +964,7 @@ img { max-width: 100%; display: block; }
         <div><span class="arrow">&rarr; </span><span data-i18n="demo.t5">Opening</span> <span class="info">http://localhost:8765</span> ...</div>
       </div>
     </div>
+    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="demo.caption">示例输出。具体数字取决于你的 diff。</p>
   </div>
 </section>
 
@@ -1035,6 +1036,7 @@ img { max-width: 100%; display: block; }
         </tbody>
       </table>
     </div>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmp.footnote">本表反映 AhaDiff 自身的定位和设计重点，不是对其他工具的独立评测。</p>
   </div>
 </section>
 
@@ -1045,13 +1047,13 @@ img { max-width: 100%; display: block; }
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="start.eyebrow">SOURCE CHECKOUT</div>
     <h2 class="section-title reveal" data-i18n="start.title">三步开始</h2>
-    <p class="section-subtitle reveal" data-i18n="start.subtitle">从安装到第一个学习循环，不超过两分钟。</p>
+    <p class="section-subtitle reveal" data-i18n="start.subtitle">几步之内，从安装到第一节课。</p>
     <div class="start-grid">
       <div class="start-card reveal">
         <div class="start-num">1</div>
-        <h3 data-i18n="start.c1.title">Install</h3>
-        <p data-i18n="start.c1.desc">当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI。</p>
-        <div class="code-block"><span class="prompt">$ </span><span class="cmd">uv tool install --editable .</span></div>
+        <h3 data-i18n="start.c1.title">Install &amp; configure</h3>
+        <p data-i18n="start.c1.desc">当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI，然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。</p>
+        <div class="code-block"><span class="prompt">$ </span><span class="cmd">uv tool install --editable .</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff init</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff provider test --name gpt55 --provider-class openai_responses --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</span></div>
       </div>
       <div class="start-card reveal reveal-delay-1">
         <div class="start-num">2</div>
@@ -1216,8 +1218,8 @@ const T = {
   },
   "feat.f7.title": { zh: "8 种 LLM 供应商", en: "8 LLM Providers" },
   "feat.f7.desc": {
-    zh: "OpenAI / Anthropic / Gemini / Azure / Ollama 等 8 种 API 格式。BYOK 自动探测 context length、TPM/RPM。",
-    en: "8 API formats: OpenAI / Anthropic / Gemini / Azure / Ollama and more. BYOK with auto-probe for context length and rate limits."
+    zh: "OpenAI / Anthropic / Gemini / Azure / Ollama 等 8 种 API 格式。BYOK，自动探测上下文长度。",
+    en: "8 API formats: OpenAI / Anthropic / Gemini / Azure / Ollama and more. BYOK, with context-length auto-probing."
   },
   "feat.f8.title": { zh: "15 个工具目标", en: "15 Tool Targets" },
   "feat.f8.desc": {
@@ -1257,11 +1259,19 @@ const T = {
   "demo.t3": { zh: "创建学习笔记", en: "Created lesson" },
   "demo.t4": { zh: "生成 5 道测验题", en: "Generated 5 quiz questions" },
   "demo.t5": { zh: "正在打开", en: "Opening" },
+  "demo.caption": {
+    zh: "示例输出。具体数字取决于你的 diff。",
+    en: "Example output. Your numbers depend on your diff."
+  },
   "cmp.eyebrow": { zh: "对比", en: "COMPARISON" },
   "cmp.title": { zh: "AhaDiff vs. 替代方案", en: "AhaDiff vs. Alternatives" },
   "cmp.subtitle": {
     zh: "不是取代 Code Review，而是补上缺失的学习环。",
     en: "Not replacing Code Review. Closing the missing learning loop."
+  },
+  "cmp.footnote": {
+    zh: "本表反映 AhaDiff 自身的定位和设计重点，不是对其他工具的独立评测。",
+    en: "This table reflects AhaDiff's own positioning and design priorities, not an independent benchmark of the other tools."
   },
   "cmp.col0": { zh: "工具", en: "Tool" },
   "cmp.col1": { zh: "Verified Claims", en: "Verified Claims" },
@@ -1273,13 +1283,13 @@ const T = {
   "start.eyebrow": { zh: "源码安装", en: "SOURCE CHECKOUT" },
   "start.title": { zh: "三步开始", en: "Three Steps to Start" },
   "start.subtitle": {
-    zh: "从安装到第一个学习循环，不超过两分钟。",
-    en: "From install to your first learning loop in under two minutes."
+    zh: "几步之内，从安装到第一节课。",
+    en: "From install to your first lesson in a few steps."
   },
-  "start.c1.title": { zh: "安装", en: "Install" },
+  "start.c1.title": { zh: "安装并配置", en: "Install & configure" },
   "start.c1.desc": {
-    zh: "当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI。",
-    en: "AhaDiff is not published on PyPI yet; install the local CLI from a source checkout with uv."
+    zh: "当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI，然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。",
+    en: "AhaDiff is not published on PyPI yet; install the local CLI from a source checkout with uv, then configure an LLM provider. learn cannot run until a provider is set up."
   },
   "start.c2.title": { zh: "学习", en: "Learn" },
   "start.c2.desc": {

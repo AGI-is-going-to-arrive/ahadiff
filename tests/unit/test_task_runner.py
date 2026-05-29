@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
@@ -374,6 +375,59 @@ def test_task_failure() -> None:
         assert info.status == TaskStatus.FAILED
         assert info.error == "something broke"
         assert info.completed_at is not None
+
+    _run(_inner())
+
+
+def test_task_failure_redacts_patch_like_error() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+        sentinel = "SECRET_PATCH_CONTENT"
+
+        async def failing(handle: TaskHandle) -> None:
+            raise RuntimeError(
+                "failed patch:\n"
+                "diff --git a/secret.py b/secret.py\n"
+                "--- a/secret.py\n"
+                "+++ b/secret.py\n"
+                "@@ -1 +1 @@\n"
+                f"+{sentinel}\n"
+            )
+
+        task_id = runner.submit("fail", failing)
+        await asyncio.sleep(0.1)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error is not None
+        assert sentinel not in info.error
+        assert "diff --git" not in info.error
+
+    _run(_inner())
+
+
+def test_task_failure_redacts_all_errors_when_task_is_sensitive() -> None:
+    async def _inner() -> None:
+        runner = TaskRunner(max_concurrent=2)
+        sentinel = "SECRET_SINGLE_LINE_SENTINEL"
+
+        async def failing(handle: TaskHandle) -> None:
+            del handle
+            raise RuntimeError(f"single malformed line leaked {sentinel}")
+
+        task_id = runner.submit(
+            "learn",
+            failing,
+            redact_errors=True,
+            redacted_error_message="learn task failed; pasted patch details were redacted",
+        )
+        await asyncio.sleep(0.1)
+        info = runner.get_task(task_id)
+        assert info is not None
+        assert info.status == TaskStatus.FAILED
+        assert info.error == "learn task failed; pasted patch details were redacted"
+        assert info.error_code == "internal_error"
+        assert sentinel not in (info.error or "")
 
     _run(_inner())
 
@@ -836,6 +890,58 @@ def test_draining_thread_backed_task_keeps_timeout_failure_on_success() -> None:
         assert info.result is None
         assert info.error is not None
         assert info.error_code == "timeout"
+
+    _run(_inner())
+
+
+def test_redacted_draining_thread_error_does_not_log_patch(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _inner() -> None:
+        caplog.set_level(logging.DEBUG, logger="ahadiff.core.task_runner")
+        runner = TaskRunner(max_concurrent=2, task_timeout_seconds=60.0)
+        started = threading.Event()
+        release = threading.Event()
+        sentinel = "SECRET_DRAINING_PATCH_SENTINEL"
+
+        async def thread_work(handle: TaskHandle) -> str:
+            del handle
+
+            def _sync_job() -> str:
+                started.set()
+                release.wait(timeout=2.0)
+                raise RuntimeError(
+                    f"late pasted patch failure\ndiff --git a/secret.py b/secret.py\n+{sentinel}\n"
+                )
+
+            return await run_sync_in_thread(_sync_job)
+
+        task_id = runner.submit(
+            "learn",
+            thread_work,
+            task_timeout_seconds=0.05,
+            thread_backed=True,
+            redact_errors=True,
+            redacted_error_message="learn task failed; pasted patch details were redacted",
+        )
+        assert await run_sync_in_thread(lambda: started.wait(timeout=1.0))
+        await asyncio.sleep(0.15)
+
+        failed = runner.get_task(task_id)
+        assert failed is not None
+        assert failed.status == TaskStatus.FAILED
+        assert failed.error == "learn task failed; pasted patch details were redacted"
+
+        release.set()
+        deadline = asyncio.get_running_loop().time() + 1.0
+        draining = cast("dict[str, asyncio.Task[object]]", runner.__dict__["_draining_tasks"])
+        while task_id in draining and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+
+        assert task_id not in draining
+        assert sentinel not in caplog.text
+        assert "diff --git" not in caplog.text
+        assert "RuntimeError" in caplog.text
 
     _run(_inner())
 

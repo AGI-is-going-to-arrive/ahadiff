@@ -36,7 +36,7 @@ interface LearnModeDialogProps {
 const QUICK_MODES: CaptureMode[] = ['working', 'unstaged', 'staged', 'last'];
 const MAX_TEXT_INPUT_LENGTH = 4096;
 const MAX_REVISION_LENGTH = 255;
-const MAX_PATCH_TEXT_BYTES = 4096;
+const MAX_PATCH_TEXT_BYTES = 64 * 1024;
 const MAX_CHANGED_PATHS = 500;
 const MAX_PATH_SCOPE_TEXT_LENGTH = 64 * 1024;
 const UTF8_ENCODER = new TextEncoder();

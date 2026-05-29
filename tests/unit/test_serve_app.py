@@ -381,6 +381,31 @@ def test_cors_actual_response_allows_loopback_origin(tmp_path: Path) -> None:
     assert response.headers["vary"] == "Origin"
 
 
+def test_security_headers_include_restrictive_csp(tmp_path: Path) -> None:
+    client = _client(tmp_path / ".ahadiff")
+
+    response = client.get("/api/locale")
+
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"] == (
+        middleware_module._CONTENT_SECURITY_POLICY  # pyright: ignore[reportPrivateUsage]
+    )
+    csp = response.headers["content-security-policy"]
+    for directive in (
+        "default-src 'self'",
+        "script-src 'self'",
+        "connect-src 'self'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+    ):
+        assert directive in csp
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "same-origin"
+
+
 def test_write_routes_require_token(tmp_path: Path) -> None:
     client = _client(tmp_path / ".ahadiff")
 

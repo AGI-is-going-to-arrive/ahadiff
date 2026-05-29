@@ -853,10 +853,14 @@ describe('LearnModeDialog', () => {
     );
 
     await textarea.fill('x'.repeat(4097));
+    await expect.poll(() => startBtn.isDisabled()).toBe(false);
+    await expect.poll(() => textarea.getAttribute('aria-invalid')).toBeNull();
+
+    await textarea.fill('x'.repeat(65537));
     await expect.poll(() => startBtn.isDisabled()).toBe(true);
     await expect.poll(() => textarea.getAttribute('aria-invalid')).toBe('true');
     await expect.poll(() => page.locator('#learn-mode-patch-error').textContent()).toContain(
-      '4096 bytes',
+      '65536 bytes',
     );
 
     await textarea.fill('--- a/a\n+++ b/a\n@@ -1 +1 @@\n-a\n+b');

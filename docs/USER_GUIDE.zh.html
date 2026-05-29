@@ -30,7 +30,7 @@ uv tool install --editable .
 
 # 或者直接在源码目录运行
 uv run ahadiff --version</pre></div>
-    <div class="card"><h3>源码 checkout</h3><pre>uv sync --locked --dev
+    <div class="card"><h3>从源码开发（贡献者）</h3><pre>uv sync --locked --dev
 uv run python -m ahadiff --version
 uv run python -m ahadiff doctor</pre></div>
   </div>
@@ -71,7 +71,7 @@ supports_native_json_schema = false</pre>
 <section id="learn">
   <h2>3. 生成一次学习 run</h2>
   <div class="steps">
-    <div class="step"><strong>选择 diff 来源</strong><br>10 种支持的捕获来源是：工作区（<code>--staged --unstaged --include-untracked</code>）、未暂存（<code>--unstaged</code>）、已暂存（<code>--staged</code>）、最近一次提交（<code>--last</code>，或不带任何捕获参数）、提交/范围（<code>REVISION</code> 位置参数）、时间窗口（<code>--since</code>）、patch 文件/stdin（<code>--patch FILE|-</code>）、patch URL（<code>--patch-url</code>）、文件对比（<code>--compare</code>）、目录对比（<code>--compare-dir</code>，仅 macOS/Linux）。递归目录对比依赖仅 macOS/Linux 提供的安全目录文件描述符。</div>
+    <div class="step"><strong>选择 diff 来源</strong><br>10 种支持的捕获来源是：工作区（<code>--staged --unstaged --include-untracked</code>）、未暂存（<code>--unstaged</code>）、已暂存（<code>--staged</code>）、最近一次提交（<code>--last</code>，或不带任何捕获参数）、提交/范围（<code>REVISION</code> 位置参数）、时间窗口（<code>--since</code>，可叠加 <code>--author</code>）、patch 文件/stdin（<code>--patch FILE|-</code>）、patch URL（<code>--patch-url</code>）、文件对比（<code>--compare</code>）、目录对比（<code>--compare-dir</code>，仅 macOS/Linux）。递归目录对比依赖仅 macOS/Linux 提供的安全目录文件描述符。</div>
     <div class="step"><strong>生成课程和证据</strong><br>AhaDiff 会捕获 diff、扫描安全风险、生成 claims / lesson / quiz / score 等 artifact。</div>
     <div class="step"><strong>打开 WebUI 学习</strong><br>用 Lesson 看解释，用 Diff 查证据，用 Quiz 检验理解，用 Review 做间隔复习。</div>
   </div>
@@ -79,6 +79,7 @@ supports_native_json_schema = false</pre>
 ahadiff learn --last --open
 ahadiff learn HEAD~1..HEAD
 ahadiff learn --since "2 hours ago"
+ahadiff learn --since "2 hours ago" --author "Alice|Bob"
 ahadiff learn --staged
 ahadiff learn --unstaged --include-untracked
 ahadiff learn --unstaged --include-untracked --changed-path src/app.py
@@ -88,7 +89,7 @@ ahadiff learn --compare old.py new.py
 ahadiff learn --compare-dir old/ new/
 ahadiff learn --last --against-spec SPEC.md
 ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
-  <p>Dashboard 的“开始学习”对话框和这些命令保持同一套心智模型。四个快速卡片对应工作区、未暂存、已暂存和最近一次提交；更多捕获来源按 Git 高级、补丁来源、文件对比分组，每张卡片都会显示对应 CLI 形态。路径范围只对工作区类运行生效，且只接受仓库相对路径。WebUI 的补丁输入框只接受粘贴的 unified diff 文本，限制为 4096 字节；补丁文件、stdin 或更大的补丁请用 CLI。远程 patch URL 会走和 CLI 一样的安全检查；loopback 和私有网络 URL 会被拒绝。Patch 文件/stdin 和 patch URL 运行没有仓库 symbol index，所以只有 hunk 证据时，claims 可能标为 weak，但仍可生成 lesson。目录对比在缺少安全目录文件描述符遍历的平台上会关闭失败。耗时较长的 CLI 命令会显示 Rich 状态提示；它只是终端进度反馈，不是给脚本解析的稳定输出契约。</p>
+  <p>Dashboard 的“开始学习”对话框和这些命令保持同一套心智模型。四个快速卡片对应工作区、未暂存、已暂存和最近一次提交；更多捕获来源按 Git 高级、补丁来源、文件对比分组，每张卡片都会显示对应 CLI 形态。路径范围只对工作区类运行生效，且只接受仓库相对路径。WebUI 的补丁输入框只接受粘贴的 unified diff 文本，限制为 65536 字节；补丁文件、stdin 或更大的补丁请用 CLI。CLI patch 文件会在 repo root 内解析；外部生成的 patch 请传给 <code>--patch -</code>。远程 patch URL 会走和 CLI 一样的安全检查；loopback 和私有网络 URL 会被拒绝。Patch 文件/stdin 和 patch URL 运行没有仓库 symbol index，所以只有 hunk 证据时，claims 可能标为 weak，但仍可生成 lesson。目录对比在缺少安全目录文件描述符遍历的平台上会关闭失败。耗时较长的 CLI 命令会显示 Rich 状态提示；它只是终端进度反馈，不是给脚本解析的稳定输出契约。</p>
 </section>
 
 <section id="webui">
@@ -214,7 +215,7 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h2>9. 关于本文档</h2>
   <ul>
     <li>本文档中的截图仅作为示例，不包含任何真实的 provider 凭证、仓库内容或用户数据。</li>
-    <li>跨平台支持：主要测试与支持平台为 macOS 与 Linux；Windows 支持核心 CLI 与 serve 流程，但 <code>--compare-dir</code> 依赖仅 macOS/Linux 提供的安全目录文件描述符，<code>hooks</code> 安装目标也仅支持 POSIX shell，v0.1 暂不支持 Windows。安装回滚在 POSIX 上会在 atomic replace 前恢复 mode；没有 <code>fchmod</code> 的平台会在 replace 后 best-effort 恢复 mode。</li>
+    <li>跨平台支持：主要测试与支持平台为 macOS 与 Linux；Windows 支持核心 CLI 与 serve 流程，但 <code>--compare-dir</code> 依赖仅 macOS/Linux 提供的安全目录文件描述符，<code>hooks</code> 安装目标使用 POSIX shell hook，不支持 Windows。安装回滚在 POSIX 上会在 atomic replace 前恢复 mode；没有 <code>fchmod</code> 的平台会在 replace 后 best-effort 恢复 mode。</li>
     <li>持续集成状态请到上游仓库的 GitHub Actions 页查看，而不是参考本文档。</li>
   </ul>
 </section>

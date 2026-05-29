@@ -1207,6 +1207,158 @@ def test_extract_claim_candidates_retries_instead_of_accepting_truncated_fallbac
     assert "provider output omitted" in requests[1].payload_text
 
 
+def test_extract_claim_candidates_recovers_truncated_multifile_claims_after_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run_extract_multifile_truncated_recovery"
+    run_path = _write_claim_run_artifacts(workspace_root, run_id)
+    requests: list[ProviderRequest] = []
+    first_claim = {
+        "claim_id": f"{run_id}-claim-1",
+        "run_id": run_id,
+        "text": "updates retry_once return value",
+        "source_hunks": [{"file": "src/app.py", "start": 1, "end": 2, "side": "new"}],
+    }
+    second_claim = {
+        "claim_id": f"{run_id}-claim-2",
+        "run_id": run_id,
+        "text": "updates config defaults for the same worktree change",
+        "source_hunks": [{"file": "src/config.py", "start": 4, "end": 6, "side": "new"}],
+    }
+    truncated_tail = {
+        "claim_id": f"{run_id}-claim-3",
+        "run_id": run_id,
+        "text": "third claim started before the local model hit its output cap " + ("x" * 4096),
+    }
+    truncated_payload = (
+        '{"claims":['
+        + json.dumps(first_claim, separators=(",", ":"))
+        + ","
+        + json.dumps(second_claim, separators=(",", ":"))
+        + ","
+        + json.dumps(truncated_tail, separators=(",", ":"))[:-24]
+    )
+    responses = [
+        ProviderResponse(
+            content=truncated_payload,
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=3200,
+        ),
+        ProviderResponse(
+            content=truncated_payload,
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=3200,
+        ),
+    ]
+
+    class FakeProvider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            requests.append(request)
+            return responses.pop(0)
+
+        def close(self) -> None:
+            return None
+
+    def fake_make_provider(*_args: object, **_kwargs: object) -> FakeProvider:
+        return FakeProvider()
+
+    monkeypatch.setattr("ahadiff.claims.runtime.make_provider", fake_make_provider)
+
+    output_path, candidates = extract_claim_candidates_from_run(
+        run_id=run_id,
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        output_path=run_path / "claims.raw.jsonl",
+        structured_validation_retries=1,
+    )
+
+    assert len(requests) == 2
+    assert [candidate.claim_id for candidate in candidates] == [
+        f"{run_id}-claim-1",
+        f"{run_id}-claim-2",
+    ]
+    assert [candidate.source_hunks[0].file for candidate in candidates] == [
+        "src/app.py",
+        "src/config.py",
+    ]
+    persisted = output_path.read_text(encoding="utf-8").splitlines()
+    assert len(persisted) == 2
+    assert "claim-3" not in output_path.read_text(encoding="utf-8")
+
+
+def test_extract_claim_candidates_rejects_complete_json_with_trailing_garbage_after_retries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run_extract_trailing_garbage"
+    run_path = _write_claim_run_artifacts(workspace_root, run_id)
+    first_claim = {
+        "claim_id": f"{run_id}-claim-1",
+        "run_id": run_id,
+        "text": "updates retry_once return value",
+        "source_hunks": [{"file": "src/app.py", "start": 1, "end": 2, "side": "new"}],
+    }
+    malformed_payload = json.dumps({"claims": [first_claim]}) + "\ntrailing garbage"
+    responses = [
+        ProviderResponse(
+            content=malformed_payload,
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=10,
+        ),
+        ProviderResponse(
+            content=malformed_payload,
+            model_id="gpt-5.4-mini",
+            input_tokens=10,
+            output_tokens=10,
+        ),
+    ]
+
+    class FakeProvider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            del request
+            return responses.pop(0)
+
+        def close(self) -> None:
+            return None
+
+    def fake_make_provider(*_args: object, **_kwargs: object) -> FakeProvider:
+        return FakeProvider()
+
+    monkeypatch.setattr("ahadiff.claims.runtime.make_provider", fake_make_provider)
+
+    with pytest.raises(InputError, match="model returned no parsable claims"):
+        extract_claim_candidates_from_run(
+            run_id=run_id,
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key=None,
+            security_config=SecurityConfig(),
+            output_path=run_path / "claims.raw.jsonl",
+            structured_validation_retries=1,
+        )
+    assert not (run_path / "claims.raw.jsonl").exists()
+
+
 def test_extract_claim_candidates_uses_lenient_fallback_before_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

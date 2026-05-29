@@ -378,12 +378,115 @@ def test_parse_unified_diff_rejects_non_truncated_hunk_body_count_mismatch() -> 
 
 
 def test_parse_unified_diff_rejects_hunk_lines_missing_prefix() -> None:
+    sentinel = "SECRET_RAW_HUNK_LINE"
     patch = (
-        "--- a/demo.py\n+++ b/../safe/demo.py\n@@ -1,2 +1,2 @@\n-old = 1\nshared = 2\n+new = 3\n"
+        "--- a/demo.py\n"
+        "+++ b/../safe/demo.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-old = 1\n"
+        f"{sentinel}=shared\n"
+        "+new = 3\n"
     )
 
-    with pytest.raises(InputError, match="missing prefix"):
+    with pytest.raises(InputError, match="missing prefix") as exc_info:
         parse_unified_diff(patch)
+    assert sentinel not in str(exc_info.value)
+    assert "shared" not in str(exc_info.value)
+
+
+def test_parse_unified_diff_strips_git_format_patch_mbox_framing() -> None:
+    patch = (
+        "From 1234567890abcdef1234567890abcdef12345678 Mon Sep 17 00:00:00 2001\n"
+        "From: Aha Diff <aha@example.com>\n"
+        "Date: Thu, 28 May 2026 10:00:00 +0000\n"
+        "Subject: [PATCH] update retry behavior\n"
+        "\n"
+        "Explain the commit before the embedded diff.\n"
+        "\n"
+        "---\n"
+        " src/app.py | 2 +-\n"
+        " 1 file changed, 1 insertion(+), 1 deletion(-)\n"
+        "\n"
+        "diff --git a/src/app.py b/src/app.py\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        "+value = 2\n"
+        "-- \n"
+        "2.43.0\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    assert changed_files[0].display_path == "src/app.py"
+    assert changed_files[0].hunks[0].deleted_lines == (1,)
+    assert changed_files[0].hunks[0].added_lines == (1,)
+
+
+def test_parse_git_format_patch_ignores_diff_like_commit_message_block() -> None:
+    patch = (
+        "From 1234567890abcdef1234567890abcdef12345678 Mon Sep 17 00:00:00 2001\n"
+        "From: Aha Diff <aha@example.com>\n"
+        "Date: Thu, 28 May 2026 10:00:00 +0000\n"
+        "Subject: [PATCH] update parser\n"
+        "\n"
+        "The commit message includes an example that must not become a file diff:\n"
+        "\n"
+        "```diff\n"
+        "--- old\n"
+        "+++ new\n"
+        "@@ -1 +1 @@\n"
+        "-fake\n"
+        "+fake\n"
+        "```\n"
+        "\n"
+        "---\n"
+        " src/real.py | 2 +-\n"
+        " 1 file changed, 1 insertion(+), 1 deletion(-)\n"
+        "\n"
+        "diff --git a/src/real.py b/src/real.py\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/src/real.py\n"
+        "+++ b/src/real.py\n"
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        "+value = 2\n"
+        "-- \n"
+        "2.43.0\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert [changed_file.display_path for changed_file in changed_files] == ["src/real.py"]
+    assert changed_files[0].hunks[0].deleted_lines == (1,)
+    assert changed_files[0].hunks[0].added_lines == (1,)
+
+
+def test_parse_git_format_patch_without_real_diff_does_not_parse_message_block() -> None:
+    patch = (
+        "From 1234567890abcdef1234567890abcdef12345678 Mon Sep 17 00:00:00 2001\n"
+        "From: Aha Diff <aha@example.com>\n"
+        "Date: Thu, 28 May 2026 10:00:00 +0000\n"
+        "Subject: [PATCH] no code changes\n"
+        "\n"
+        "This message documents an example only:\n"
+        "\n"
+        "```diff\n"
+        "--- old\n"
+        "+++ new\n"
+        "@@ -1 +1 @@\n"
+        "-fake\n"
+        "+fake\n"
+        "```\n"
+        "\n"
+        "-- \n"
+        "2.43.0\n"
+    )
+
+    assert parse_unified_diff(patch) == ()
 
 
 def test_parse_unified_diff_scrubs_traversal_only_paths_to_unknown() -> None:

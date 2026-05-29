@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from types import SimpleNamespace
@@ -276,6 +277,37 @@ def test_post_learn_estimate_passes_changed_paths_to_capture(
 
     assert resp.status_code == 200
     assert captured_kwargs["changed_paths"] == ("src/app.py",)
+
+
+def test_post_learn_estimate_accepts_large_inline_patch_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _client(tmp_path / ".ahadiff")
+    patch_text = "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n" + (
+        "+line = 1\n" * 700
+    )
+    assert len(patch_text) > 4096
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(
+            persisted_patch_text=patch_text,
+            metadata={"selected_files": ["app.py"]},
+        )
+
+    def fake_estimate_text_tokens(_text: str, _strategy: object) -> int:
+        return 10
+
+    monkeypatch.setattr(routes_learn, "capture_patch", fake_capture_patch)
+    monkeypatch.setattr(routes_learn, "estimate_text_tokens", fake_estimate_text_tokens)
+
+    resp = _post_learn_estimate(client, body={"patch": patch_text})
+
+    assert resp.status_code == 200
+    assert captured_kwargs["patch_text"] == patch_text
+    assert captured_kwargs["patch"] is None
 
 
 def test_post_learn_estimate_captures_under_repo_write_lock(
@@ -686,6 +718,141 @@ def test_post_learn_with_valid_fields(
         info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
 
     assert info["status"] == "completed"
+
+
+def test_post_learn_accepts_inline_patch_text_from_webui(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        '[capture]\nmode = "manual"\nmax_patch_bytes = 10000000\n',
+        encoding="utf-8",
+    )
+    patch_text = (
+        "diff --git a/app.py b/app.py\n"
+        "--- a/app.py\n"
+        "+++ b/app.py\n"
+        "@@ -1 +1 @@\n"
+        "-old = 1\n"
+        "+new = 2\n"
+    )
+
+    with _client(state_dir) as client:
+        resp = _post_learn(
+            client,
+            body={"patch": patch_text, "dry_run": True, "force_learn": True},
+        )
+        assert resp.status_code == 202
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+
+    summary = cast("dict[str, object]", info["result_summary"])
+    run_id = summary["run_id"]
+    assert isinstance(run_id, str)
+    run_path = state_dir / "runs" / run_id
+    metadata = cast(
+        "dict[str, object]",
+        json.loads((run_path / "metadata.json").read_text(encoding="utf-8")),
+    )
+    assert metadata["source_kind"] == "patch_stdin"
+    source_detail = cast("dict[str, object]", metadata["source_detail"])
+    assert source_detail["type"] == "patch_text"
+    assert (run_path / "patch.diff").read_text(encoding="utf-8") == patch_text
+
+
+def test_post_learn_accepts_large_inline_patch_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ahadiff.core.orchestrator as orchestrator_module
+
+    patch_text = "diff --git a/app.py b/app.py\n--- a/app.py\n+++ b/app.py\n" + (
+        "+line = 1\n" * 700
+    )
+    assert len(patch_text) > 4096
+    constructed_kwargs: dict[str, Any] = {}
+
+    def recording_learn_request(**kwargs: Any) -> LearnRequest:
+        constructed_kwargs.update(kwargs)
+        assert kwargs["patch_text"] == patch_text
+        assert "patch" not in kwargs
+        return LearnRequest(**kwargs)
+
+    def fake_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        assert request.patch_text == patch_text
+        return LearnResult(run_id="run-large-inline-patch", status="completed")
+
+    monkeypatch.setattr(orchestrator_module, "LearnRequest", recording_learn_request)
+    monkeypatch.setattr(orchestrator_module, "run_learn_pipeline", fake_run_learn_pipeline)
+
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={"patch": patch_text})
+        assert resp.status_code == 202
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
+
+    assert info["status"] == "completed"
+    assert constructed_kwargs["patch_text"] == patch_text
+
+
+def test_post_learn_failure_does_not_leak_inline_patch_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sentinel = "SECRET_INLINE_PATCH_SENTINEL"
+    patch_text = (
+        "diff --git a/secret.py b/secret.py\n"
+        "--- a/secret.py\n"
+        "+++ b/secret.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        f"+{sentinel}\n"
+    )
+
+    def failing_run_learn_pipeline(request: LearnRequest, **_: object) -> LearnResult:
+        assert request.patch_text == patch_text
+        raise RuntimeError(f"failed to capture pasted patch: {patch_text}")
+
+    monkeypatch.setattr(
+        "ahadiff.core.orchestrator.run_learn_pipeline",
+        failing_run_learn_pipeline,
+    )
+
+    with _client(tmp_path) as client:
+        resp = _post_learn(client, body={"patch": patch_text})
+        assert resp.status_code == 202
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="failed")
+
+    error = str(info["error"])
+    assert sentinel not in error
+    assert "diff --git" not in error
+    assert info["error_code"] == "internal_error"
+
+
+def test_post_learn_malformed_inline_patch_redacts_single_secret_line(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    sentinel = "SECRET_SINGLE_RAW_LINE_SENTINEL"
+    patch_text = (
+        "diff --git a/secret.py b/secret.py\n"
+        "--- a/secret.py\n"
+        "+++ b/secret.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        "-old = 1\n"
+        f"{sentinel}=should_not_echo\n"
+        "+new = 2\n"
+    )
+
+    with _client(state_dir) as client:
+        resp = _post_learn(client, body={"patch": patch_text, "force_learn": True})
+        assert resp.status_code == 202
+        info = _wait_for_task(client, _task_id_from(resp), expected_status="failed")
+
+    error = str(info["error"])
+    assert error == "learn task failed; pasted patch details were redacted"
+    assert info["error_code"] == "internal_error"
+    assert sentinel not in json.dumps(info)
+    assert "should_not_echo" not in json.dumps(info)
+    assert "missing prefix" not in error
 
 
 # ---------------------------------------------------------------------------

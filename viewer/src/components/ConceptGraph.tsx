@@ -658,14 +658,14 @@ function ForceGraph({
         ctx.fill();
         ctx.globalAlpha = savedAlpha;
         ctx.lineWidth = 1.5 / globalScale;
-        ctx.strokeStyle = forcedColors ? 'CanvasText' : baseColor;
+        ctx.strokeStyle = forcedColors ? 'ButtonText' : baseColor;
         ctx.stroke();
       } else {
         ctx.fillStyle = forcedColors ? 'Canvas' : baseColor;
         ctx.fill();
         if (forcedColors) {
           ctx.lineWidth = 1.5 / globalScale;
-          ctx.strokeStyle = 'CanvasText';
+          ctx.strokeStyle = 'ButtonText';
           ctx.stroke();
         }
       }

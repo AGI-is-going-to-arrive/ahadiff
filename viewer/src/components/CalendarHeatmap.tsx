@@ -102,18 +102,19 @@ export default function CalendarHeatmap({
               ))
             : padded.map((cell) => {
                 const level = bucket(cell.count, thresholds);
+                const titleText = t('Heatmap.cell_title', {
+                  date: cell.iso_date.startsWith('pad-')
+                    ? '—'
+                    : cell.iso_date,
+                  count: String(cell.count),
+                });
                 return (
                   <span
                     key={cell.iso_date}
                     className={`calendar-heatmap__cell calendar-heatmap__cell--lvl-${level}`}
                     data-date={cell.iso_date}
                     data-count={cell.count}
-                    title={t('Heatmap.cell_title', {
-                      date: cell.iso_date.startsWith('pad-')
-                        ? '—'
-                        : cell.iso_date,
-                      count: String(cell.count),
-                    })}
+                    title={titleText}
                   />
                 );
               })}

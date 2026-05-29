@@ -79,6 +79,7 @@ class LearnRequest:
     include_untracked: bool = False
     changed_paths: Iterable[str] | None = None
     patch: str | None = None
+    patch_text: str | None = None
     compare: tuple[Path, Path] | None = None
     compare_dir: tuple[Path, Path] | None = None
     against_spec: Path | None = None
@@ -982,6 +983,19 @@ def _sanitized_judge_failure_exc_info(
     return (RuntimeError, safe_error, error.__traceback__)
 
 
+def _pipeline_step_error_message(prefix: str, error: Exception) -> str:
+    detail = _safe_pipeline_step_error_detail(error)
+    if detail:
+        return f"{prefix}: {detail}"
+    return prefix
+
+
+def _safe_pipeline_step_error_detail(error: Exception) -> str:
+    if isinstance(error, AhaDiffError):
+        return _bounded_judge_failure_message(error)
+    return error.__class__.__name__
+
+
 def _write_judge_failure_artifact(
     *,
     run_path: Path,
@@ -1152,6 +1166,7 @@ def run_learn_pipeline(
 
     allow_non_git = (
         request.patch is not None
+        or request.patch_text is not None
         or request.compare is not None
         or request.compare_dir is not None
         or request.patch_url is not None
@@ -1241,6 +1256,7 @@ def run_learn_pipeline(
                 include_untracked=request.include_untracked,
                 changed_paths=request.changed_paths,
                 patch=request.patch,
+                patch_text=request.patch_text,
                 compare=request.compare,
                 compare_dir=request.compare_dir,
                 patch_url=request.patch_url,
@@ -1283,6 +1299,7 @@ def run_learn_pipeline(
                         include_untracked=request.include_untracked,
                         changed_paths=request.changed_paths,
                         patch=request.patch,
+                        patch_text=request.patch_text,
                         compare=request.compare,
                         compare_dir=request.compare_dir,
                         patch_url=request.patch_url,
@@ -1568,7 +1585,9 @@ def run_learn_pipeline(
                         raw_claims_path=raw_claims_path,
                         claims_output_path=claims_output_path,
                     )
-                    raise AhaDiffError("claim extraction failed") from exc
+                    raise AhaDiffError(
+                        _pipeline_step_error_message("claim extraction failed", exc)
+                    ) from exc
 
                 if lesson_skip_reason is not None:
                     early_result = LearnResult(
@@ -1630,7 +1649,9 @@ def run_learn_pipeline(
                             raw_claims_path=raw_claims_path,
                             claims_output_path=claims_output_path,
                         )
-                        raise AhaDiffError("lesson generation failed") from exc
+                        raise AhaDiffError(
+                            _pipeline_step_error_message("lesson generation failed", exc)
+                        ) from exc
 
                     # ------------------------------------------------------------------
                     # Step 7: generate quiz

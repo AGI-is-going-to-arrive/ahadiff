@@ -83,6 +83,8 @@ _MAX_TASK_TIMEOUT_SECONDS = 86400.0 * 7  # 7 days max, prevents overflow in date
 _TaskTimeoutValue = str | bytes | bytearray | SupportsFloat | SupportsIndex
 
 log = logging.getLogger(__name__)
+_REDACTED_TASK_ERROR = "task failed; error details were redacted"
+_PATCH_ERROR_MARKERS = ("diff --git", "--- a/", "+++ b/", "\n--- ", "\n+++ ", "\n@@ ", "@@ -")
 
 
 def _coerce_task_timeout_seconds(value: object, *, source: str) -> float:
@@ -106,6 +108,16 @@ def _default_task_timeout_seconds() -> float:
     return _coerce_task_timeout_seconds(raw_value, source=_DEFAULT_TASK_TIMEOUT_ENV)
 
 
+def _safe_task_error_message(exc: BaseException) -> str:
+    try:
+        raw = str(exc)
+    except Exception:
+        return exc.__class__.__name__
+    if any(marker in raw for marker in _PATCH_ERROR_MARKERS):
+        return _REDACTED_TASK_ERROR
+    return raw
+
+
 class TaskRunner:
     def __init__(
         self,
@@ -127,6 +139,7 @@ class TaskRunner:
         self._thread_backed: dict[str, bool] = {}
         self._coro_factories: dict[str, Callable[[TaskHandle], Coroutine[Any, Any, Any]]] = {}
         self._draining_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._redacted_error_messages: dict[str, str] = {}
 
     def submit(
         self,
@@ -135,12 +148,16 @@ class TaskRunner:
         *,
         task_timeout_seconds: float | None = None,
         thread_backed: bool = False,
+        redact_errors: bool = False,
+        redacted_error_message: str | None = None,
     ) -> str:
         return self._submit_unchecked(
             task_type,
             coro_factory,
             task_timeout_seconds=task_timeout_seconds,
             thread_backed=thread_backed,
+            redact_errors=redact_errors,
+            redacted_error_message=redacted_error_message,
         )
 
     def submit_if_capacity(
@@ -151,6 +168,8 @@ class TaskRunner:
         max_pending: int,
         task_timeout_seconds: float | None = None,
         thread_backed: bool = False,
+        redact_errors: bool = False,
+        redacted_error_message: str | None = None,
     ) -> str | None:
         pending_count = sum(
             1
@@ -168,6 +187,8 @@ class TaskRunner:
             coro_factory,
             task_timeout_seconds=task_timeout_seconds,
             thread_backed=thread_backed,
+            redact_errors=redact_errors,
+            redacted_error_message=redacted_error_message,
         )
 
     def _submit_unchecked(
@@ -177,6 +198,8 @@ class TaskRunner:
         *,
         task_timeout_seconds: float | None,
         thread_backed: bool,
+        redact_errors: bool,
+        redacted_error_message: str | None,
     ) -> str:
         loop = asyncio.get_running_loop()
         task_timeout = (
@@ -199,6 +222,8 @@ class TaskRunner:
         self._task_timeouts[task_id] = task_timeout
         self._thread_backed[task_id] = thread_backed
         self._coro_factories[task_id] = coro_factory
+        if redact_errors:
+            self._redacted_error_messages[task_id] = redacted_error_message or _REDACTED_TASK_ERROR
         async_task = loop.create_task(self._run_task(task_id))
         async_task.add_done_callback(lambda _: self._on_async_task_done(task_id))
         self._async_tasks[task_id] = async_task
@@ -294,6 +319,7 @@ class TaskRunner:
             self._async_tasks.pop(tid, None)
             self._task_timeouts.pop(tid, None)
             self._thread_backed.pop(tid, None)
+            self._redacted_error_messages.pop(tid, None)
         self._trim_archived_tasks()
 
     def _trim_archived_tasks(self) -> None:
@@ -387,10 +413,23 @@ class TaskRunner:
             return "network_error"
         return "internal_error"
 
+    def _task_error_message(self, task_id: str, exc: BaseException) -> str:
+        redacted_message = self._redacted_error_messages.get(task_id)
+        if redacted_message is not None:
+            return redacted_message
+        return _safe_task_error_message(exc)
+
+    def _task_error_code(self, task_id: str, exc: Exception) -> str:
+        if task_id in self._redacted_error_messages:
+            return "internal_error"
+        return self._classify_error(exc)
+
     def _on_async_task_done(self, task_id: str) -> None:
         self._async_tasks.pop(task_id, None)
         self._coro_factories.pop(task_id, None)
         self._task_timeouts.pop(task_id, None)
+        if task_id not in self._draining_tasks:
+            self._redacted_error_messages.pop(task_id, None)
         self._prune_completed()
 
     def _on_draining_task_done(self, task_id: str, task: asyncio.Task[Any]) -> None:
@@ -400,8 +439,16 @@ class TaskRunner:
             task.result()
         except asyncio.CancelledError:
             pass
-        except Exception:
-            log.debug("background thread-backed task exited after timeout", exc_info=True)
+        except Exception as exc:
+            if task_id in self._redacted_error_messages:
+                exc_type = exc.__class__.__name__[:80]
+                log.debug(
+                    "background thread-backed redacted task exited after timeout with %s",
+                    exc_type,
+                )
+            else:
+                log.debug("background thread-backed task exited after timeout", exc_info=True)
+        self._redacted_error_messages.pop(task_id, None)
         self._semaphore.release()
         self._prune_completed()
 
@@ -452,7 +499,10 @@ class TaskRunner:
             elif timeout_cm is not None and timeout_cm.expired():
                 handle.mark_cancelled()
                 info.status = TaskStatus.FAILED
-                info.error = f"task exceeded {task_timeout}s timeout"
+                info.error = self._redacted_error_messages.get(
+                    task_id,
+                    f"task exceeded {task_timeout}s timeout",
+                )
                 info.error_code = "timeout"
                 info.completed_at = datetime.now(UTC).isoformat()
                 if thread_backed and worker_task is not None and not worker_task.done():
@@ -466,8 +516,10 @@ class TaskRunner:
                     )
             else:
                 info.status = TaskStatus.FAILED
-                info.error = str(timeout_exc) or "task-internal timeout"
-                info.error_code = self._classify_error(timeout_exc)
+                info.error = (
+                    self._task_error_message(task_id, timeout_exc) or "task-internal timeout"
+                )
+                info.error_code = self._task_error_code(task_id, timeout_exc)
                 info.completed_at = datetime.now(UTC).isoformat()
         except asyncio.CancelledError:
             handle.mark_cancelled()
@@ -490,8 +542,8 @@ class TaskRunner:
                 info.completed_at = datetime.now(UTC).isoformat()
             else:
                 info.status = TaskStatus.FAILED
-                info.error = str(exc)
-                info.error_code = self._classify_error(exc)
+                info.error = self._task_error_message(task_id, exc)
+                info.error_code = self._task_error_code(task_id, exc)
                 info.completed_at = datetime.now(UTC).isoformat()
         finally:
             if not draining_registered:

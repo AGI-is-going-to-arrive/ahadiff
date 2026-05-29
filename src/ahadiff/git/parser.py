@@ -14,6 +14,8 @@ from .path_tokens import normalize_diff_path_token, parse_diff_git_header_paths
 DiffChangeKind = Literal["modified", "added", "deleted", "renamed", "binary"]
 DiffLineKind = Literal["context", "add", "delete"]
 _HUNK_HEADER_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)$")
+_FORMAT_PATCH_FROM_RE = re.compile(r"^From [0-9a-fA-F]{7,64}(?:\s|$)")
+_GIT_VERSION_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[.\w-]*)?$")
 _MAX_LINE_LEN = 1_000_000
 _COMBINED_DIFF_ERROR = (
     "combined diff format is not supported; provide a standard unified diff patch"
@@ -123,6 +125,7 @@ def split_unified_diff_segments(
     *,
     include_preamble: bool = False,
 ) -> list[list[str]]:
+    lines = _strip_git_format_patch_framing(lines)
     segments: list[list[str]] = []
     current: list[str] = []
     current_has_diff_header = False
@@ -147,6 +150,57 @@ def split_unified_diff_segments(
     if current:
         segments.append(current)
     return segments
+
+
+def _strip_git_format_patch_framing(lines: list[str]) -> list[str]:
+    if not _looks_like_git_format_patch(lines):
+        return lines
+
+    stripped: list[str] = []
+    in_diff = False
+    for index, raw_line in enumerate(lines):
+        line = raw_line.removeprefix("\ufeff") if index == 0 else raw_line
+        if _is_diff_segment_start(lines, index, line):
+            in_diff = True
+            stripped.append(raw_line)
+            continue
+        if not in_diff:
+            continue
+        if _is_git_format_patch_boundary(lines, index, line):
+            in_diff = False
+            continue
+        stripped.append(raw_line)
+    return stripped
+
+
+def _looks_like_git_format_patch(lines: list[str]) -> bool:
+    for index, raw_line in enumerate(lines[:8]):
+        line = raw_line.removeprefix("\ufeff") if index == 0 else raw_line
+        stripped = _line_text(line).strip()
+        if not stripped:
+            continue
+        return _FORMAT_PATCH_FROM_RE.match(stripped) is not None
+    return False
+
+
+def _is_diff_segment_start(lines: list[str], index: int, line: str) -> bool:
+    del lines, index
+    return line.startswith("diff --git ")
+
+
+def _is_git_format_patch_boundary(lines: list[str], index: int, line: str) -> bool:
+    stripped = _line_text(line).strip()
+    if _FORMAT_PATCH_FROM_RE.match(stripped):
+        return True
+    return (
+        _line_text(line) == "-- "
+        and index + 1 < len(lines)
+        and _GIT_VERSION_RE.match(_line_text(lines[index + 1]).strip()) is not None
+    )
+
+
+def _line_text(line: str) -> str:
+    return line.rstrip("\r\n")
 
 
 def _parse_segment(lines: list[str]) -> ChangedFileRecord:
@@ -241,7 +295,7 @@ def _build_hunk(
 ) -> HunkRecord:
     match = _HUNK_HEADER_RE.match(header)
     if match is None:
-        raise InputError(f"invalid unified diff hunk header: {header}")
+        raise InputError(f"invalid unified diff hunk header (line length={len(header)})")
     old_start = int(match.group(1))
     old_count = int(match.group(2) or "1")
     new_start = int(match.group(3))
@@ -289,7 +343,9 @@ def _build_hunk(
             continue
         prefix = raw_line[:1]
         if prefix not in {" ", "+", "-"}:
-            raise InputError(f"unified diff hunk line is missing prefix: {raw_line!r}")
+            raise InputError(
+                f"unified diff hunk line is missing prefix (line length={len(raw_line)})"
+            )
         content = raw_line[1:]
         if prefix == " ":
             parsed_lines.append(DiffLineRecord("context", content, old_cursor, new_cursor))

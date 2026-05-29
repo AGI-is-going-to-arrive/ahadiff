@@ -213,25 +213,51 @@ def extract_claim_candidates_from_run(
             mode=structured_output_mode,
         ),
     )
+    last_fallback_payload: str | None = None
+    last_fallback_error: Exception | None = None
+
+    def _fallback_parse(content: str) -> tuple[ClaimCandidate, ...]:
+        nonlocal last_fallback_error, last_fallback_payload
+        try:
+            return _parse_fallback_claim_candidates_payload(
+                content,
+                default_run_id=run_id,
+            )
+        except Exception as exc:
+            last_fallback_payload = content
+            last_fallback_error = exc
+            raise
+
     try:
-        result = generate_with_validation_retry(
-            provider=provider,
-            request=request,
-            schema_spec=schema_spec,
-            parse=lambda content: _parse_strict_claim_candidates_payload(
-                content,
+        try:
+            result = generate_with_validation_retry(
+                provider=provider,
+                request=request,
                 schema_spec=schema_spec,
+                parse=lambda content: _parse_strict_claim_candidates_payload(
+                    content,
+                    schema_spec=schema_spec,
+                    default_run_id=run_id,
+                ),
+                fallback_parse=_fallback_parse,
+                max_validation_retries=structured_validation_retries,
+            )
+            candidates = result.value
+        except InputError as exc:
+            recovered = _recover_claim_candidates_after_validation_failure(
+                last_fallback_payload,
                 default_run_id=run_id,
-            ),
-            fallback_parse=lambda content: _parse_fallback_claim_candidates_payload(
-                content,
-                default_run_id=run_id,
-            ),
-            max_validation_retries=structured_validation_retries,
-        )
+            )
+            if recovered is None:
+                raise InputError(
+                    _claim_extraction_actionable_error(
+                        exc,
+                        last_fallback_error=last_fallback_error,
+                    )
+                ) from exc
+            candidates = recovered
     finally:
         provider.close()
-    candidates = result.value
     return write_claim_candidates_jsonl(output_path, candidates, overwrite=overwrite), candidates
 
 
@@ -255,6 +281,114 @@ def _parse_fallback_claim_candidates_payload(
 ) -> tuple[ClaimCandidate, ...]:
     require_complete_json_for_fallback(payload)
     return parse_claim_candidates_text(payload, default_run_id=default_run_id)
+
+
+def _recover_claim_candidates_after_validation_failure(
+    payload: str | None,
+    *,
+    default_run_id: str,
+) -> tuple[ClaimCandidate, ...] | None:
+    if payload is None:
+        return None
+    if not _payload_has_truncated_json_fragment(payload):
+        return None
+    try:
+        return parse_claim_candidates_text(payload, default_run_id=default_run_id)
+    except Exception:
+        return None
+
+
+def _payload_has_truncated_json_fragment(payload: str) -> bool:
+    stripped = payload.strip()
+    if not stripped:
+        return False
+    json_start = _first_json_start(stripped)
+    if json_start < 0:
+        return False
+    fragment = stripped[json_start:].strip()
+    try:
+        _parsed, _end_offset = json.JSONDecoder().raw_decode(fragment)
+    except json.JSONDecodeError as exc:
+        if _json_fragment_has_open_tail(fragment):
+            return True
+        return _json_decode_error_is_eof_like(exc, fragment)
+    return False
+
+
+def _first_json_start(text: str) -> int:
+    starts = [index for index in (text.find("{"), text.find("[")) if index >= 0]
+    return min(starts) if starts else -1
+
+
+def _json_fragment_has_open_tail(text: str) -> bool:
+    braces = 0
+    brackets = 0
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            if in_string:
+                escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            braces += 1
+        elif ch == "}":
+            braces -= 1
+        elif ch == "[":
+            brackets += 1
+        elif ch == "]":
+            brackets -= 1
+    return in_string or braces > 0 or brackets > 0
+
+
+def _json_decode_error_is_eof_like(exc: json.JSONDecodeError, text: str) -> bool:
+    eof_window = max(len(text) - 2, 0)
+    if exc.pos < eof_window:
+        return False
+    return exc.msg in {
+        "Expecting value",
+        "Expecting property name enclosed in double quotes",
+        "Expecting ',' delimiter",
+        "Expecting ':' delimiter",
+        "Unterminated string starting at",
+    }
+
+
+def _claim_extraction_actionable_error(
+    exc: Exception,
+    *,
+    last_fallback_error: Exception | None,
+) -> str:
+    del exc
+    detail = _safe_error_detail(last_fallback_error)
+    guidance = (
+        "model returned no parsable claims; the response may be truncated or malformed. "
+        "Try increasing llm.claim_extraction_output_cap or llm.output_token_budget, "
+        "use a model with a larger max_output_tokens limit, or reduce the diff size."
+    )
+    if detail:
+        return f"{guidance} Last parser error: {detail}"
+    return guidance
+
+
+def _safe_error_detail(error: Exception | None) -> str:
+    if error is None:
+        return ""
+    text = " ".join(str(error).split())
+    if not text:
+        return error.__class__.__name__
+    text = redaction_pipeline(text).redacted_text
+    if len(text) > 200:
+        text = text[:200].rstrip() + "..."
+    return f"{error.__class__.__name__}: {text}"
 
 
 def _resolve_claim_request_max_output_tokens(

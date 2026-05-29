@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import type { UserConfig } from 'vite';
 
@@ -36,6 +37,49 @@ function getApiProxy(): ApiProxyOptions {
   return proxyConfig['/api'] as ApiProxyOptions;
 }
 
+function loadRegisterScriptWithServiceWorkerState(lastReload: string | null): {
+  fireControllerChange: () => void;
+  now: { value: number };
+  reload: ReturnType<typeof vi.fn>;
+} {
+  const registerSource = readFileSync(resolve(__dirname, '../../public/registerSW.js'), 'utf8');
+  const controllerChangeListeners: Array<() => void> = [];
+  const storage = new Map<string, string>();
+  if (lastReload !== null) storage.set('sw-last-reload', lastReload);
+  const now = { value: 0 };
+  const reload = vi.fn();
+
+  vm.runInNewContext(registerSource, {
+    Date: { now: () => now.value },
+    navigator: {
+      serviceWorker: {
+        controller: {},
+        addEventListener: (event: string, listener: () => void) => {
+          if (event === 'controllerchange') controllerChangeListeners.push(listener);
+        },
+        register: vi.fn(),
+      },
+    },
+    parseInt,
+    sessionStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    },
+    window: {
+      addEventListener: vi.fn(),
+      location: { reload },
+    },
+  });
+
+  return {
+    fireControllerChange: () => {
+      for (const listener of controllerChangeListeners) listener();
+    },
+    now,
+    reload,
+  };
+}
+
 describe('vite dev API proxy', () => {
   it('registers the PWA plugin for service-worker builds', () => {
     const userConfig = config as UserConfig;
@@ -58,6 +102,18 @@ describe('vite dev API proxy', () => {
     expect(configSource).toContain('clientsClaim: true');
     expect(registerSource).toContain('controllerchange');
     expect(registerSource).toContain('SKIP_WAITING');
+  });
+
+  it('does not lock out a valid controllerchange after a reload cooldown event', () => {
+    const harness = loadRegisterScriptWithServiceWorkerState('1000');
+
+    harness.now.value = 2000;
+    harness.fireControllerChange();
+    expect(harness.reload).not.toHaveBeenCalled();
+
+    harness.now.value = 7001;
+    harness.fireControllerChange();
+    expect(harness.reload).toHaveBeenCalledTimes(1);
   });
 
   it('preserves production same-origin paths while targeting the loopback backend in dev', () => {

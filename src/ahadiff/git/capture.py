@@ -185,6 +185,7 @@ def capture_patch(
     include_untracked: bool = False,
     changed_paths: Iterable[str] | None = None,
     patch: str | None = None,
+    patch_text: str | None = None,
     compare: tuple[Path, Path] | None = None,
     compare_dir: tuple[Path, Path] | None = None,
     patch_url: str | None = None,
@@ -228,6 +229,7 @@ def capture_patch(
         include_untracked=include_untracked,
         changed_paths=changed_paths,
         patch=patch,
+        patch_text=patch_text,
         compare=compare,
         compare_dir=compare_dir,
         patch_url=patch_url,
@@ -1109,6 +1111,7 @@ def _capture_input(
     include_untracked: bool,
     changed_paths: Iterable[str] | None,
     patch: str | None,
+    patch_text: str | None,
     compare: tuple[Path, Path] | None,
     compare_dir: tuple[Path, Path] | None,
     patch_url: str | None,
@@ -1123,6 +1126,7 @@ def _capture_input(
             last,
             since is not None,
             patch is not None,
+            patch_text is not None,
             compare is not None,
             compare_dir is not None,
             patch_url is not None,
@@ -1137,6 +1141,7 @@ def _capture_input(
         last,
         since is not None,
         patch is not None,
+        patch_text is not None,
         compare is not None,
         compare_dir is not None,
         patch_url is not None,
@@ -1157,6 +1162,11 @@ def _capture_input(
     if path_scoped and not (staged or unstaged):
         raise InputError("--changed-path can only be used with worktree captures")
 
+    if patch_text is not None:
+        return _capture_patch_text_input(
+            patch_text=patch_text,
+            max_patch_bytes=effective_max_patch_bytes,
+        )
     if patch is not None:
         return _capture_patch_input(
             workspace_root=workspace_root,
@@ -1611,6 +1621,23 @@ def _capture_patch_input(
         source_kind=source_kind,
         source_name=source_name,
         source_detail={"type": source_kind, "name": source_name},
+        max_patch_bytes=max_patch_bytes,
+    )
+
+
+def _capture_patch_text_input(
+    *,
+    patch_text: str,
+    max_patch_bytes: int,
+) -> _RawCapture:
+    data = patch_text.encode("utf-8")
+    if len(data) > max_patch_bytes:
+        raise InputError(f"patch input exceeds {max_patch_bytes} bytes")
+    return _build_patch_input_capture(
+        data,
+        source_kind="patch_stdin",
+        source_name="pasted-patch",
+        source_detail={"type": "patch_text", "name": "pasted-patch"},
         max_patch_bytes=max_patch_bytes,
     )
 

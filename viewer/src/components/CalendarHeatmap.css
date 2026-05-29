@@ -90,6 +90,8 @@
   transform: translateY(-1px);
   filter: brightness(1.05);
   cursor: help;
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* Skeleton state — no-data placeholder while the API is in flight. */

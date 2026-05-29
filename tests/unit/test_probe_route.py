@@ -159,7 +159,9 @@ def test_probe_provider_route_task_runner_unavailable_returns_503(tmp_path: Path
     response = client.post("/api/providers/demo/probe", headers=_AUTH)
 
     assert response.status_code == 503
-    assert _json_object(response)["error"] == "task_runner_unavailable"
+    body = _json_object(response)
+    assert body["error_code"] == "INTERNAL_ERROR"
+    assert body["error"] == "task_runner_unavailable"
 
 
 def test_probe_provider_route_capacity_rejection_returns_503(
@@ -176,4 +178,25 @@ def test_probe_provider_route_capacity_rejection_returns_503(
     response = client.post("/api/providers/demo/probe", headers=_AUTH)
 
     assert response.status_code == 503
-    assert _json_object(response)["error"] == "too_many_pending_provider_probe_tasks"
+    body = _json_object(response)
+    assert body["error_code"] == "RATE_LIMITED"
+    assert body["error"] == "too_many_pending_provider_probe_tasks"
+
+
+def test_probe_provider_route_global_capacity_rejection_returns_503(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ahadiff.serve.routes_providers as routes_providers
+
+    state_dir = tmp_path / ".ahadiff"
+    _write_provider_config(state_dir)
+    monkeypatch.setattr(routes_providers, "_MAX_GLOBAL_PENDING_PROBE_TASKS", 0)
+    client = _client(state_dir)
+
+    response = client.post("/api/providers/demo/probe", headers=_AUTH)
+
+    assert response.status_code == 503
+    body = _json_object(response)
+    assert body["error_code"] == "RATE_LIMITED"
+    assert body["error"] == "too_many_pending_provider_probe_tasks"

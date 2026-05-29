@@ -904,9 +904,10 @@ async def probe_provider_route(request: Request) -> JSONResponse:
 
     runner = state.task_runner
     if runner is None:
-        return JSONResponse(
-            {"error": "task_runner_unavailable", "status": 503},
-            status_code=503,
+        return error_response(
+            ErrorCode.INTERNAL_ERROR,
+            "task_runner_unavailable",
+            status=503,
         )
 
     config_path = _config_path(state)
@@ -993,9 +994,10 @@ async def probe_provider_route(request: Request) -> JSONResponse:
         and info.status in (TaskStatus.PENDING, TaskStatus.RUNNING)
     )
     if global_probe_count >= _MAX_GLOBAL_PENDING_PROBE_TASKS:
-        return JSONResponse(
-            {"error": "too_many_pending_provider_probe_tasks", "status": 503},
-            status_code=503,
+        return error_response(
+            ErrorCode.RATE_LIMITED,
+            "too_many_pending_provider_probe_tasks",
+            status=503,
         )
 
     task_id = runner.submit_if_capacity(
@@ -1005,9 +1007,10 @@ async def probe_provider_route(request: Request) -> JSONResponse:
         thread_backed=True,
     )
     if task_id is None:
-        return JSONResponse(
-            {"error": "too_many_pending_provider_probe_tasks", "status": 503},
-            status_code=503,
+        return error_response(
+            ErrorCode.RATE_LIMITED,
+            "too_many_pending_provider_probe_tasks",
+            status=503,
         )
     return JSONResponse(
         ProviderProbeSubmitResponse(

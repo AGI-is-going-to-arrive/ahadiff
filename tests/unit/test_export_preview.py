@@ -5,7 +5,7 @@ import io
 import json
 import os
 import zipfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from starlette.testclient import TestClient
@@ -329,6 +329,102 @@ def test_safe_write_rejects_parent_symlink_swap(
     assert not (outside / "run.json").exists()
 
 
+def test_safe_write_without_dir_fd_rejects_parent_swap_before_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not _supports_symlinks(tmp_path):
+        pytest.skip("symlinks unsupported on this platform")
+    root = tmp_path / "preview"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = b"SECRET_EXPORT_PAYLOAD"
+    original_safe_parent_identity = vars(writer_module)["_safe_parent_identity"]
+    swapped = False
+
+    def swapping_safe_parent_identity(parent: Path) -> tuple[int, int]:
+        nonlocal swapped
+        identity = original_safe_parent_identity(parent)
+        if not swapped and parent.name == "data":
+            real_parent = parent.with_name("data-real")
+            parent.rename(real_parent)
+            parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return identity
+
+    monkeypatch.setattr(writer_module.os, "supports_dir_fd", set[object]())
+    monkeypatch.setattr(writer_module, "_safe_parent_identity", swapping_safe_parent_identity)
+
+    with pytest.raises(OSError, match="symlink|changed during validation"):
+        safe_write_export_file(root, "data/run.json", secret)
+
+    assert swapped
+    assert not (outside / "run.json").exists()
+    for leaked_path in outside.iterdir():
+        if leaked_path.is_file():
+            assert leaked_path.read_bytes() != secret
+
+
+def test_safe_write_without_dir_fd_writes_no_temp_payload_on_parent_swap_after_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if os.name == "nt":
+        pytest.skip("renaming an open temp-file parent is POSIX-specific")
+    if not _supports_symlinks(tmp_path):
+        pytest.skip("symlinks unsupported on this platform")
+    root = tmp_path / "preview"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = b"SECRET_EXPORT_TEMP_PAYLOAD"
+    real_fdopen = writer_module.os.fdopen
+    swapped_parents: list[Path] = []
+    write_attempted = False
+
+    class SwappingFile:
+        def __init__(self, wrapped: Any) -> None:
+            self._wrapped = wrapped
+
+        def __enter__(self) -> SwappingFile:
+            self._wrapped.__enter__()
+            return self
+
+        def __exit__(self, *args: object) -> object:
+            return self._wrapped.__exit__(*args)
+
+        def write(self, data: bytes) -> object:
+            nonlocal write_attempted
+            write_attempted = True
+            result = self._wrapped.write(data)
+            self._wrapped.flush()
+            parent = root / "data"
+            if parent.exists() and not parent.is_symlink():
+                real_parent = parent.with_name("data-real")
+                parent.rename(real_parent)
+                parent.symlink_to(outside, target_is_directory=True)
+                swapped_parents.append(real_parent)
+            return result
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(self._wrapped, name)
+
+    def swapping_fdopen(fd: int, mode: str) -> SwappingFile:
+        return SwappingFile(real_fdopen(fd, mode))
+
+    monkeypatch.setattr(writer_module.os, "supports_dir_fd", set[object]())
+    monkeypatch.setattr(writer_module.os, "fdopen", swapping_fdopen)
+
+    with pytest.raises(OSError, match="dir_fd support|symlink|changed during validation"):
+        safe_write_export_file(root, "data/run.json", secret)
+
+    for candidate in tmp_path.rglob("*"):
+        if candidate.is_file():
+            assert candidate.read_bytes() != secret
+    assert not write_attempted
+
+
 def test_zip_is_deterministic_across_tz(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     run_id = "run_test_zip"
@@ -493,6 +589,38 @@ def test_route_clears_stale_preview_files_before_reexport(tmp_path: Path) -> Non
         names = set(zf.namelist())
     assert "stowaway.txt" not in names
     assert "stale-dir/old.json" not in names
+
+
+def test_route_preview_fails_closed_without_dir_fd_support(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    run_id = "run_route_no_dirfd"
+    _write_finalized_run(state_dir, run_id)
+    export_dir = state_dir / "exports" / run_id
+    export_dir.mkdir(parents=True)
+    stale_file = export_dir / "stowaway.txt"
+    stale_file.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(routes_export_module.os, "supports_dir_fd", set[object]())
+    monkeypatch.setattr(writer_module.os, "supports_dir_fd", set[object]())
+
+    client = TestClient(
+        create_app(ServeState(state_dir=state_dir, token="test-token")),
+        base_url="http://localhost:8765",
+    )
+    response = client.post(
+        "/api/export/preview",
+        headers=_AUTH,
+        json={"run_id": run_id},
+    )
+
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error_code"] == "STORAGE_FS"
+    assert stale_file.read_text(encoding="utf-8") == "old"
+    assert not (state_dir / "exports" / f"{run_id}.zip").exists()
+    assert not (export_dir / "manifest.json").exists()
 
 
 def test_route_rejects_symlinked_exports_parent_before_stale_cleanup(tmp_path: Path) -> None:

@@ -90,6 +90,7 @@ _DANGER_CONTEXT_RATIO = 0.8
 _WARN_CONTEXT_RATIO = 0.5
 _WARN_FILE_COUNT = 30
 _DANGER_FILE_COUNT = 50
+_REDACTED_PATCH_TASK_ERROR = "learn task failed; pasted patch details were redacted"
 
 
 def _contains_control_chars(value: str) -> bool:
@@ -132,6 +133,12 @@ def _coerce_string(key: str, value: object) -> str:
     allowed_values = _ENUM_FIELDS.get(key)
     if allowed_values is not None and value not in allowed_values:
         raise ValueError(f"{key} must be one of {sorted(allowed_values)!r}")
+    return value
+
+
+def _coerce_patch_text(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError("patch expects string value")
     return value
 
 
@@ -191,6 +198,8 @@ def _coerce_changed_paths(value: object) -> tuple[str, ...]:
 def _coerce_field(key: str, value: object) -> object:
     if key == "changed_paths":
         return _coerce_changed_paths(value)
+    if key == "patch":
+        return _coerce_patch_text(value)
     if key in _BOOL_FIELDS:
         return _coerce_bool(value)
     if key in _OPTIONAL_BOOL_FIELDS:
@@ -211,6 +220,12 @@ def _invalid_value_response(key: str, message: str | None = None) -> JSONRespons
         f"invalid_value_for_{key}",
         details=details,
     )
+
+
+def _route_patch_as_inline_text(params: dict[str, Any]) -> None:
+    patch = params.pop("patch", None)
+    if patch is not None:
+        params["patch_text"] = patch
 
 
 async def _parse_learn_request_body(
@@ -245,6 +260,7 @@ async def _parse_learn_request_body(
                 params[k] = coerced
     if params.get("patch") == "-":
         return None, _invalid_value_response("patch", "stdin patch input is not supported")
+    _route_patch_as_inline_text(params)
     return params, None
 
 
@@ -492,6 +508,7 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
             include_untracked=bool(params.get("include_untracked", False)),
             changed_paths=cast("tuple[str, ...] | None", params.get("changed_paths")),
             patch=cast("str | None", params.get("patch")),
+            patch_text=cast("str | None", params.get("patch_text")),
             compare=cast("tuple[Path, Path] | None", params.get("compare")),
             compare_dir=cast("tuple[Path, Path] | None", params.get("compare_dir")),
             patch_url=cast("str | None", params.get("patch_url")),
@@ -613,6 +630,7 @@ async def post_learn(request: Request) -> JSONResponse:
     from ahadiff.core.orchestrator import LearnRequest, run_learn_pipeline
 
     learn_request = LearnRequest(workspace_root=workspace_root, **params)
+    has_sensitive_patch_text = learn_request.patch_text is not None
 
     async def _learn_task(handle: TaskHandle) -> dict[str, Any]:
         def _on_progress(step: int, total: int, message: str) -> None:
@@ -644,6 +662,8 @@ async def post_learn(request: Request) -> JSONResponse:
         _learn_task,
         max_pending=_MAX_PENDING_TASKS,
         thread_backed=True,
+        redact_errors=has_sensitive_patch_text,
+        redacted_error_message=_REDACTED_PATCH_TASK_ERROR,
     )
     if task_id is None:
         return error_response(
