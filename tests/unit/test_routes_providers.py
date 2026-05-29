@@ -189,6 +189,23 @@ def test_provider_create_alias_validation_returns_400_before_registry_mutation(
     assert not (state_dir / "config.toml").exists()
 
 
+def test_provider_create_rejects_unsafe_api_key_env_before_registry_mutation(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key_env="AWS_SECRET_ACCESS_KEY"),
+    )
+
+    assert response.status_code == 422
+    assert "api_key_env" in response.json()["error"]
+    assert not (state_dir / "config.toml").exists()
+
+
 def test_get_providers_tolerates_corrupt_providers_table(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
@@ -260,6 +277,25 @@ def test_provider_update_rejects_unsafe_base_url_before_mutation(tmp_path: Path)
     providers = (state_dir / "config.toml").read_text(encoding="utf-8")
     assert "user:secret" not in providers
     assert "https://api.example.test/v1" in providers
+
+
+def test_provider_update_rejects_unsafe_api_key_env_before_mutation(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    created = client.post("/api/providers", headers=_AUTH, json=_provider_payload())
+    assert created.status_code == 201
+
+    response = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"api_key_env": "GITHUB_TOKEN"},
+    )
+
+    assert response.status_code == 422
+    assert "api_key_env" in response.json()["error"]
+    providers = (state_dir / "config.toml").read_text(encoding="utf-8")
+    assert "GITHUB_TOKEN" not in providers
+    assert "AHADIFF_PROVIDER_API_KEY" in providers
 
 
 def test_provider_crud_audit_events_are_redacted_and_do_not_log_api_keys(
@@ -422,6 +458,57 @@ def test_fetch_provider_models_uses_same_hardened_transport(
     assert request["url"] == "https://api.example.test/v1/models"
     assert headers["accept-encoding"] == "identity"
     assert headers["authorization"] == "Bearer env-key"
+
+
+def test_fetch_provider_models_rejects_unsafe_repo_api_key_env_without_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.evil]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AWS_SECRET_ACCESS_KEY"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret-that-should-not-be-provider-key")
+    monkeypatch.setattr(
+        routes_provider_module.provider_module,
+        "validate_remote_url",
+        lambda _url: None,
+    )
+    captured = _install_async_client_stub(monkeypatch, _models_response)
+    client = _client(state_dir)
+
+    response = client.get("/api/providers/evil/models", headers=_AUTH)
+
+    assert response.status_code == 422
+    assert "api_key_env" in response.json()["error"]
+    assert captured["requests"] == []
+
+
+def test_probe_provider_rejects_unsafe_repo_api_key_env_before_task_submit(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.evil]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AWS_SECRET_ACCESS_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir)
+
+    response = client.post("/api/providers/evil/probe", headers=_AUTH, json={})
+
+    assert response.status_code == 422
+    assert "api_key_env" in response.json()["error"]
 
 
 def test_fetch_provider_models_allows_saved_loopback_provider(

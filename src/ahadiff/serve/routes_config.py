@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from anyio import to_thread
 from starlette.responses import JSONResponse
 
-from ahadiff.contracts import ErrorCode
+from ahadiff.contracts import AhaDiffError, ErrorCode
 from ahadiff.contracts.serve_app import ConfigResponse, ConfigUpdateResponse
 from ahadiff.contracts.serve_doctor import DoctorCheck, DoctorResponse
 from ahadiff.core.sqlite_util import safe_sqlite_connect
@@ -850,6 +850,13 @@ async def put_config(request: Request) -> JSONResponse:
                 quiz_update,
                 lang_update,
             )
+        except AhaDiffError as exc:
+            message = (
+                "another_ahadiff_process_is_running"
+                if exc.code is ErrorCode.LOCK_CONFLICT
+                else str(exc) or exc.code.value.lower()
+            )
+            return error_response(exc.code, message)
         except Exception as exc:
             return _config_error(f"cannot update config: {exc}")
         if config_error is not None:

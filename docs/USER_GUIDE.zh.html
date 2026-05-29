@@ -13,7 +13,7 @@
 <body>
 <main class="wrap">
 <section class="hero">
-  <div class="eyebrow">AhaDiff User Guide · 2026-05-27 · <a href="USER_GUIDE.en.html">English</a></div>
+  <div class="eyebrow">AhaDiff User Guide · 2026-05-29 · <a href="USER_GUIDE.en.html">English</a></div>
   <h1>知返 AhaDiff 用户使用指南</h1>
   <p class="lead">AhaDiff 把一次 git diff 变成带代码证据的课程、声明清单、测验、复习卡、概念图谱和质量棘轮。它默认是 local-first：每个仓库自己的 <code>.ahadiff/</code> 是真相源。</p>
   <p class="notice">新增视频教程：<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">打开 English tutorial MP4</a>；<a href="video/output/ahadiff-tutorial.zh.burned-subtitles.mp4">打开中文介绍和使用教程 MP4</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。</p>
@@ -46,6 +46,7 @@ ahadiff config show --resolved</pre>
 <section id="provider">
   <h2>2. 配置 GPT-5.5 Provider</h2>
   <p>不要把真实 key 写进 Git、README、manifest 或命令行历史。推荐把 key 放到环境变量里，只把变量名交给 AhaDiff。</p>
+  <p><code>api_key_env</code> 是变量名，不是字面量 key。Repo config 只接受 <code>AHADIFF_*</code> 名称和常见 provider 变量名（<code>OPENAI_API_KEY</code>、<code>ANTHROPIC_API_KEY</code>、<code>GEMINI_API_KEY</code>、<code>AZURE_OPENAI_API_KEY</code>）。identifier 形态的值在环境变量未设置时会关闭失败，不会把变量名误当作 bearer token 发出。</p>
   <h3>macOS / Linux</h3>
   <pre>export AHADIFF_PROVIDER_BASE_URL="https://api.example.com/v1"
 export AHADIFF_PROVIDER_API_KEY="&lt;provider-api-key&gt;"
@@ -87,7 +88,7 @@ ahadiff learn --compare old.py new.py
 ahadiff learn --compare-dir old/ new/
 ahadiff learn --last --against-spec SPEC.md
 ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
-  <p>Dashboard 的“开始学习”对话框和这些命令保持同一套心智模型。四个快速卡片对应工作区、未暂存、已暂存和最近一次提交；更多捕获来源按 Git 高级、补丁来源、文件对比分组，每张卡片都会显示对应 CLI 形态。路径范围只对工作区类运行生效，且只接受仓库相对路径。WebUI 的补丁输入框只接受粘贴的 unified diff 文本，限制为 4096 字节；补丁文件、stdin 或更大的补丁请用 CLI。远程 patch URL 会走和 CLI 一样的安全检查；loopback 和私有网络 URL 会被拒绝。目录对比在缺少安全目录文件描述符遍历的平台上会关闭失败。耗时较长的 CLI 命令会显示 Rich 状态提示；它只是终端进度反馈，不是给脚本解析的稳定输出契约。</p>
+  <p>Dashboard 的“开始学习”对话框和这些命令保持同一套心智模型。四个快速卡片对应工作区、未暂存、已暂存和最近一次提交；更多捕获来源按 Git 高级、补丁来源、文件对比分组，每张卡片都会显示对应 CLI 形态。路径范围只对工作区类运行生效，且只接受仓库相对路径。WebUI 的补丁输入框只接受粘贴的 unified diff 文本，限制为 4096 字节；补丁文件、stdin 或更大的补丁请用 CLI。远程 patch URL 会走和 CLI 一样的安全检查；loopback 和私有网络 URL 会被拒绝。Patch 文件/stdin 和 patch URL 运行没有仓库 symbol index，所以只有 hunk 证据时，claims 可能标为 weak，但仍可生成 lesson。目录对比在缺少安全目录文件描述符遍历的平台上会关闭失败。耗时较长的 CLI 命令会显示 Rich 状态提示；它只是终端进度反馈，不是给脚本解析的稳定输出契约。</p>
 </section>
 
 <section id="webui">
@@ -160,23 +161,23 @@ ahadiff challenge status</pre></div>
   <h2>6. 导出和分享</h2>
   <pre>ahadiff export-results
 ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
-  <p>WebUI 的 Ratchet / Export 入口支持静态预览、结果 TSV、结果 JSON 和 Anki <code>.apkg</code>。APKG 需要安装 <code>ahadiff[anki]</code>。</p>
+  <p>WebUI 的 Ratchet / Export 入口支持静态预览、结果 TSV、结果 JSON 和 Anki <code>.apkg</code>。APKG 需要在同一个 AhaDiff 运行环境安装 <code>anki</code> extra；源码 checkout 可用 <code>uv tool install --reinstall --editable '.[anki]'</code> 重新安装。</p>
 </section>
 
 <section id="features">
   <h2>7. 功能状态：默认、Opt-in、依赖项</h2>
   <table><thead><tr><th>功能</th><th>状态</th><th>说明</th></tr></thead><tbody>
-    <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">默认主链</td><td>运行 <code>ahadiff learn</code> 后生成，具体产物取决于 diff 和 learnability。Quiz 的源码证据会在作答后再展示。</td></tr>
+    <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">默认主链</td><td>运行 <code>ahadiff learn</code> 后生成，具体产物取决于 diff 和 learnability。Patch-only 捕获在没有 symbol 级证明时，可使用 weak diff-anchored claims。Quiz 的源码证据会在作答后再展示。</td></tr>
     <tr><td>可选 LLM judge</td><td class="ok">可选；确定性评分仍是主口径</td><td>成功时写入 <code>judge.json</code>；失败时写入有界、脱敏的 <code>judge_failure.json</code>，只包含 provider、model、错误类型和安全错误消息。缺少 judge artifact 时 API 返回 404，不会变成 500。</td></tr>
     <tr><td>测验题量</td><td class="ok">默认固定；可手动改成自适应</td><td>默认生成 3 题。固定模式可设置为 1 到 30 题。可在 Settings 里开启，或临时使用 <code>--quiz-mode auto</code>；自适应模式会根据 diff stats 选题量，默认范围是 3-12 题。</td></tr>
     <tr><td>结构化 JSON 输出</td><td class="ok">默认 JSON object；带 1 次 validation retry</td><td>公开 artifact 形状不变。只有 provider 能力声明支持时才使用 native schema；不支持的 mode 会降级。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。</td></tr>
     <tr><td>自适应捕获上限</td><td class="ok">新配置自动；自定义过则手动</td><td>自动模式会根据 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度计算捕获上限。旧配置只要改过 <code>capture.max_files</code>、<code>capture.hard_limit</code> 或 <code>capture.max_patch_bytes</code>，就会迁移为手动模式。运行时 patch 读取仍封顶 50 MiB。</td></tr>
     <tr><td>Provider 智能配置</td><td class="ok">Settings 中可用</td><td>Provider 卡片会按当前草稿 provider class、model 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。它也会展示 provider 原生 thinking 支持、低置信度 warning、推荐的 max-output 值，以及保存 API 返回的收紧提示。Settings 会分别展示 generate 和 judge 模型上限摘要。</td></tr>
     <tr><td>WebUI / Welcome / Dashboard / Diff / Review</td><td class="ok">默认可用</td><td>通过 <code>ahadiff serve</code> 本地打开。viewer 使用浅色报纸编辑风格，采用 paper / ink / terracotta token，并通过 <code>@fontsource</code> 自托管 Cormorant Garamond；字体加载继续受 viewer CSP 约束，只走本地资源。Welcome 的 Before/After demo 会把过长的原始 diff 折叠到右侧课程内容高度，显示已展示 / 总行数；短 diff 或空 diff 不显示折叠控件。</td></tr>
-    <tr><td>AI 工具指引</td><td class="ok">Settings 写入；Guide 只读</td><td>Settings 会把 15 个安装目标分成 CLI / IDE / CI，展示本地化快速开始步骤、示例提示词、预期输出、平台说明和不调用 provider 的本地演示。Guide 会在折叠工具卡片中展示同一套使用提示和文件写入预览，但不提供写入/移除按钮；打印模式会展开这些卡片，方便阅读。</td></tr>
+    <tr><td>AI 工具指引</td><td class="ok">Settings 写入；Guide 只读</td><td>Settings 会把 15 个安装目标分成 CLI / IDE / CI，展示本地化快速开始步骤、示例提示词、预期输出、平台说明和不调用 provider 的本地演示。Guide 会在折叠工具卡片中展示同一套使用提示和文件写入预览，但不提供写入/移除按钮；打印模式会展开这些卡片，方便阅读。安装写入使用带 guard 的 atomic replace；回滚会在平台支持时恢复文件内容和 mode。</td></tr>
     <tr><td>GPT-5.5 LLM</td><td class="warn">需要配置</td><td>配置 provider、base URL、model 和 API key 环境变量后使用。</td></tr>
     <tr><td>Challenge</td><td class="warn">默认关闭</td><td>需要配置 opt-in。CLI 当前提供 build/status，完整推进在 WebUI/API。</td></tr>
-    <tr><td>APKG 导出</td><td class="warn">依赖 extra</td><td>需要 <code>ahadiff[anki]</code>；当前可导出 active review cards，但 stable namespace GUID 仍未落地。</td></tr>
+    <tr><td>APKG 导出</td><td class="warn">依赖 extra</td><td>需要在同一个 AhaDiff 运行环境安装 <code>anki</code> extra；源码 checkout 可用 <code>uv tool install --reinstall --editable '.[anki]'</code> 重新安装。当前可导出 active review cards，但 stable namespace GUID 仍未落地。</td></tr>
     <tr><td>Watch</td><td class="warn">依赖 extra</td><td>需要 watchdog 相关依赖；否则可以手动运行 learn。</td></tr>
     <tr><td>Graphify refresh</td><td class="warn">依赖外部产物/缓存</td><td><code>graph refresh</code> 和 WebUI refresh 会把已有 <code>graphify-out/graph.json</code> 重新导入 AhaDiff 的图缓存和 review database；它们本身不会运行 <code>graphify update</code>。learn 阶段在 Graphify CLI 存在时可先尝试 update，再导入新产物。WebUI 刷新会按后端长刷新窗口等待，最长 600 秒。导入受 <code>graph.max_nodes_import</code> 限制（默认 <code>50000</code>，允许范围 <code>1000</code>-<code>50000</code>）；超过上限的刷新会返回 <code>GRAPH_NODE_LIMIT</code>。</td></tr>
     <tr><td>Team 功能</td><td class="no">未发布</td><td>仍在 roadmap 中，不能写成当前已完成能力。</td></tr>
@@ -213,12 +214,12 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h2>9. 关于本文档</h2>
   <ul>
     <li>本文档中的截图仅作为示例，不包含任何真实的 provider 凭证、仓库内容或用户数据。</li>
-    <li>跨平台支持：主要测试与支持平台为 macOS 与 Linux；Windows 支持核心 CLI 与 serve 流程，但 <code>--compare-dir</code> 依赖仅 macOS/Linux 提供的安全目录文件描述符，<code>hooks</code> 安装目标也仅支持 POSIX shell，v0.1 暂不支持 Windows。</li>
+    <li>跨平台支持：主要测试与支持平台为 macOS 与 Linux；Windows 支持核心 CLI 与 serve 流程，但 <code>--compare-dir</code> 依赖仅 macOS/Linux 提供的安全目录文件描述符，<code>hooks</code> 安装目标也仅支持 POSIX shell，v0.1 暂不支持 Windows。安装回滚在 POSIX 上会在 atomic replace 前恢复 mode；没有 <code>fchmod</code> 的平台会在 replace 后 best-effort 恢复 mode。</li>
     <li>持续集成状态请到上游仓库的 GitHub Actions 页查看，而不是参考本文档。</li>
   </ul>
 </section>
 
-<p class="footer">生成日期：2026-05-25；最后更新：2026-05-27。本文档是一个自包含 HTML 文件；截图和 CSS 动图 demo 已嵌入文件内部。</p>
+<p class="footer">生成日期：2026-05-25；最后更新：2026-05-29。本文档是一个自包含 HTML 文件；截图和 CSS 动图 demo 已嵌入文件内部。</p>
 </main>
 </body>
 </html>

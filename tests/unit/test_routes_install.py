@@ -708,6 +708,21 @@ def test_install_mutation_rolls_back_partial_write_on_failure(
     assert not created.exists()
 
 
+def test_atomic_write_bytes_restores_content_when_fchmod_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.install import base as install_base
+
+    target = tmp_path / "AGENTS.md"
+    target.write_bytes(b"partial\n")
+    monkeypatch.delattr(install_base.os, "fchmod", raising=False)
+
+    install_base.atomic_write_bytes(target, b"user text\n", mode=0o750)
+
+    assert target.read_bytes() == b"user text\n"
+
+
 def test_install_mutation_rejects_repo_root_override(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()

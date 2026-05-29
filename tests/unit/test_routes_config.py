@@ -446,6 +446,26 @@ def test_put_config_persists_under_repo_write_lock(
     )
 
 
+def test_put_config_reports_repo_write_lock_conflict(tmp_path: Path) -> None:
+    from ahadiff.git.repo import repo_write_lock
+
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    client = _client(state_dir)
+
+    with repo_write_lock(state_dir / "ahadiff.lock", command="db restore"):
+        response = client.put(
+            "/api/config",
+            json={"generate_model": "gpt-5.5-mini"},
+            headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error_code"] == "LOCK_CONFLICT"
+    assert response.json()["error"] == "another_ahadiff_process_is_running"
+    assert not (state_dir / "config.toml").exists()
+
+
 def test_put_config_reads_validates_and_persists_under_repo_write_lock(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

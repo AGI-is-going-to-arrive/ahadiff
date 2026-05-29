@@ -41,6 +41,7 @@ from ahadiff.core.config import (
     resolve_provider_api_key,
     validate_provider_alias,
     validate_provider_base_url,
+    validate_repo_api_key_env_name,
     write_config_data,
 )
 from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
@@ -140,6 +141,16 @@ def _clean_optional_provider_text(value: str | None, *, field_name: str) -> str 
     if not stripped:
         raise _ProviderFieldError(f"{field_name} must be a non-empty string")
     return stripped
+
+
+def _validate_provider_api_key_env(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise _ProviderFieldError("api_key_env must be a non-empty string")
+    try:
+        validate_repo_api_key_env_name(value)
+    except ConfigError as exc:
+        raise _ProviderFieldError(f"api_key_env: {exc}") from exc
+    return value
 
 
 def _error(message: str, *, status: int) -> JSONResponse:
@@ -571,6 +582,7 @@ async def create_provider(request: Request) -> JSONResponse:
             body.model_limits_name,
             field_name="model_limits_name",
         )
+        api_key_env = _validate_provider_api_key_env(body.api_key_env)
     except _ProviderFieldError as exc:
         return _error(str(exc), status=422)
 
@@ -590,7 +602,7 @@ async def create_provider(request: Request) -> JSONResponse:
                 "provider_class": body.provider_class,
                 "model_name": body.model_name,
                 "base_url": normalized_base_url,
-                "api_key_env": body.api_key_env,
+                "api_key_env": api_key_env,
             }
             if body.max_output_tokens is not None:
                 new_provider["max_output_tokens"] = body.max_output_tokens
@@ -613,6 +625,8 @@ async def create_provider(request: Request) -> JSONResponse:
         created, persisted, warnings = await to_thread.run_sync(_persist)
     except _ProviderBaseUrlError as exc:
         return _error(f"base_url: {exc}", status=422)
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
     except ConfigError as exc:
         return _error(str(exc), status=500)
     if not created or persisted is None:
@@ -744,6 +758,13 @@ async def update_provider(request: Request) -> JSONResponse:
     masked_key = update_payload.get("api_key_env")
     if isinstance(masked_key, str) and "****" in masked_key:
         del update_payload["api_key_env"]
+    elif "api_key_env" in update_payload:
+        try:
+            update_payload["api_key_env"] = _validate_provider_api_key_env(
+                update_payload["api_key_env"]
+            )
+        except _ProviderFieldError as exc:
+            return _error(str(exc), status=422)
     if not update_payload and not clear_fields:
         return _error("at_least_one_field_required", status=422)
 
@@ -765,6 +786,9 @@ async def update_provider(request: Request) -> JSONResponse:
             updated_provider.update(safe_update)
             for field_name in clear_fields:
                 updated_provider.pop(field_name, None)
+            updated_provider["api_key_env"] = _validate_provider_api_key_env(
+                updated_provider.get("api_key_env")
+            )
             # Recompute base_url normalization if either base_url or
             # provider_class changed (so suffix stripping stays aligned).
             if "base_url" in update_payload or "provider_class" in update_payload:
@@ -798,6 +822,8 @@ async def update_provider(request: Request) -> JSONResponse:
         updated, persisted, warnings = await to_thread.run_sync(_persist)
     except _ProviderBaseUrlError as exc:
         return _error(f"base_url: {exc}", status=422)
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
     except ConfigError as exc:
         return _error(str(exc), status=500)
     if not updated or persisted is None:
@@ -901,6 +927,10 @@ async def probe_provider_route(request: Request) -> JSONResponse:
         return _error("provider_not_found", status=404)
 
     provider_snapshot, security_config = loaded
+    try:
+        _validate_provider_api_key_env(provider_snapshot.get("api_key_env"))
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
     start_fingerprint = provider_core_fingerprint(provider_snapshot)
     workspace_root = state.state_dir.parent
 
@@ -910,7 +940,7 @@ async def probe_provider_route(request: Request) -> JSONResponse:
             model_name = _provider_required_str(provider_snapshot, "model_name")
             model_limits_name = _provider_optional_str(provider_snapshot, "model_limits_name")
             base_url = _provider_required_str(provider_snapshot, "base_url")
-            api_key_env = _provider_required_str(provider_snapshot, "api_key_env")
+            api_key_env = _validate_provider_api_key_env(provider_snapshot.get("api_key_env"))
             validate_provider_base_url(
                 base_url,
                 allowed_local_hosts=(
@@ -1161,7 +1191,10 @@ async def fetch_provider_models(request: Request) -> JSONResponse:
     provider_class = provider_data.get("provider_class", "openai")
 
     try:
+        api_key_env = _validate_provider_api_key_env(api_key_env)
         api_key = resolve_provider_api_key(api_key_env)
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
     except Exception:
         return _error("Failed to resolve API key", status=400)
 

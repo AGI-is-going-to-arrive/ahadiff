@@ -404,16 +404,25 @@ def atomic_write_bytes(path: Path, content: bytes, *, mode: int | None = None) -
     import tempfile
     from pathlib import Path as _Path
 
+    desired_mode = stat.S_IMODE(mode) if mode is not None else None
+    chmod_after_replace = False
     fd, tmp_name = tempfile.mkstemp(
         dir=str(path.parent), prefix=f".{path.name}.", suffix=".ahadiff.tmp"
     )
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(content)
-            if mode is not None:
-                with contextlib.suppress(OSError, NotImplementedError):
-                    os.fchmod(fh.fileno(), stat.S_IMODE(mode))
+            if desired_mode is not None:
+                fchmod = getattr(os, "fchmod", None)
+                if callable(fchmod):
+                    with contextlib.suppress(OSError, NotImplementedError):
+                        fchmod(fh.fileno(), desired_mode)
+                else:
+                    chmod_after_replace = True
         _Path(tmp_name).replace(path)
+        if chmod_after_replace and desired_mode is not None:
+            with contextlib.suppress(OSError, NotImplementedError):
+                path.chmod(desired_mode)
     except BaseException:
         with contextlib.suppress(OSError):
             _Path(tmp_name).unlink()

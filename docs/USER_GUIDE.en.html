@@ -13,7 +13,7 @@
 <body>
 <main class="wrap">
 <section class="hero">
-  <div class="eyebrow">AhaDiff User Guide · 2026-05-27 · <a href="USER_GUIDE.zh.html" style="text-decoration:none;color:var(--accent)">中文</a></div>
+  <div class="eyebrow">AhaDiff User Guide · 2026-05-29 · <a href="USER_GUIDE.zh.html" style="text-decoration:none;color:var(--accent)">中文</a></div>
   <h1>AhaDiff User Guide</h1>
   <p class="lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository's own <code>.ahadiff/</code> is the source of truth.</p>
   <p class="notice">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="video/output/ahadiff-tutorial.zh.burned-subtitles.mp4">Chinese walkthrough (MP4)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree.</p>
@@ -46,6 +46,7 @@ ahadiff config show --resolved</pre>
 <section id="provider">
   <h2>2. Configure GPT-5.5 Provider</h2>
   <p>Never write a real API key into Git, the README, manifests, or shell history. Put the key in an environment variable and hand only the variable name to AhaDiff.</p>
+  <p><code>api_key_env</code> is a variable name, not a literal key. Repo config accepts <code>AHADIFF_*</code> names and the common provider names (<code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GEMINI_API_KEY</code>, <code>AZURE_OPENAI_API_KEY</code>). Identifier-shaped values fail closed when the environment variable is unset, so an env name is not sent as a bearer token by accident.</p>
   <h3>macOS / Linux</h3>
   <pre>export AHADIFF_PROVIDER_BASE_URL="https://api.example.com/v1"
 export AHADIFF_PROVIDER_API_KEY="&lt;provider-api-key&gt;"
@@ -87,7 +88,7 @@ ahadiff learn --compare old.py new.py
 ahadiff learn --compare-dir old/ new/
 ahadiff learn --last --against-spec SPEC.md
 ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
-  <p>The Dashboard's New Run dialog mirrors these capture sources. The four quick tiles cover working tree, unstaged, staged, and last commit runs. More capture sources are grouped into Git Advanced, Patch, and File Compare cards, and each card shows the matching CLI shape. Path scope only applies to working-tree modes and accepts repo-relative paths. The WebUI patch field accepts pasted unified diff text up to 4096 bytes; use the CLI for patch files, stdin, or larger patches. Remote patch URLs must pass the same safety checks as the CLI; loopback and private-network URLs are rejected. Directory compare fails closed on platforms without secure directory file descriptor traversal. Long-running CLI commands show Rich status while they run; treat that as terminal feedback, not a machine-readable output contract.</p>
+  <p>The Dashboard's New Run dialog mirrors these capture sources. The four quick tiles cover working tree, unstaged, staged, and last commit runs. More capture sources are grouped into Git Advanced, Patch, and File Compare cards, and each card shows the matching CLI shape. Path scope only applies to working-tree modes and accepts repo-relative paths. The WebUI patch field accepts pasted unified diff text up to 4096 bytes; use the CLI for patch files, stdin, or larger patches. Remote patch URLs must pass the same safety checks as the CLI; loopback and private-network URLs are rejected. Patch file/stdin and patch URL runs have no repository symbol index, so hunk-anchored claims may be marked weak while still producing a lesson. Directory compare fails closed on platforms without secure directory file descriptor traversal. Long-running CLI commands show Rich status while they run; treat that as terminal feedback, not a machine-readable output contract.</p>
 </section>
 
 <section id="webui">
@@ -160,23 +161,23 @@ ahadiff challenge status</pre></div>
   <h2>6. Export and Share</h2>
   <pre>ahadiff export-results
 ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
-  <p>The Ratchet / Export entry points in the WebUI support a static preview, results as TSV, results as JSON, and an Anki <code>.apkg</code>. APKG export requires <code>ahadiff[anki]</code> to be installed.</p>
+  <p>The Ratchet / Export entry points in the WebUI support a static preview, results as TSV, results as JSON, and an Anki <code>.apkg</code>. APKG export requires the <code>anki</code> extra in the same AhaDiff environment; from a source checkout, reinstall the tool with <code>uv tool install --reinstall --editable '.[anki]'</code>.</p>
 </section>
 
 <section id="features">
   <h2>7. Feature Status: Defaults, Opt-ins, and Dependencies</h2>
   <table><thead><tr><th>Feature</th><th>Status</th><th>Notes</th></tr></thead><tbody>
-    <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">Default pipeline</td><td>Produced after <code>ahadiff learn</code>. Which specific artifacts get created depends on the diff and its learnability. In Quiz, source evidence stays locked until you answer.</td></tr>
+    <tr><td>Lesson / Claims / Quiz / Score</td><td class="ok">Default pipeline</td><td>Produced after <code>ahadiff learn</code>. Which specific artifacts get created depends on the diff and its learnability. Patch-only captures can use weak diff-anchored claims when symbol-level proof is not available. In Quiz, source evidence stays locked until you answer.</td></tr>
     <tr><td>Optional LLM judge</td><td class="ok">Optional; deterministic score remains primary</td><td>Successful judge runs write <code>judge.json</code>. Judge failures write a bounded and redacted <code>judge_failure.json</code> with provider, model, error type, and a safe message. Missing judge artifacts return 404 rather than crashing the API.</td></tr>
     <tr><td>Quiz question count</td><td class="ok">Fixed by default; adaptive is opt-in</td><td>Default is 3 questions. Fixed mode accepts 1-30 questions. In Settings, or with <code>--quiz-mode auto</code>, AhaDiff uses diff stats to choose a bounded count; the default adaptive range is 3-12 questions.</td></tr>
     <tr><td>Structured JSON output</td><td class="ok">Default JSON object mode; one validation retry</td><td>The public artifacts stay the same. Native schema is used only when the provider capability says it is supported. Unsupported modes downgrade, and truncated or malformed fallback JSON is retried instead of being accepted.</td></tr>
     <tr><td>Adaptive capture limits</td><td class="ok">Auto for fresh configs; manual when customized</td><td>Auto mode uses provider probe results, the bundled model registry, output reserves, safety reserves, and CJK diff density to size capture limits. Existing configs that changed <code>capture.max_files</code>, <code>capture.hard_limit</code>, or <code>capture.max_patch_bytes</code> migrate to manual mode. Runtime patch intake is still capped at 50 MiB.</td></tr>
     <tr><td>Provider smart config</td><td class="ok">Available in Settings</td><td>The provider card previews model limits from the draft provider class, model, and optional limits profile before saving, without remote probing on every edit. It also shows provider-specific thinking support, low-confidence warnings, recommended max-output values, and any clamp returned by the save API. Settings shows separate generate and judge model-limit summaries.</td></tr>
     <tr><td>WebUI / Welcome / Dashboard / Diff / Review</td><td class="ok">Available by default</td><td>Open locally with <code>ahadiff serve</code>. The viewer uses a light editorial paper style with paper / ink / terracotta tokens and self-hosted Cormorant Garamond from <code>@fontsource</code>; font loading stays local under the viewer CSP. The Welcome Before/After demo collapses long raw diffs to the lesson-side height, shows the visible / total line count, and keeps short or empty diffs free of collapse controls.</td></tr>
-    <tr><td>AI Tool Guidance</td><td class="ok">Settings writes; Guide is read-only</td><td>Settings groups the 15 install targets into CLI / IDE / CI, shows localized quick-start steps, example prompts, expected behavior, platform notes, and a provider-free local demo. Guide shows the same usage hints and file-write preview in collapsed tool cards, without write/remove buttons; print mode expands those cards for reading.</td></tr>
+    <tr><td>AI Tool Guidance</td><td class="ok">Settings writes; Guide is read-only</td><td>Settings groups the 15 install targets into CLI / IDE / CI, shows localized quick-start steps, example prompts, expected behavior, platform notes, and a provider-free local demo. Guide shows the same usage hints and file-write preview in collapsed tool cards, without write/remove buttons; print mode expands those cards for reading. Install writes use guarded atomic replacement; rollback restores file content and mode where the platform supports it.</td></tr>
     <tr><td>GPT-5.5 LLM</td><td class="warn">Requires configuration</td><td>Configure the provider, base URL, model, and the API-key environment variable before use.</td></tr>
     <tr><td>Challenge</td><td class="warn">Off by default</td><td>Opt-in via configuration. The CLI currently exposes build / status; full progression happens through the WebUI / API.</td></tr>
-    <tr><td>APKG export</td><td class="warn">Requires extra</td><td>Requires <code>ahadiff[anki]</code>. Active review cards can be exported today, but stable namespace GUIDs have not landed yet.</td></tr>
+    <tr><td>APKG export</td><td class="warn">Requires extra</td><td>Requires the <code>anki</code> extra in the same AhaDiff environment, for example <code>uv tool install --reinstall --editable '.[anki]'</code> from a source checkout. Active review cards can be exported today, but stable namespace GUIDs have not landed yet.</td></tr>
     <tr><td>Watch</td><td class="warn">Requires extra</td><td>Needs the watchdog dependency; otherwise just run learn manually.</td></tr>
     <tr><td>Graphify refresh</td><td class="warn">Depends on external artifact / cache</td><td><code>graph refresh</code> and WebUI refresh re-import an existing <code>graphify-out/graph.json</code> into AhaDiff's graph cache and review database; they do not run <code>graphify update</code> themselves. Learn may run Graphify update when the CLI is available, then import the new artifact. WebUI refresh uses the same long backend window, up to 600 seconds. Imports are capped by <code>graph.max_nodes_import</code> (default <code>50000</code>, allowed range <code>1000</code>-<code>50000</code>); over-limit refreshes return <code>GRAPH_NODE_LIMIT</code>.</td></tr>
     <tr><td>Team features</td><td class="no">Not released</td><td>Still on the roadmap and should not be treated as a shipped capability.</td></tr>
@@ -213,12 +214,12 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <h2>9. About this document</h2>
   <ul>
     <li>The screenshots in this guide are examples only. They do not include real provider credentials, repository contents, or user data.</li>
-    <li>Cross-platform support: macOS and Linux are the primary tested platforms. Windows is supported for the core CLI and serve flows; <code>--compare-dir</code> requires the secure directory file descriptor available on macOS/Linux only, and the <code>hooks</code> install target uses POSIX shell hooks that are not supported on Windows in v0.1.</li>
+    <li>Cross-platform support: macOS and Linux are the primary tested platforms. Windows is supported for the core CLI and serve flows; <code>--compare-dir</code> requires the secure directory file descriptor available on macOS/Linux only, and the <code>hooks</code> install target uses POSIX shell hooks that are not supported on Windows in v0.1. Install rollback restores mode before atomic replace on POSIX and uses a best-effort mode restore after replace on platforms without <code>fchmod</code>.</li>
     <li>For continuous-integration status, see the GitHub Actions tab of the upstream repository rather than this document.</li>
   </ul>
 </section>
 
-<p class="footer">Generated 2026-05-25; last updated 2026-05-27. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
+<p class="footer">Generated 2026-05-25; last updated 2026-05-29. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
 </main>
 </body>
 </html>

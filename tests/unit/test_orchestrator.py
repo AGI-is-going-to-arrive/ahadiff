@@ -864,6 +864,8 @@ def _patch_completed_pipeline(
     graphify_cli_available: bool = True,
     graphify_update_result: bool = False,
     on_import_graphify: Callable[[Path, bool], object] | None = None,
+    claim_status: str = "verified",
+    claim_source_hunks: list[dict[str, object]] | None = None,
 ) -> None:
     def _resolve_provider_from_config(
         **kwargs: object,
@@ -875,13 +877,17 @@ def _patch_completed_pipeline(
         _resolve_provider_from_config,
     )
 
+    def _empty_source_hunks() -> list[dict[str, object]]:
+        return []
+
     @dataclass
     class _FakeVerifiedRecord:
         status: str = "verified"
+        source_hunks: list[dict[str, object]] = field(default_factory=_empty_source_hunks)
 
     @dataclass
     class _FakeVerifiedClaim:
-        record: _FakeVerifiedRecord = field(default_factory=_FakeVerifiedRecord)
+        record: _FakeVerifiedRecord
 
     def _extract_claim_candidates_from_run(**kw: object) -> tuple[Path, int]:
         if on_extract_claims is not None:
@@ -920,7 +926,14 @@ def _patch_completed_pipeline(
         _candidates: object,
         **kwargs: object,
     ) -> list[_FakeVerifiedClaim]:
-        return [_FakeVerifiedClaim()]
+        return [
+            _FakeVerifiedClaim(
+                _FakeVerifiedRecord(
+                    status=claim_status,
+                    source_hunks=list(claim_source_hunks or []),
+                )
+            )
+        ]
 
     def _generate_lessons_from_run(**kwargs: object) -> None:
         if on_generate_lessons is not None:
@@ -1698,6 +1711,66 @@ def test_no_verified_claims_skip(
     assert result.status == "no_verified_claims"
     assert "no verified claims" in result.warnings[0]
     assert register_calls == [(fake_repo, fake_repo / ".ahadiff")]
+
+
+def test_weak_hunk_claims_without_symbol_index_still_generate_lesson(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    """Patch-only capture can be useful when weak claims are still hunk anchored."""
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.metadata.update(
+        {
+            "capability_level": 1,
+            "capability_flags": {
+                "has_repo_context": False,
+                "has_symbol_index": False,
+                "has_cross_file_context": False,
+                "has_source_ref": True,
+                "has_graph": False,
+            },
+        }
+    )
+    _patch_learnability(monkeypatch, score=0.7)
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    generated_lessons: list[dict[str, object]] = []
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_generate_lessons=generated_lessons.append,
+        claim_status="weak",
+        claim_source_hunks=[{"file": "src/app.py", "line_start": 2, "line_end": 2}],
+    )
+    _patch_successful_post_persist_steps(monkeypatch, run_path)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo, force_learn=True))
+
+    assert result.status == "keep"
+    assert generated_lessons
+    assert any("weak diff-anchored claims" in warning for warning in result.warnings)
+
+
+def test_verification_candidates_strip_symbols_without_symbol_index() -> None:
+    """Patch-only captures cannot verify symbol anchors, but can verify hunk anchors."""
+
+    @dataclass(frozen=True)
+    class _Candidate:
+        symbols: list[str]
+
+        def model_copy(self, *, update: dict[str, object]) -> _Candidate:
+            return replace(self, **update)
+
+    candidate = _Candidate(symbols=["compute"])
+
+    result = orchestrator_module._verification_candidates_for_capture(  # pyright: ignore[reportPrivateUsage]
+        [candidate],
+        capture_metadata={"capability_flags": {"has_symbol_index": False}},
+    )
+
+    assert result[0].symbols == []
+    assert candidate.symbols == ["compute"]
 
 
 def test_pipeline_passes_step_specific_output_caps(

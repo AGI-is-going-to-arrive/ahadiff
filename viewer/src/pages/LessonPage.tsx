@@ -632,7 +632,8 @@ export default function LessonPage() {
       const popover = popoverRef.current;
       if (!popover) return;
       const target = e.target as Node;
-      if (!popover.contains(target) && !(target as Element).closest?.('.claim-card')) {
+      const targetElement = target instanceof Element ? target : target.parentElement;
+      if (!popover.contains(target) && !targetElement?.closest('.claim-card')) {
         setSelectedClaim(null);
         setPopoverPos(null);
         restoreFocus(previousFocusRef.current);

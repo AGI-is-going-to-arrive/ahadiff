@@ -13,7 +13,7 @@ import re
 import shutil
 import stat
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
@@ -753,6 +753,56 @@ def _resolve_provider_from_config(
     return provider_config, effective_api_key, transport_target, provider_selection_explicit
 
 
+def _capture_has_symbol_index(metadata: dict[str, Any]) -> bool:
+    flags = metadata.get("capability_flags")
+    if isinstance(flags, Mapping):
+        flags_map = cast("Mapping[str, object]", flags)
+        return flags_map.get("has_symbol_index") is True
+    capability_level = metadata.get("capability_level")
+    return isinstance(capability_level, int) and capability_level >= 2
+
+
+def _has_hunk_anchored_weak_claim(claim: Any) -> bool:
+    record = getattr(claim, "record", None)
+    if getattr(record, "status", None) != "weak":
+        return False
+    source_hunks = getattr(record, "source_hunks", None)
+    if isinstance(source_hunks, str) or not isinstance(source_hunks, Iterable):
+        return False
+    for _item in cast("Iterable[object]", source_hunks):
+        return True
+    return False
+
+
+def _can_generate_lesson_from_weak_claims(
+    claims: Iterable[Any],
+    *,
+    capture_metadata: dict[str, Any],
+) -> bool:
+    if _capture_has_symbol_index(capture_metadata):
+        return False
+    return any(_has_hunk_anchored_weak_claim(claim) for claim in claims)
+
+
+def _verification_candidates_for_capture(
+    candidates: Iterable[Any],
+    *,
+    capture_metadata: dict[str, Any],
+) -> list[Any]:
+    candidate_list = list(candidates)
+    if _capture_has_symbol_index(capture_metadata):
+        return candidate_list
+    normalized: list[Any] = []
+    for candidate in candidate_list:
+        model_copy = getattr(candidate, "model_copy", None)
+        symbols = getattr(candidate, "symbols", None)
+        if callable(model_copy) and symbols:
+            normalized.append(model_copy(update={"symbols": []}))
+        else:
+            normalized.append(candidate)
+    return normalized
+
+
 def _configured_model_override(
     *,
     snapshot: Any,
@@ -1486,7 +1536,10 @@ def run_learn_pipeline(
                         expected_artifact="after_text_by_path",
                     )
                     verified = verify_claim_candidates(
-                        candidates,
+                        _verification_candidates_for_capture(
+                            candidates,
+                            capture_metadata=capture.metadata,
+                        ),
                         line_maps=line_maps,
                         symbols=symbols,
                         before_text_by_path=before_text_by_path,
@@ -1499,7 +1552,16 @@ def run_learn_pipeline(
                         1 for item in verified if item.record.status == "verified"
                     )
                     if verified_claim_count == 0:
-                        lesson_skip_reason = "no verified claims survived verification"
+                        if _can_generate_lesson_from_weak_claims(
+                            verified,
+                            capture_metadata=capture.metadata,
+                        ):
+                            learn_warnings.append(
+                                "lesson generated from weak diff-anchored claims because "
+                                "this capture mode has no symbol index"
+                            )
+                        else:
+                            lesson_skip_reason = "no verified claims survived verification"
                 except Exception as exc:
                     _cleanup_lesson_generation_artifacts(
                         run_path=run_path,
