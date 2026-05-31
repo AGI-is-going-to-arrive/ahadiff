@@ -360,6 +360,28 @@ def test_audit_record_rotation_is_stable_under_multiprocess_contention(tmp_path:
     assert not (tmp_path / "audit.jsonl.rotation-src").exists()
 
 
+def test_audit_append_rejects_hardlinked_log(tmp_path: Path) -> None:
+    import os
+
+    from ahadiff.core.errors import InputError
+
+    if not hasattr(os, "link"):
+        pytest.skip("hardlinks are not available on this platform")
+
+    outside = tmp_path / "outside-audit.jsonl"
+    outside.write_text('{"event_id":"outside"}\n', encoding="utf-8")
+    audit_path = tmp_path / "audit.jsonl"
+    try:
+        os.link(outside, audit_path)
+    except OSError as exc:
+        pytest.skip(f"hardlink creation unavailable: {exc}")
+
+    with pytest.raises(InputError, match="state path must not be a hardlink"):
+        append_audit_record(audit_path, {"event_id": "new"})
+
+    assert outside.read_text(encoding="utf-8") == '{"event_id":"outside"}\n'
+
+
 def test_audit_gzip_copy_uses_chunked_read(tmp_path: Path, monkeypatch: Any) -> None:
     audit_path = tmp_path / "audit.jsonl"
     content = '{"event_id":"test"}\n' * 100

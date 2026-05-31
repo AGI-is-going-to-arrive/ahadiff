@@ -206,7 +206,10 @@ def _locked_audit_file(lock_path: Path, *, timeout: float) -> Iterator[None]:
 
 def _lstat_size_no_follow(path: Path) -> int:
     validate_state_path_no_symlinks(path, allow_missing_leaf=False)
-    return path.lstat().st_size
+    path_stat = path.lstat()
+    if getattr(path_stat, "st_nlink", 1) > 1:
+        raise InputError("state path must not be a hardlink")
+    return path_stat.st_size
 
 
 def _append_line_no_follow(path: Path, line: str) -> None:
@@ -235,6 +238,8 @@ def _open_state_file_no_follow(path: Path, flags: int) -> int:
         path_stat = path.lstat()
         if not stat.S_ISREG(file_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
             raise InputError("state path must be a regular file")
+        if getattr(file_stat, "st_nlink", 1) > 1 or getattr(path_stat, "st_nlink", 1) > 1:
+            raise InputError("state path must not be a hardlink")
         if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
             raise InputError("state path changed during write")
     except Exception:

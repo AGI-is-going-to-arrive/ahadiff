@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import html
 import json
+import os
 import stat
 import unicodedata
 from dataclasses import dataclass
@@ -12,6 +14,9 @@ from pathlib import Path
 from ahadiff.core.config import load_security_config, load_workspace_security_config
 from ahadiff.core.errors import SafetyError
 from ahadiff.core.paths import find_repo_root, ignore_file_path
+
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_IGNORE_FILE_MAX_BYTES = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -39,11 +44,12 @@ def canonicalize_path_text(path: str | Path) -> str:
 def load_ignore_matcher(repo_root: Path | None = None) -> IgnoreMatcher:
     root = find_repo_root(repo_root)
     path = ignore_file_path(root)
-    if not path.exists():
+    text = _read_ignore_file_no_follow(path)
+    if text is None:
         return IgnoreMatcher()
 
     patterns: list[str] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in text.splitlines():
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
@@ -121,6 +127,8 @@ def resolve_safe_path(repo_root: Path | None, candidate: str | Path) -> Path:
 
 def resolve_safe_path_from_root(root: Path, candidate: str | Path) -> Path:
     root = root.resolve()
+    if _has_windows_drive_or_unc_syntax(str(candidate)):
+        raise SafetyError("path must not use Windows drive or UNC syntax")
     candidate_path = Path(candidate).expanduser()
     absolute_candidate = candidate_path if candidate_path.is_absolute() else root / candidate_path
 
@@ -129,8 +137,14 @@ def resolve_safe_path_from_root(root: Path, candidate: str | Path) -> Path:
     try:
         resolved.relative_to(root)
     except ValueError as exc:
-        raise SafetyError(f"path escapes repo root: {candidate}") from exc
+        raise SafetyError("path escapes repo root") from exc
     return resolved
+
+
+def _has_windows_drive_or_unc_syntax(path_text: str) -> bool:
+    return path_text.startswith(("\\\\", "//")) or (
+        len(path_text) >= 2 and path_text[1] == ":" and path_text[0].isalpha()
+    )
 
 
 def _reject_symlink_or_special_path(root: Path, candidate: Path) -> None:
@@ -144,7 +158,7 @@ def _reject_symlink_or_special_path(root: Path, candidate: Path) -> None:
         None,
     )
     if repo_anchor_index is None:
-        raise SafetyError(f"symlink paths are not allowed: {candidate}")
+        raise SafetyError("path is outside repo root")
 
     for current in path_chain[:repo_anchor_index]:
         if current.is_symlink():
@@ -154,6 +168,62 @@ def _reject_symlink_or_special_path(root: Path, candidate: Path) -> None:
         mode = current.lstat().st_mode
         if stat.S_ISFIFO(mode) or stat.S_ISCHR(mode) or stat.S_ISBLK(mode) or stat.S_ISSOCK(mode):
             raise SafetyError(f"special files are not allowed: {current}")
+
+
+def _read_ignore_file_no_follow(path: Path) -> str | None:
+    try:
+        path_stat = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise SafetyError(".ahadiffignore is unreadable") from exc
+    _validate_ignore_file_stat(path_stat)
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise SafetyError(".ahadiffignore must not be a symlink") from exc
+        raise SafetyError(".ahadiffignore is unreadable") from exc
+
+    try:
+        file_stat = os.fstat(fd)
+        _validate_ignore_file_stat(file_stat)
+        if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise SafetyError(".ahadiffignore changed during validation")
+        chunks: list[bytes] = []
+        total_bytes = 0
+        while True:
+            chunk = os.read(fd, min(65_536, _IGNORE_FILE_MAX_BYTES + 1 - total_bytes))
+            if chunk == b"":
+                break
+            chunks.append(chunk)
+            total_bytes += len(chunk)
+            if total_bytes > _IGNORE_FILE_MAX_BYTES:
+                raise SafetyError(f".ahadiffignore exceeds {_IGNORE_FILE_MAX_BYTES} bytes")
+        return b"".join(chunks).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise SafetyError(".ahadiffignore must be valid UTF-8") from exc
+    finally:
+        os.close(fd)
+
+
+def _validate_ignore_file_stat(path_stat: os.stat_result) -> None:
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise SafetyError(".ahadiffignore must not be a symlink")
+    if _has_windows_reparse_point(path_stat):
+        raise SafetyError(".ahadiffignore must not be a Windows reparse point or junction")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise SafetyError(".ahadiffignore must be a regular file")
+    if getattr(path_stat, "st_nlink", 1) > 1:
+        raise SafetyError(".ahadiffignore must not be a hardlink")
+    if path_stat.st_size > _IGNORE_FILE_MAX_BYTES:
+        raise SafetyError(f".ahadiffignore exceeds {_IGNORE_FILE_MAX_BYTES} bytes")
+
+
+def _has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def escape_html_text(text: str) -> str:

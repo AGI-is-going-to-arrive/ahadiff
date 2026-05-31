@@ -449,6 +449,58 @@ def test_capture_since_author_rejects_leading_dash_options(tmp_path: Path) -> No
         capture_module.capture_patch(workspace_root=repo_root, since="1 day ago", author="--all")
 
 
+def test_capture_since_author_rejects_multi_commit_window_to_avoid_unrelated_authors(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+
+    (repo_root / "base.py").write_text("base = 1\n", encoding="utf-8")
+    _git(repo_root, "add", "base.py")
+    _git(
+        repo_root,
+        "commit",
+        "-qm",
+        "base",
+        "--author=Setup <setup@example.com>",
+        "--no-gpg-sign",
+    )
+    (repo_root / "a.py").write_text("a = 1\n", encoding="utf-8")
+    _git(repo_root, "add", "a.py")
+    _git(
+        repo_root,
+        "commit",
+        "-qm",
+        "alice 1",
+        "--author=Alice <alice@example.com>",
+        "--no-gpg-sign",
+    )
+    (repo_root / "b.py").write_text("b = 1\n", encoding="utf-8")
+    _git(repo_root, "add", "b.py")
+    _git(
+        repo_root,
+        "commit",
+        "-qm",
+        "bob",
+        "--author=Bob <bob@example.com>",
+        "--no-gpg-sign",
+    )
+    (repo_root / "c.py").write_text("c = 1\n", encoding="utf-8")
+    _git(repo_root, "add", "c.py")
+    _git(
+        repo_root,
+        "commit",
+        "-qm",
+        "alice 2",
+        "--author=Alice <alice@example.com>",
+        "--no-gpg-sign",
+    )
+
+    with pytest.raises(InputError, match="matched multiple commits"):
+        capture_module.capture_patch(workspace_root=repo_root, since="10 years ago", author="Alice")
+
+
 @pytest.mark.parametrize("revision", ["HEAD", "main", "abc123", "v1.0", "feature/x"])
 def test_resolve_commitish_allows_valid_revision_names(tmp_path: Path, revision: str) -> None:
     repo_root = tmp_path / "repo"
@@ -1192,6 +1244,30 @@ def test_patch_url_rejects_userinfo_without_password(monkeypatch: pytest.MonkeyP
             "http://user@example.com/patch.diff",
             max_patch_bytes=10_000,
         )
+
+
+@pytest.mark.parametrize(
+    "patch_url",
+    [
+        "http://patch.example/pa\x00th.diff",
+        "http://patch.example/pa\r\nth.diff",
+        "http://patch.example/pa th.diff",
+        "http://patch.example/pátch.diff",
+        "http://patch.example/path.diff?name=bad value",
+        "http://patch.example/path.diff?name=pátch",
+    ],
+)
+def test_patch_url_rejects_unencoded_or_control_request_target_before_dns(
+    monkeypatch: pytest.MonkeyPatch,
+    patch_url: str,
+) -> None:
+    def fake_getaddrinfo(*_args: object, **_kwargs: object) -> NoReturn:
+        raise AssertionError("invalid request target should be rejected before DNS lookup")
+
+    monkeypatch.setattr(download_module.socket, "getaddrinfo", fake_getaddrinfo)
+
+    with pytest.raises(InputError, match="URL-encoded ASCII"):
+        download_module.download_patch_url(patch_url, max_patch_bytes=10_000)
 
 
 def test_patch_url_allows_https_url_without_userinfo(
@@ -2098,6 +2174,59 @@ def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     assert compare_detail["new_name"] == "new.py"
     assert "old_path" not in compare_detail
     assert "new_path" not in compare_detail
+
+
+@pytest.mark.parametrize("mode", ["patch", "compare", "compare_dir"])
+def test_patch_compare_and_compare_dir_reject_external_inputs_as_outside_repo(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    outside_root = tmp_path / "outside"
+    outside_root.mkdir()
+
+    patch_path = outside_root / "sample.patch"
+    patch_path.write_text(
+        "--- a/sample.py\n+++ b/sample.py\n@@ -0,0 +1,1 @@\n+value = 1\n",
+        encoding="utf-8",
+    )
+    old_file = outside_root / "old.py"
+    new_file = outside_root / "new.py"
+    old_file.write_text("value = 1\n", encoding="utf-8")
+    new_file.write_text("value = 2\n", encoding="utf-8")
+    old_dir = outside_root / "old"
+    new_dir = outside_root / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+    (old_dir / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    (new_dir / "sample.py").write_text("value = 2\n", encoding="utf-8")
+
+    with pytest.raises(SafetyError, match="path is outside repo root"):
+        if mode == "patch":
+            capture_module.capture_patch(
+                workspace_root=workspace_root,
+                patch=str(patch_path),
+                max_files=50,
+                hard_limit=5000,
+                max_patch_bytes=10_000,
+            )
+        elif mode == "compare":
+            capture_module.capture_patch(
+                workspace_root=workspace_root,
+                compare=(old_file, new_file),
+                max_files=50,
+                hard_limit=5000,
+                max_patch_bytes=10_000,
+            )
+        else:
+            capture_module.capture_patch(
+                workspace_root=workspace_root,
+                compare_dir=(old_dir, new_dir),
+                max_files=50,
+                hard_limit=5000,
+                max_patch_bytes=10_000,
+            )
 
 
 def test_non_git_subdir_repo_root_resolves_parent_workspace(tmp_path: Path) -> None:

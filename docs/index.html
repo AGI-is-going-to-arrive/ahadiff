@@ -481,15 +481,15 @@ img { max-width: 100%; display: block; }
   .reveal { opacity: 1 !important; transform: none !important; }
 }
 
-/* === BOLDER v1 OVERLAY === */
+/* === Theme extensions === */
 
-/* ---- Missing tokens (additive, from Warm v5/v6.2) ---- */
+/* ---- Shared tokens ---- */
 :root{
   --hair-strong:#D5D0BF;
   --accent-softer:#FAF0E8;
 }
 
-/* ---- Extended tokens (additive only) ---- */
+/* ---- Editorial tokens ---- */
 :root{
   --ink-display: #15130F;
   --accent-deep: #8C3A1A;
@@ -644,14 +644,14 @@ img { max-width: 100%; display: block; }
   .b-display .shout{ -webkit-text-fill-color: CanvasText; color: CanvasText; }
 }
 
-/* ---- Bolder responsive overrides ---- */
+/* ---- Responsive overrides ---- */
 @media (max-width: 768px){
   .b-divider{ margin: 48px 0 32px; }
   .b-pullquote{ padding: 20px 24px 20px 52px; }
   .b-pullquote::before{ font-size: 60px; left: 10px; }
 }
 
-/* === END BOLDER v1 OVERLAY === */
+/* === End theme extensions === */
 </style>
 </head>
 <body>
@@ -769,7 +769,7 @@ img { max-width: 100%; display: block; }
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="how.eyebrow">HOW IT WORKS</div>
     <h2 class="section-title reveal" data-i18n="how.title">四步从 Diff 到掌握</h2>
-    <p class="section-subtitle reveal" data-i18n="how.subtitle">每次 AI 写完代码，AhaDiff 用证据链帮你真正学会它。</p>
+    <p class="section-subtitle reveal" data-i18n="how.subtitle">每次 AI 写完代码，AhaDiff 用证据链帮你学会它。</p>
     <div class="steps-grid">
       <div class="step-card reveal">
         <div class="step-num">1</div>
@@ -1095,7 +1095,7 @@ img { max-width: 100%; display: block; }
     <a href="./USER_GUIDE.zh.html" data-i18n="footer.docsZh">中文使用指南</a>
     <a href="https://github.com/agi-is-coming/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
   </div>
-  <p data-i18n="footer.credit">Built with care by the AhaDiff team.</p>
+  <p data-i18n="footer.credit">Made by the AhaDiff team.</p>
   <div class="footer-version">v1.1.0-alpha</div>
 </footer>
 
@@ -1157,8 +1157,8 @@ const T = {
   "how.eyebrow": { zh: "工作原理", en: "HOW IT WORKS" },
   "how.title": { zh: "四步从 Diff 到掌握", en: "Four Steps from Diff to Mastery" },
   "how.subtitle": {
-    zh: "每次 AI 写完代码，AhaDiff 用证据链帮你真正学会它。",
-    en: "Every time AI writes code, AhaDiff helps you truly learn it with evidence chains."
+    zh: "每次 AI 写完代码，AhaDiff 用证据链帮你学会它。",
+    en: "Every time AI writes code, AhaDiff helps you learn it with evidence chains."
   },
   "how.s1.title": { zh: "捕获变更", en: "Capture Changes" },
   "how.s1.desc": {
@@ -1306,8 +1306,8 @@ const T = {
   "footer.docsEn": { zh: "英文使用指南", en: "English User Guide" },
   "footer.docsZh": { zh: "中文使用指南", en: "Chinese User Guide" },
   "footer.credit": {
-    zh: "由 AhaDiff 团队用心打造。",
-    en: "Built with care by the AhaDiff team."
+    zh: "由 AhaDiff 团队开发。",
+    en: "Made by the AhaDiff team."
   }
 };
 

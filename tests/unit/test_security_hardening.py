@@ -9,7 +9,8 @@ import httpx
 import pytest
 
 from ahadiff.contracts import ProviderConfig
-from ahadiff.core.errors import SafetyError
+from ahadiff.core.config import mask_provider_base_url_for_display, validate_provider_base_url
+from ahadiff.core.errors import ConfigError, SafetyError
 from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.llm import provider as provider_module
 from ahadiff.llm.provider import (
@@ -166,6 +167,74 @@ class TestValidateRemoteUrl:
         with pytest.raises(SafetyError, match="unable to determine hostname"):
             validate_remote_url("http://")
 
+    def test_credential_query_rejected_without_leaking_secret(self) -> None:
+        secret = "sk-secret1234567890"
+
+        with pytest.raises(SafetyError) as exc_info:
+            validate_remote_url(f"https://api.example.com/v1?api_key={secret}")
+
+        message = str(exc_info.value)
+        assert "credential query parameters" in message
+        assert secret not in message
+
+    def test_semicolon_credential_query_rejected_without_leaking_secret(self) -> None:
+        secret = "sk-secret1234567890"
+
+        with pytest.raises(SafetyError) as exc_info:
+            validate_remote_url(f"https://api.example.com/v1?format=json;api_key={secret}")
+
+        message = str(exc_info.value)
+        assert "credential query parameters" in message
+        assert secret not in message
+
+    def test_config_semicolon_credential_query_rejected_and_masked(self) -> None:
+        secret = "sk-secret1234567890"
+        url = f"https://api.example.com/v1?format=json;api_key={secret}"
+
+        with pytest.raises(ConfigError) as exc_info:
+            validate_provider_base_url(url)
+
+        message = str(exc_info.value)
+        assert "credential query parameters" in message
+        assert secret not in message
+        masked_url = mask_provider_base_url_for_display(url)
+        assert secret not in masked_url
+        assert "api_key=%2A%2A%2A" in masked_url
+
+    def test_missing_hostname_does_not_echo_secret_query(self) -> None:
+        secret = "sk-secret1234567890"
+
+        with pytest.raises(SafetyError) as exc_info:
+            validate_remote_url(f"https://?safe={secret}")
+
+        message = str(exc_info.value)
+        assert "unable to determine hostname" in message
+        assert secret not in message
+
+    def test_transport_boundary_error_does_not_echo_secret_query(self) -> None:
+        secret = "sk-secret1234567890"
+
+        with pytest.raises(SafetyError) as exc_info:
+            transport_target_for_base_url(f"https://?safe={secret}", local_hosts=())
+
+        message = str(exc_info.value)
+        assert "unable to determine transport boundary" in message
+        assert secret not in message
+
+    def test_transport_target_rejects_credential_query(self) -> None:
+        with pytest.raises(SafetyError, match="credential query parameters"):
+            transport_target_for_base_url(
+                "http://localhost:11434/v1?api_key=sk-secret1234567890",
+                local_hosts=("localhost",),
+            )
+
+    def test_transport_target_rejects_semicolon_credential_query(self) -> None:
+        with pytest.raises(SafetyError, match="credential query parameters"):
+            transport_target_for_base_url(
+                "http://localhost:11434/v1?format=json;api_key=sk-secret1234567890",
+                local_hosts=("localhost",),
+            )
+
     def test_unresolved_hostname_rejected(self) -> None:
         with pytest.raises(SafetyError, match="could not be resolved"):
             validate_remote_url("http://nonexistent.invalid:1234/v1")
@@ -254,6 +323,13 @@ class TestPinUrlToIp:
     def test_userinfo_password_is_rejected(self) -> None:
         with pytest.raises(SafetyError, match="userinfo"):
             _pin_url_to_ip("https://apiuser:secret@api.example.com/v1", "93.184.216.34")
+
+    def test_semicolon_credential_query_is_rejected(self) -> None:
+        with pytest.raises(SafetyError, match="credential query parameters"):
+            _pin_url_to_ip(
+                "https://api.example.com/v1?format=json;api_key=sk-secret1234567890",
+                "93.184.216.34",
+            )
 
     @pytest.mark.parametrize("bad_url", ["/v1/chat", "https:///v1"])
     def test_rejects_url_without_hostname(self, bad_url: str) -> None:

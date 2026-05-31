@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any, TypeGuard, cast, get_args
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import unquote_plus, urlencode, urlsplit, urlunsplit
 
 from ahadiff.contracts import ProviderCapabilityOverride, ProviderClass, ThinkingLevel
 from ahadiff.i18n import normalize_locale_preference
@@ -612,7 +612,7 @@ def _is_private_provider_ip(addr: object) -> bool:
 def _mask_provider_query(query: str) -> str:
     if not query:
         return query
-    pairs = parse_qsl(query, keep_blank_values=True)
+    pairs = parse_provider_query_pairs(query)
     if not pairs:
         return query
     masked = [
@@ -627,8 +627,18 @@ def _provider_query_has_inline_secret(query: str) -> bool:
         return False
     return any(
         _PROVIDER_SENSITIVE_QUERY_KEY_PATTERN.search(key) is not None
-        for key, _value in parse_qsl(query, keep_blank_values=True)
+        for key, _value in parse_provider_query_pairs(query)
     )
+
+
+def parse_provider_query_pairs(query: str) -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    for query_field in re.split(r"[&;]", query):
+        if query_field == "":
+            continue
+        key, separator, value = query_field.partition("=")
+        pairs.append((unquote_plus(key), unquote_plus(value if separator else "")))
+    return tuple(pairs)
 
 
 def clear_provider_probe_fields(provider: dict[str, object]) -> None:
@@ -1370,6 +1380,7 @@ __all__ = [
     "local_hosts_for_privacy_mode",
     "mask_provider_base_url_for_display",
     "normalize_provider_base_url",
+    "parse_provider_query_pairs",
     "provider_core_fingerprint",
     "resolve_effective",
     "resolve_provider_api_key",

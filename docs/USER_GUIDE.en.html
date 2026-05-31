@@ -45,16 +45,17 @@ ahadiff config show --resolved</pre>
 
 <section id="provider">
   <h2>2. Configure GPT-5.5 Provider</h2>
-  <p>Never write a real API key into Git, the README, manifests, or shell history. Put the key in an environment variable and hand only the variable name to AhaDiff.</p>
+  <p>Never write a real API key into Git, the README, manifests, or checked-in scripts. Put the key in an environment variable and hand only the variable name to AhaDiff; if your shell records assignments in history, use an interactive prompt or your usual secret manager.</p>
   <p><code>api_key_env</code> is a variable name, not a literal key. Repo config accepts <code>AHADIFF_*</code> names and the common provider names (<code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>GEMINI_API_KEY</code>, <code>AZURE_OPENAI_API_KEY</code>). Identifier-shaped values fail closed when the environment variable is unset, so an env name is not sent as a bearer token by accident.</p>
   <h3>macOS / Linux</h3>
   <pre>export AHADIFF_PROVIDER_BASE_URL="https://api.example.com/v1"
-export AHADIFF_PROVIDER_API_KEY="&lt;provider-api-key&gt;"
+read -rsp "Provider API key: " AHADIFF_PROVIDER_API_KEY; export AHADIFF_PROVIDER_API_KEY; printf '\n'
 
 ahadiff provider test   --name gpt55   --provider-class openai_responses   --base-url "$AHADIFF_PROVIDER_BASE_URL"   --model gpt-5.5   --api-key-env AHADIFF_PROVIDER_API_KEY   --privacy-mode explicit_remote</pre>
   <h3>Windows PowerShell</h3>
   <pre>$env:AHADIFF_PROVIDER_BASE_URL="https://api.example.com/v1"
-$env:AHADIFF_PROVIDER_API_KEY="&lt;provider-api-key&gt;"
+$secure = Read-Host "Provider API key" -AsSecureString
+$env:AHADIFF_PROVIDER_API_KEY = [System.Net.NetworkCredential]::new("", $secure).Password
 
 ahadiff provider test --name gpt55 --provider-class openai_responses --base-url $env:AHADIFF_PROVIDER_BASE_URL --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</pre>
   <p>This example uses <code>openai_responses</code> because GPT-5.5 has two registry profiles: ordinary <code>openai</code> access budgets 400k context, while <code>openai_responses</code> / API access budgets 1.05M. A live probe can override either profile when the endpoint reports a trustworthy total context.</p>
@@ -71,7 +72,7 @@ supports_native_json_schema = false</pre>
 <section id="learn">
   <h2>3. Run a Learn Session</h2>
   <div class="steps">
-    <div class="step"><strong>Pick a diff source</strong><br>The 10 supported capture sources are: working tree (<code>--staged --unstaged --include-untracked</code>), unstaged (<code>--unstaged</code>), staged (<code>--staged</code>), last commit (<code>--last</code>, or omit a capture-source flag), revision/range (<code>REVISION</code> positional), time-window (<code>--since</code>, optionally with <code>--author</code>), patch file/stdin (<code>--patch FILE|-</code>), patch URL (<code>--patch-url</code>), file compare (<code>--compare</code>), and directory compare (<code>--compare-dir</code>, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux.</div>
+    <div class="step"><strong>Pick a diff source</strong><br>The 10 supported capture sources are: working tree (<code>--staged --unstaged --include-untracked</code>), unstaged (<code>--unstaged</code>), staged (<code>--staged</code>), last commit (<code>--last</code>, or omit a capture-source flag), revision/range (<code>REVISION</code> positional), time-window (<code>--since</code>; add <code>--author</code> only when that filter matches one commit), patch file/stdin (<code>--patch FILE|-</code>), patch URL (<code>--patch-url</code>), file compare (<code>--compare</code>), and directory compare (<code>--compare-dir</code>, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux.</div>
     <div class="step"><strong>Generate the lesson and evidence</strong><br>AhaDiff captures the diff, scans for safety issues, and produces claims, lesson, quiz, score and other artifacts.</div>
     <div class="step"><strong>Open the WebUI to learn</strong><br>Read the Lesson for the explanation, jump to Diff for the evidence, take the Quiz to check understanding, and use Review for spaced repetition.</div>
   </div>
@@ -79,17 +80,16 @@ supports_native_json_schema = false</pre>
 ahadiff learn --last --open
 ahadiff learn HEAD~1..HEAD
 ahadiff learn --since "2 hours ago"
-ahadiff learn --since "2 hours ago" --author "Alice|Bob"
 ahadiff learn --staged
 ahadiff learn --unstaged --include-untracked
 ahadiff learn --unstaged --include-untracked --changed-path src/app.py
 ahadiff learn --patch change.diff
-ahadiff learn --patch-url "https://example.com/change.diff"
+ahadiff learn --patch-url "https://patch-diff.githubusercontent.com/raw/octocat/Hello-World/pull/1.patch"
 ahadiff learn --compare old.py new.py
 ahadiff learn --compare-dir old/ new/
 ahadiff learn --last --against-spec SPEC.md
 ahadiff learn --last --against-spec SPEC.md --spec-semantic-review</pre>
-  <p>The Dashboard's New Run dialog mirrors these capture sources. The four quick tiles cover working tree, unstaged, staged, and last commit runs. More capture sources are grouped into Git Advanced, Patch, and File Compare cards, and each card shows the matching CLI shape. Path scope only applies to working-tree modes and accepts repo-relative paths. The WebUI patch field accepts pasted unified diff text up to 65536 bytes; use the CLI for patch files, stdin, or larger patches. CLI patch files are resolved inside the repo root; pass <code>--patch -</code> for external generated patches. Remote patch URLs must pass the same safety checks as the CLI; loopback and private-network URLs are rejected. Patch file/stdin and patch URL runs have no repository symbol index, so hunk-anchored claims may be marked weak while still producing a lesson. Directory compare fails closed on platforms without secure directory file descriptor traversal. Long-running CLI commands show Rich status while they run; treat that as terminal feedback, not a machine-readable output contract.</p>
+  <p>The Dashboard's New Run dialog mirrors these capture sources. The four quick tiles cover working tree, unstaged, staged, and last commit runs. More capture sources are grouped into Git Advanced, Patch, and File Compare cards, and each card shows the matching CLI shape. Path scope only applies to working-tree modes and accepts repo-relative paths. Use <code>--since</code> by itself for multi-commit time windows; <code>--since --author</code> is intentionally limited to one matching commit, because a multi-commit author-filtered window would otherwise include other authors between the oldest match and HEAD. The WebUI patch field accepts pasted unified diff text up to 65536 bytes; use the CLI for patch files, stdin, or larger patches. CLI patch files are resolved inside the repo root; pass <code>--patch -</code> for external generated patches. Remote patch URLs must pass the same safety checks as the CLI; loopback and private-network URLs are rejected. Patch file/stdin and patch URL runs have no repository symbol index, so hunk-anchored claims may be marked weak while still producing a lesson. Directory compare fails closed on platforms without secure directory file descriptor traversal. Long-running CLI commands show Rich status while they run; treat that as terminal feedback, not a machine-readable output contract.</p>
 </section>
 
 <section id="webui">
@@ -193,6 +193,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</pre>
   <pre>ahadiff doctor
 ahadiff config show --resolved
 ahadiff provider test --name gpt55 --provider-class openai_responses --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</pre>
+  <p>On Windows PowerShell, set the variables with the <code>$env:</code> form and pass <code>--base-url $env:AHADIFF_PROVIDER_BASE_URL</code>, as shown in <a href="#provider">Configure GPT-5.5</a>.</p>
   <h3>What if the lesson gets skipped?</h3>
   <p>The diff might be too small, learnability might be too low, or there aren't enough verified claims. If you're sure this is the change you want to study, re-run with <code>--force-learn</code>.</p>
   <h3>How do I change quiz question count?</h3>
@@ -216,11 +217,12 @@ ahadiff provider test --name gpt55 --provider-class openai_responses --base-url 
   <ul>
     <li>The screenshots in this guide are examples only. They do not include real provider credentials, repository contents, or user data.</li>
     <li>Cross-platform support: macOS and Linux are the primary tested platforms. Windows is supported for the core CLI and serve flows; <code>--compare-dir</code> requires the secure directory file descriptor available on macOS/Linux only, and the <code>hooks</code> install target uses POSIX shell hooks and is not available on Windows. Install rollback restores mode before atomic replace on POSIX and uses a best-effort mode restore after replace on platforms without <code>fchmod</code>.</li>
+    <li>Recent local validation for this guide covered backend unit/integration/eval tests, ruff/pyright, wheel build, viewer Vitest/typecheck/build, real-serve smoke, Guide browser checks, i18n parity, and live learn runs for the documented capture sources. The full Playwright matrix still needs one clean 0-failure run before the release gate is green; repeated WebKit single failures passed when rerun in isolation. Real Windows runner and remote CI were not rerun in that audit.</li>
     <li>For continuous-integration status, see the GitHub Actions tab of the upstream repository rather than this document.</li>
   </ul>
 </section>
 
-<p class="footer">Generated 2026-05-25; last updated 2026-05-29. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
+<p class="footer">Generated 2026-05-25; last updated 2026-06-01. This document is a self-contained HTML file; the screenshots and the CSS workflow animation are embedded inline.</p>
 </main>
 </body>
 </html>

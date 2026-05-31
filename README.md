@@ -12,7 +12,7 @@
 
 **AhaDiff** is a **local-first learning layer for AI coding**.
 
-It is not a PR summary, not a repo wiki, and not another generic code explainer. It reads a git diff and turns the change into:
+It is not a PR summary or a repo wiki. It reads a single git diff and turns that change into:
 
 - A **lesson** that teaches what changed and why
 - A **claims ledger** where conclusions trace back to `file:line` evidence
@@ -84,7 +84,7 @@ ahadiff learn --last
 # Open the local web UI to read your lesson
 ahadiff serve
 ```
-Open http://localhost:8765 in your browser. You'll see the Dashboard with your first run — click through to Lesson, Diff, and Quiz.
+`ahadiff serve` opens http://localhost:8765 automatically — pass `--no-browser` to stay in the terminal. You'll see the Dashboard with your first run, then click through to Lesson, Diff, and Quiz.
 
 Two more things to try:
 ```bash
@@ -95,7 +95,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 
 ## Features
 
-- **Learn**: `ahadiff learn` supports 10 diff capture sources: working tree (`--staged --unstaged --include-untracked`), unstaged (`--unstaged`), staged (`--staged`), last commit (`--last`, or omit a capture-source flag), revision/range (`REVISION`), time-window (`--since`, optionally with `--author`), patch file/stdin (`--patch FILE|-`), patch URL (`--patch-url`), file compare (`--compare`), and directory compare (`--compare-dir`, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux. Patch files are resolved inside the repo root; use stdin for external generated patches. Patch file/stdin and patch URL runs do not have a repository symbol index; when only hunk evidence is available, AhaDiff can still generate a lesson from weak diff-anchored claims instead of claiming symbol-level proof.
+- **Learn**: `ahadiff learn` supports 10 diff capture sources: working tree (`--staged --unstaged --include-untracked`), unstaged (`--unstaged`), staged (`--staged`), last commit (`--last`, or omit a capture-source flag), revision/range (`REVISION`), time-window (`--since`; add `--author` only when that filter matches one commit), patch file/stdin (`--patch FILE|-`), patch URL (`--patch-url`), file compare (`--compare`), and directory compare (`--compare-dir`, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux. Patch files are resolved inside the repo root; use stdin for external generated patches. Patch file/stdin and patch URL runs do not have a repository symbol index; when only hunk evidence is available, AhaDiff can still generate a lesson from weak diff-anchored claims instead of claiming symbol-level proof.
 - **Evidence-linked claims**: every lesson conclusion is tied to `file:line` evidence, with verification states such as verified, weak, not proven, contradicted, and rejected.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, defaults to JSON object mode with one bounded validation retry, and keeps the existing parser, repair, and degraded fallback paths. Truncated or malformed fallback JSON is retried instead of being accepted.
 - **Adaptive capture limits**: fresh configs default to auto capture sizing; existing customized capture settings stay manual. Auto mode uses provider probes, the bundled model registry, output reserves, safety reserves, and CJK diff density, while runtime patch intake remains capped at 50 MiB. Settings previews provider limits from the current draft provider class, model, and optional limits profile before saving, without remote probing on every edit.
@@ -103,7 +103,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 - **Scoring**: each run gets an 8-dimension deterministic score, with an optional advisory LLM judge when configured. No-spec `spec_alignment` is shown as N/A / `0/0` and excluded from the overall score; judge results never override `score.json.verdict`. Diff Coverage is based on visible `line_map.json` files and line-weighted hunks, and hard-gate details show the adaptive claim-anchor threshold used for that run. If the optional judge fails, the deterministic score is still kept and the failure is saved as a redacted `judge_failure.json`.
 - **WebUI**: `ahadiff serve` opens Welcome, Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide. The viewer uses a light, editorial paper-style theme, with fonts bundled locally so nothing loads from a CDN. Run Detail shows Score, Judge, Artifacts, and a sanitized judge-failure panel when the optional LLM judge could not complete. The Welcome Before/After demo keeps long raw diffs collapsed with a line count and a Show all / Collapse control; short or empty diffs stay simple.
 - **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
-- **Export**: export results as TSV / JSON, Anki `.apkg` (requires the `anki` extra in the same AhaDiff environment; from a source checkout use `uv tool install --reinstall --editable '.[anki]'`), or a local static preview bundle.
+- **Export**: from the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg` — the `.apkg` export needs the `anki` extra in the same AhaDiff environment (from a source checkout run `uv tool install --reinstall --editable '.[anki]'`).
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
 - **AI tool integration**: project-level guidance for 15 CLI / IDE / CI targets. Settings groups the targets, shows localized usage hints and a provider-free local demo, and keeps write/remove behind confirmation. Guide shows commands plus read-only cards that explain usage and preview the files AhaDiff would write. Supported targets include Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, OpenCode, Cursor, Cline, Continue, Roo, Windsurf, Aider, GitHub Actions, and Git hooks.
 - **Auto-iteration**: `ahadiff improve` optimizes prompts in an isolated worktree and keeps only better results.
@@ -111,6 +111,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 - **Privacy**: three tiers: strict_local, redacted_remote, explicit_remote. The default is strict_local.
 - **i18n**: English and Chinese for the WebUI and prompt output language. CLI help and most CLI diagnostics are in English.
 - **Cross-platform**: macOS and Linux are the primary tested platforms; Windows is supported for the core CLI and serve flows. `--compare-dir` and the `hooks` install target are macOS/Linux only. Installer writes and rollbacks use atomic replacement; POSIX restores file mode before replace, while Windows uses a best-effort mode restore after replace.
+- **Validation scope**: the latest local pre-release audit covered backend unit/integration/eval tests, ruff/pyright, wheel build, viewer Vitest/typecheck/build, real-serve smoke, Guide browser checks, i18n parity, and live learn runs for the documented capture sources. A clean full Playwright matrix, remote CI, and a real Windows runner remain separate release gates.
 - **Security**: URL secret redaction, provider URL validation, provider API-key environment validation, input validation, prompt injection detection, safety hard gates, and redacted judge-failure reporting.
 
 ## Screenshots

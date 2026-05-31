@@ -70,6 +70,7 @@ class _HttpResponse:
 def download_patch_url(url: str, *, max_patch_bytes: int) -> DownloadedPatch:
     if max_patch_bytes < 1:
         raise InputError("patch URL max_patch_bytes must be >= 1")
+    _validate_url_text(url)
     current_url = url
     deadline = time.monotonic() + _TOTAL_TIMEOUT_SECONDS
     redirects = 0
@@ -114,6 +115,7 @@ def _request_once(url: str, *, max_patch_bytes: int, deadline: float) -> _HttpRe
         raise InputError("patch URL must include a hostname")
     if parsed.username is not None or parsed.password is not None:
         raise InputError("patch URL must not include userinfo")
+    _validate_request_target(parsed.path, parsed.query)
 
     port = _port_for_url(parsed)
     addresses = _resolve_public_addresses(parsed.hostname, port)
@@ -251,6 +253,25 @@ def _send_http_request(
             )
     except TimeoutError as exc:
         raise InputError("patch URL download timed out after 60 seconds") from exc
+
+
+def _validate_request_target(path: str, query: str) -> None:
+    target = path
+    if query:
+        target = f"{target}?{query}"
+    for char in target:
+        code_point = ord(char)
+        if code_point <= 0x20 or code_point == 0x7F or code_point > 0x7E:
+            raise InputError(
+                "patch URL path and query must be URL-encoded ASCII without control characters"
+            )
+
+
+def _validate_url_text(url: str) -> None:
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in url):
+        raise InputError(
+            "patch URL path and query must be URL-encoded ASCII without control characters"
+        )
 
 
 def _read_response_headers(stream: Any, *, deadline: float) -> tuple[int, dict[str, str]]:

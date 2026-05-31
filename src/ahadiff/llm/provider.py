@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import re
 import socket
 import sqlite3
 import threading
@@ -22,6 +23,7 @@ from ahadiff.core.config import (
     SecurityConfig,
     load_workspace_pricing_settings,
     local_hosts_for_privacy_mode,
+    parse_provider_query_pairs,
 )
 from ahadiff.core.errors import ConfigError, InputError, ProviderError, SafetyError, StorageError
 from ahadiff.core.ids import make_event_id
@@ -154,6 +156,10 @@ _SEMAPHORES: dict[str, _SemaphoreState] = {}
 _RATE_LIMITERS: dict[str, _RateLimiterState] = {}
 _CIRCUITS: dict[str, _CircuitState] = {}
 DEFAULT_PROVIDER_RESPONSE_BYTE_CAP = 10 * 1024 * 1024
+_PROVIDER_CREDENTIAL_QUERY_KEY_PATTERN = re.compile(
+    r"(api[_-]?key|secret|password|token|credential)",
+    re.IGNORECASE,
+)
 
 
 class ManagedProvider:
@@ -882,9 +888,11 @@ def transport_target_for_base_url(
     parsed = urlparse(base_url)
     if parsed.scheme in {"unix", "http+unix", "npipe", "http+npipe"}:
         return "local"
+    if _provider_url_has_credential_query(parsed.query):
+        raise SafetyError("provider base_url must not include credential query parameters")
     hostname = parsed.hostname
     if hostname is None:
-        raise SafetyError(f"unable to determine transport boundary for base_url {base_url!r}")
+        raise SafetyError("unable to determine transport boundary for provider base_url")
     hostname_normalized = hostname.lower()
     normalized_local_hosts = {item.lower() for item in local_hosts}
     if strict_local:
@@ -917,9 +925,11 @@ def validate_remote_url(base_url: str) -> str | None:
         )
     if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
         raise SafetyError("provider base_url must not include URL userinfo")
+    if _provider_url_has_credential_query(parsed.query):
+        raise SafetyError("provider base_url must not include credential query parameters")
     hostname = parsed.hostname
     if hostname is None:
-        raise SafetyError(f"unable to determine hostname for base_url {base_url!r}")
+        raise SafetyError("unable to determine hostname for provider base_url")
     try:
         addr = ip_address(hostname)
         if _is_non_public_ip(addr):
@@ -956,9 +966,11 @@ def _pin_url_to_ip(
     parsed = urlparse(url)
     original_hostname = parsed.hostname
     if not original_hostname:
-        raise SafetyError(f"unable to determine hostname for base_url {url!r}")
+        raise SafetyError("unable to determine hostname for provider base_url")
     if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
         raise SafetyError("provider base_url must not include URL userinfo")
+    if _provider_url_has_credential_query(parsed.query):
+        raise SafetyError("provider base_url must not include credential query parameters")
     if not pinned_ip:
         raise SafetyError("pinned IP must not be empty")
     # Bracket IPv6 addresses in URLs.
@@ -973,6 +985,15 @@ def _pin_url_to_ip(
     host_name = f"[{original_hostname}]" if ":" in original_hostname else original_hostname
     host_header = f"{host_name}{port_suffix}"
     return pinned_url, host_header, sni_hostname
+
+
+def _provider_url_has_credential_query(query: str) -> bool:
+    if not query:
+        return False
+    pairs = parse_provider_query_pairs(query)
+    if not pairs:
+        return False
+    return any(_PROVIDER_CREDENTIAL_QUERY_KEY_PATTERN.search(key) is not None for key, _ in pairs)
 
 
 def adapter_conformance_test(provider: Provider) -> None:

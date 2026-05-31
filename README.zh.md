@@ -12,7 +12,7 @@
 
 **知返 AhaDiff** 是一个 **local-first 的 AI Coding 学习层**。
 
-它不是 PR 摘要，不是 repo wiki，也不是泛泛的“代码解释器”。它读取一次 git diff，把这次改动变成：
+它不是 PR 摘要，也不是 repo wiki。它读取一次 git diff，把这次改动变成：
 
 - 一篇讲清楚“改了什么、为什么改”的 **Lesson**
 - 一份每条结论都能回到 `file:line` 的 **Claims 清单**
@@ -84,7 +84,7 @@ ahadiff learn --last
 # 打开本地 WebUI 阅读课程
 ahadiff serve
 ```
-在浏览器打开 http://localhost:8765。你会看到 Dashboard 里的第一次 run，然后可以继续进入 Lesson、Diff 和 Quiz。
+`ahadiff serve` 会自动打开 http://localhost:8765 —— 想留在终端可加 `--no-browser`。你会看到 Dashboard 里的第一次 run，然后继续进入 Lesson、Diff 和 Quiz。
 
 还可以马上试试：
 ```bash
@@ -95,7 +95,7 @@ ahadiff review           # 复习过去生成的卡片
 
 ## 功能
 
-- **学习**：`ahadiff learn` 支持 10 种 diff 捕获来源：工作区（`--staged --unstaged --include-untracked`）、未暂存（`--unstaged`）、已暂存（`--staged`）、最近一次提交（`--last`，或不带任何捕获参数）、提交/范围（`REVISION`）、时间窗口（`--since`，可叠加 `--author`）、patch 文件/stdin（`--patch FILE|-`）、patch URL（`--patch-url`）、文件对比（`--compare`）、目录对比（`--compare-dir`，仅 macOS/Linux）。递归目录对比依赖仅 macOS/Linux 提供的安全目录文件描述符。Patch 文件会在 repo root 内解析；外部生成的 patch 请走 stdin。Patch 文件/stdin 和 patch URL 运行没有仓库 symbol index；只有 hunk 证据时，AhaDiff 仍可基于 weak diff-anchored claims 生成 lesson，但不会伪装成 symbol 级证明。
+- **学习**：`ahadiff learn` 支持 10 种 diff 捕获来源：工作区（`--staged --unstaged --include-untracked`）、未暂存（`--unstaged`）、已暂存（`--staged`）、最近一次提交（`--last`，或不带任何捕获参数）、提交/范围（`REVISION`）、时间窗口（`--since`；只有 author 过滤后命中单个 commit 时才加 `--author`）、patch 文件/stdin（`--patch FILE|-`）、patch URL（`--patch-url`）、文件对比（`--compare`）、目录对比（`--compare-dir`，仅 macOS/Linux）。递归目录对比依赖仅 macOS/Linux 提供的安全目录文件描述符。Patch 文件会在 repo root 内解析；外部生成的 patch 请走 stdin。Patch 文件/stdin 和 patch URL 运行没有仓库 symbol index；只有 hunk 证据时，AhaDiff 仍可基于 weak diff-anchored claims 生成 lesson，但不会伪装成 symbol 级证明。
 - **证据化 Claims**：每条 lesson 结论都绑定 `file:line` 证据，并区分 verified、weak、not proven、contradicted、rejected 等状态。
 - **结构化 LLM 输出**：生成链路会在支持时按 schema 约束 JSON 输出；默认使用 JSON object mode，并带 1 次有界 validation retry；原有 parser、repair 和 degraded 回退仍保留。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。
 - **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。Settings 会按当前草稿 provider class、model 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。
@@ -103,7 +103,7 @@ ahadiff review           # 复习过去生成的卡片
 - **评分**：每次 run 都会得到 8 维确定性评分；配置后也可以启用 advisory LLM judge。没有 spec 的 `spec_alignment` 会显示为 N/A / `0/0`，并从总分里排除；judge 结果不会覆盖 `score.json.verdict`。Diff Coverage 只看可见 `line_map.json` 里的文件和按行数加权的 hunk；hard gate 详情会写明本次 run 使用的自适应 claim-anchor 阈值。如果可选 LLM judge 失败，确定性评分仍会保留，失败信息会以脱敏后的 `judge_failure.json` 保存。
 - **WebUI**：`ahadiff serve` 打开 Welcome、Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。viewer 使用浅色报纸编辑风格，字体本地打包，不依赖 CDN。Run Detail 会展示 Score、Judge、Artifacts；可选 LLM judge 失败时，会显示脱敏后的失败面板。Welcome 的 Before/After demo 会把过长的原始 diff 折叠起来，显示行数和展开/收起按钮；短 diff 或空 diff 不会多出无用控件。
 - **新建学习对话框**：Dashboard 可直接从工作区、未暂存、已暂存或最近一次提交开始学习；高级卡片覆盖 `--since`、提交/范围、patch URL、粘贴补丁、文件对比和目录对比。
-- **导出**：支持 TSV / JSON、Anki `.apkg`（需在同一个 AhaDiff 运行环境安装 `anki` extra；源码 checkout 可用 `uv tool install --reinstall --editable '.[anki]'`），以及本地静态预览包。
+- **导出**：命令行里，`ahadiff export-results` 生成 `results.tsv`，`ahadiff export preview` 生成本地静态预览包。WebUI（以及 `serve` API）还能导出 TSV / JSON 和 Anki `.apkg` —— `.apkg` 导出需要在同一个 AhaDiff 运行环境安装 `anki` extra（源码 checkout 用 `uv tool install --reinstall --editable '.[anki]'`）。
 - **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
 - **AI 工具集成**：为 15 个 CLI / IDE / CI 目标写入项目级指引。Settings 会按目标分组，展示本地化使用提示和不调用 provider 的本地演示，并继续用确认流程保护写入/移除。Guide 只读展示命令，用折叠卡片说明使用方式，并预览 AhaDiff 会写入哪些文件。支持目标包括 Claude、Codex、Gemini、Antigravity IDE、Antigravity CLI、Copilot、OpenCode、Cursor、Cline、Continue、Roo、Windsurf、Aider、GitHub Actions 和 Git hooks。
 - **自动迭代**：`ahadiff improve` 在隔离 worktree 中优化 prompt，只保留更好的结果。
@@ -111,6 +111,7 @@ ahadiff review           # 复习过去生成的卡片
 - **隐私**：三档模式：strict_local、redacted_remote、explicit_remote；默认 strict_local。
 - **i18n**：WebUI 与 prompt 输出语言支持中英文；CLI help 与多数 CLI 诊断仍为英文。
 - **跨平台**：macOS 与 Linux 为主要测试与支持平台；Windows 支持核心 CLI 与 serve 流程。`--compare-dir` 与 `hooks` 安装目标仅支持 macOS/Linux。安装写入和回滚使用 atomic replace；POSIX 会在 replace 前恢复文件 mode，Windows 使用 replace 后的 best-effort mode 恢复。
+- **验证范围**：最近一次本机发布前审计覆盖了后端 unit / integration / eval、ruff / pyright、wheel 构建、viewer Vitest / typecheck / build、real-serve smoke、Guide 浏览器检查、i18n parity，以及文档所列捕获来源的 live learn。一次 0 failed 的完整 Playwright matrix、远端 CI 和真实 Windows runner 仍是独立发布门禁。
 - **安全**：URL secret 脱敏、provider URL 校验、provider API-key 环境变量校验、输入校验、prompt 注入检测、安全门禁和脱敏后的 judge 失败报告。
 
 ## 界面截图

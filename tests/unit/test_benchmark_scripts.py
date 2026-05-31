@@ -55,11 +55,28 @@ def test_run_all_uses_configured_project_python(tmp_path: Path) -> None:
     fake_python = fake_bin / "python3"
     fake_python.write_text("#!/usr/bin/env bash\nexit 17\n", encoding="utf-8")
     fake_python.chmod(0o755)
+    fake_mktemp = fake_bin / "mktemp"
+    fake_mktemp.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                'tmpdir="${TMPDIR:-/tmp}"',
+                "if command -v cygpath >/dev/null 2>&1; then",
+                '  tmpdir="$(cygpath -u "$tmpdir" 2>/dev/null || printf "%s" "$tmpdir")"',
+                "fi",
+                'exec /usr/bin/mktemp "$@" "$tmpdir/bench-tmp.XXXXXX"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    fake_mktemp.chmod(0o755)
 
     original_output = BASELINE_PATH.read_text(encoding="utf-8") if BASELINE_PATH.exists() else None
 
     env = os.environ.copy()
     env["AHADIFF_BENCH_PYTHON"] = sys.executable
+    env["TMPDIR"] = str(tmp_path)
     env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
 
     try:

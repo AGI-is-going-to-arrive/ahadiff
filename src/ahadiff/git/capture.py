@@ -1378,6 +1378,11 @@ def _capture_since(
     matched_commits = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     if not matched_commits:
         raise InputError("no commits found in the requested time range")
+    if author is not None and len(matched_commits) > 1:
+        raise InputError(
+            "--since with --author matched multiple commits; use a revision range or single "
+            "commit to avoid capturing unrelated authors"
+        )
 
     if len(matched_commits) == 1:
         capture = _capture_revision(

@@ -13,6 +13,7 @@ from ahadiff.safety.ignore import (
     is_ignored_path,
     load_ignore_matcher,
     resolve_safe_path,
+    resolve_safe_path_from_root,
 )
 
 if TYPE_CHECKING:
@@ -36,6 +37,68 @@ def test_load_ignore_matcher_filters_repo_relative_paths(tmp_path: Path) -> None
     assert is_ignored_path("src/app.py", matcher) is False
 
 
+def test_load_ignore_matcher_rejects_symlink_ignore_file(tmp_path: Path) -> None:
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink is not available on this platform")
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    outside = tmp_path / "outside-ignore"
+    outside.write_text("secret.txt\n", encoding="utf-8")
+    try:
+        os.symlink(outside, repo_root / ".ahadiffignore")
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
+
+    with pytest.raises(SafetyError, match=r"\.ahadiffignore must not be a symlink"):
+        load_ignore_matcher(repo_root)
+
+
+def test_load_ignore_matcher_rejects_oversized_ignore_file(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    (repo_root / ".ahadiffignore").write_bytes(b"x" * 1_000_001)
+
+    with pytest.raises(SafetyError, match=r"\.ahadiffignore exceeds 1000000 bytes"):
+        load_ignore_matcher(repo_root)
+
+
+def test_load_ignore_matcher_rejects_hardlinked_ignore_file(tmp_path: Path) -> None:
+    if not hasattr(os, "link"):
+        pytest.skip("hardlinks are not available on this platform")
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    outside = tmp_path / "outside-ignore"
+    outside.write_text("secret.txt\n", encoding="utf-8")
+    try:
+        os.link(outside, repo_root / ".ahadiffignore")
+    except OSError as exc:
+        pytest.skip(f"hardlink creation unavailable: {exc}")
+
+    with pytest.raises(SafetyError, match=r"\.ahadiffignore must not be a hardlink"):
+        load_ignore_matcher(repo_root)
+
+
+def test_load_ignore_matcher_rejects_special_ignore_file(tmp_path: Path) -> None:
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("mkfifo is not available on this platform")
+
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    try:
+        os.mkfifo(repo_root / ".ahadiffignore")
+    except OSError as exc:
+        pytest.skip(f"fifo creation unavailable: {exc}")
+
+    with pytest.raises(SafetyError, match=r"\.ahadiffignore must be a regular file"):
+        load_ignore_matcher(repo_root)
+
+
 def test_resolve_safe_path_rejects_repo_escape(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -45,6 +108,30 @@ def test_resolve_safe_path_rejects_repo_escape(tmp_path: Path) -> None:
 
     with pytest.raises(SafetyError, match="path escapes repo root"):
         resolve_safe_path(repo_root, "../outside.txt")
+
+
+def test_resolve_safe_path_rejects_absolute_path_outside_repo(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+
+    with pytest.raises(SafetyError, match="path is outside repo root"):
+        resolve_safe_path_from_root(repo_root, outside)
+
+
+@pytest.mark.parametrize("candidate", ["C:secret.txt", "C:/repo/secret.txt", "//server/share/x"])
+def test_resolve_safe_path_rejects_windows_drive_and_unc_syntax(
+    tmp_path: Path,
+    candidate: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    with pytest.raises(SafetyError, match="Windows drive or UNC syntax"):
+        resolve_safe_path_from_root(repo_root, candidate)
 
 
 def test_resolve_safe_path_allows_symlinked_repo_alias_ancestors(tmp_path: Path) -> None:
@@ -59,7 +146,10 @@ def test_resolve_safe_path_allows_symlinked_repo_alias_ancestors(tmp_path: Path)
     target.write_text("x", encoding="utf-8")
 
     alias_parent = tmp_path / "alias"
-    os.symlink(real_parent, alias_parent)
+    try:
+        os.symlink(real_parent, alias_parent)
+    except OSError as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
 
     resolved = resolve_safe_path(repo_root, alias_parent / "repo" / "tracked.txt")
 
