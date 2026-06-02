@@ -4,7 +4,7 @@
 >
 > 把 AI 写出的每一个 git diff，变成带证据、能出题、会复习、还能推动质量变好的学习课程。
 
-[English](./README.md) · [使用指南](./docs/USER_GUIDE.zh.html) · [英文视频教程](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [中文视频教程](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
+[English](./README.md) · [使用指南](./docs/USER_GUIDE.zh.html) · [英文视频教程（带字幕）](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [中文视频教程（带字幕）](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
 
 ---
 
