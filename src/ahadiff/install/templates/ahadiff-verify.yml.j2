@@ -56,7 +56,7 @@ jobs:
               "https://www.sqlite.org/2025/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz"
           tar -xzf "$RUNNER_TEMP/sqlite.tar.gz" -C "$RUNNER_TEMP"
           cd "$RUNNER_TEMP/sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}"
-          CFLAGS="-DSQLITE_ENABLE_FTS5" ./configure --prefix="$RUNNER_TEMP/sqlite" --disable-static
+          ./configure --prefix="$RUNNER_TEMP/sqlite" --disable-static --fts5
           make -j"$(nproc)"
           make install
           sqlite_lib="$RUNNER_TEMP/sqlite/lib/libsqlite3.so"
