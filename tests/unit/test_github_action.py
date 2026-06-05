@@ -66,6 +66,7 @@ def _assert_linux_macos_windows_matrix(workflow: dict[str, Any], job_name: str) 
 def _assert_linux_sqlite_runtime_steps(workflow_text: str) -> None:
     assert "actions/setup-python@v5" in workflow_text
     assert "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" in workflow_text
+    assert 'CFLAGS="-DSQLITE_ENABLE_FTS5" ./configure' in workflow_text
     assert "LD_LIBRARY_PATH=$RUNNER_TEMP/sqlite/lib" in workflow_text
     assert "LD_PRELOAD=$sqlite_lib" in workflow_text
     assert "CREATE VIRTUAL TABLE t USING fts5(x)" in workflow_text
