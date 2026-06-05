@@ -44,11 +44,16 @@ jobs:
           ./configure --prefix="$RUNNER_TEMP/sqlite" --disable-static
           make -j"$(nproc)"
           make install
+          sqlite_lib="$RUNNER_TEMP/sqlite/lib/libsqlite3.so"
           echo "LD_LIBRARY_PATH=$RUNNER_TEMP/sqlite/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo "LD_PRELOAD=$sqlite_lib${LD_PRELOAD:+:$LD_PRELOAD}" >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      - name: Verify Python SQLite runtime
+        run: python -c "import sqlite3; print(sqlite3.sqlite_version, sqlite3.__file__); c=sqlite3.connect(':memory:'); c.execute('CREATE VIRTUAL TABLE t USING fts5(x)'); print('fts5 ok')"
 
       - run: uv sync --locked --dev --python python3.12
 

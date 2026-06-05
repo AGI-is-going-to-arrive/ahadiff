@@ -4,7 +4,7 @@
 >
 > Every AI-written git diff becomes a verified Aha lesson, with code-linked evidence, active-recall quizzes, spaced review, and a self-improving quality ratchet.
 
-[中文](./README.zh.md) · [User Guide](./docs/USER_GUIDE.en.html) · [English tutorial video (subtitled)](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [Chinese tutorial video (subtitled)](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
+[中文](./README.zh.md) · [Landing page](./docs/index.html) · [User Guide](./docs/USER_GUIDE.en.html) · [English tutorial video (subtitled)](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [Chinese tutorial video (subtitled)](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
 
 ---
 

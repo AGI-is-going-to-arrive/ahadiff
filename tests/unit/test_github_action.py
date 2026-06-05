@@ -63,12 +63,18 @@ def _assert_linux_macos_windows_matrix(workflow: dict[str, Any], job_name: str) 
     assert matrix["os"] == ["macos-latest", "ubuntu-latest", "windows-latest"]
 
 
-def _assert_platform_bootstrap_steps(workflow_text: str) -> None:
-    assert "if: runner.os == 'macOS'" in workflow_text
-    assert "if: runner.os == 'Linux'" in workflow_text
+def _assert_linux_sqlite_runtime_steps(workflow_text: str) -> None:
     assert "actions/setup-python@v5" in workflow_text
     assert "sqlite-autoconf-${SQLITE_AUTOCONF_VERSION}.tar.gz" in workflow_text
     assert "LD_LIBRARY_PATH=$RUNNER_TEMP/sqlite/lib" in workflow_text
+    assert "LD_PRELOAD=$sqlite_lib" in workflow_text
+    assert "CREATE VIRTUAL TABLE t USING fts5(x)" in workflow_text
+
+
+def _assert_platform_bootstrap_steps(workflow_text: str) -> None:
+    assert "if: runner.os == 'macOS'" in workflow_text
+    assert "if: runner.os == 'Linux'" in workflow_text
+    _assert_linux_sqlite_runtime_steps(workflow_text)
 
 
 def _assert_repository_backend_ci_matrix(workflow: dict[str, Any]) -> None:
@@ -226,9 +232,11 @@ def test_repository_backend_ci_uses_linux_macos_matrix() -> None:
 def test_repository_nightly_eval_uses_job_level_live_llm_env() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     workflow_path = repo_root / ".github" / "workflows" / "nightly-eval.yml"
+    workflow_text = workflow_path.read_text(encoding="utf-8")
     workflow = _load_workflow(workflow_path)
 
     assert workflow["name"] == "Nightly Eval"
+    _assert_linux_sqlite_runtime_steps(workflow_text)
     job = cast("dict[str, Any]", cast("dict[str, Any]", workflow["jobs"])["eval"])
     env = cast("dict[str, Any]", job["env"])
     assert env["AHADIFF_LIVE_LLM_API_KEY"] == "${{ secrets.AHADIFF_LIVE_LLM_API_KEY }}"
@@ -250,6 +258,7 @@ def test_repository_release_gate_has_blocking_doctor_and_windows_runtime() -> No
     workflow = _load_workflow(workflow_path)
 
     assert workflow["name"] == "Release"
+    _assert_linux_sqlite_runtime_steps(workflow_text)
     jobs = cast("dict[str, Any]", workflow["jobs"])
     assert "gate-linux" in jobs
     assert "gate-windows-runtime" in jobs
@@ -269,6 +278,19 @@ def test_repository_release_gate_has_blocking_doctor_and_windows_runtime() -> No
 
     publish = cast("dict[str, Any]", jobs["publish"])
     assert publish["needs"] == ["gate-linux", "gate-windows-runtime"]
+
+
+def test_repository_pages_deploys_docs_on_push() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow_path = repo_root / ".github" / "workflows" / "pages.yml"
+    workflow = _load_workflow(workflow_path)
+
+    assert workflow["name"] == "Deploy Landing Page to GitHub Pages"
+    workflow_on = cast("dict[str, Any]", workflow["on"])
+    push = cast("dict[str, Any]", workflow_on["push"])
+    assert push["branches"] == ["main"]
+    assert push["paths"] == ["docs/**", ".github/workflows/pages.yml"]
+    assert "workflow_dispatch" in workflow_on
 
 
 def test_github_action_refuses_user_workflow_without_force(tmp_path: Path) -> None:
