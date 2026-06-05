@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>知返 AhaDiff — AI 写完，Diff 教回</title>
+<title>知返 AhaDiff: AI 写完，Diff 教回</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta name="description" content="Local-first verified diff learning layer. Turn AI-generated git diffs into learning notes with code evidence chains." />
 <meta name="theme-color" content="#FAF8F2" />
@@ -153,7 +153,7 @@ img { max-width: 100%; display: block; }
   max-width: 620px; margin: 0 auto 36px; color: var(--muted);
   font-size: 16px; line-height: 1.7;
 }
-.hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 28px; }
 .btn-primary {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
@@ -651,6 +651,57 @@ img { max-width: 100%; display: block; }
   .b-pullquote::before{ font-size: 60px; left: 10px; }
 }
 
+/* ===== Landing v2 additions ===== */
+.hero .hero-ctas { margin-top: 28px; }
+
+.start-steps { display: flex; flex-direction: column; gap: 18px; max-width: 940px; margin: 0 auto; }
+.start-step { display: grid; grid-template-columns: minmax(0, 340px) 1fr; gap: 28px; align-items: start; background: var(--elevated); border: 1px solid var(--hair); border-radius: 14px; padding: 26px 28px; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
+.start-step__head { min-width: 0; }
+.start-step__n { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #fff; background: var(--accent); width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; margin-bottom: 12px; }
+.start-step__head h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+.start-step__head p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+.start-step__body { min-width: 0; }
+.start-step__body .code-block { height: 100%; }
+.start-tip { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: var(--accent-softer); border: 1px solid var(--hair-strong); color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.start-tip code { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+@media (max-width: 760px) { .start-step { grid-template-columns: 1fr; gap: 16px; } }
+
+.video-wrap { max-width: 860px; margin: 0 auto; }
+.video-frame { border-radius: 14px; overflow: hidden; border: 1px solid var(--hair); background: #1E1D1A; box-shadow: 0 12px 48px -16px rgba(0,0,0,.35); }
+.video-frame video { display: block; width: 100%; height: auto; background: #1E1D1A; }
+.video-link { text-align: center; margin-top: 16px; font-family: var(--font-mono); font-size: 13px; }
+
+.shots-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.shot { background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); transition: transform .2s var(--ease-editorial), box-shadow .2s var(--ease-editorial); margin: 0; }
+.shot:hover { transform: translateY(-2px); box-shadow: 0 10px 30px -10px rgba(120,80,40,.2); }
+.shot img { width: 100%; height: auto; display: block; border-bottom: 1px solid var(--hair); background: var(--subtle); }
+.shot figcaption { padding: 12px 16px; font-size: 13px; color: var(--muted); }
+@media (max-width: 680px) { .shots-grid { grid-template-columns: 1fr; } }
+
+.cmd-table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; }
+.cmd-table td { padding: 12px 16px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+.cmd-table tr:last-child td { border-bottom: none; }
+.cmd-table tr:hover { background: var(--subtle); }
+.cmd-table td.cmd-name { white-space: nowrap; width: 1%; }
+.cmd-table td.cmd-name code { font-family: var(--font-mono); font-size: 13px; color: var(--accent-ink); background: var(--accent-soft); padding: 3px 8px; border-radius: 5px; }
+.cmd-table td.cmd-desc { color: var(--muted); }
+@media (max-width: 600px) { .cmd-table, .cmd-table tbody, .cmd-table tr, .cmd-table td { display: block; width: auto; } .cmd-table td.cmd-name { border-bottom: none; padding-bottom: 4px; } .cmd-table td.cmd-desc { padding-top: 0; } }
+
+.faq-list { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.faq-item { background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
+.faq-item summary { cursor: pointer; list-style: none; padding: 18px 22px; font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent); font-size: 20px; flex: none; }
+.faq-item[open] summary::after { content: "\2212"; }
+.faq-item .faq-a { padding: 0 22px 20px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.faq-item .faq-a code { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+
+.feat-grid--3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { .feat-grid--3 { grid-template-columns: 1fr; } }
+
+@media (forced-colors: active) { .shot, .video-frame, .faq-item, .cmd-table, .start-step { border: 1px solid CanvasText; } }
+@media print { .video-frame { display: none; } .shot, .faq-item, .start-step { box-shadow: none; break-inside: avoid; } }
+
 /* === End theme extensions === */
 </style>
 </head>
@@ -669,6 +720,7 @@ img { max-width: 100%; display: block; }
       <a href="#how" data-nav data-i18n="nav.how">原理</a>
       <a href="#features" data-nav data-i18n="nav.features">特性</a>
       <a href="#arch" data-nav data-i18n="nav.arch">架构</a>
+      <a href="#screens" data-nav data-i18n="nav.screens">预览</a>
       <a href="#start" data-nav data-i18n="nav.start">开始</a>
       <button class="lang-toggle" id="langToggle" aria-label="Toggle language">zh / EN</button>
     </div>
@@ -687,7 +739,7 @@ img { max-width: 100%; display: block; }
   <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.1.0-alpha · Source checkout available</p>
   <div class="hero-ctas">
     <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
-    <a href="https://github.com/agi-is-coming/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
+    <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
       GitHub
     </a>
@@ -809,7 +861,7 @@ img { max-width: 100%; display: block; }
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="feat.eyebrow">FEATURES</div>
     <h2 class="section-title reveal" data-i18n="feat.title">每个细节都为学习设计</h2>
-    <p class="section-subtitle reveal" data-i18n="feat.subtitle">不是又一个文档工具，而是一个让你和 AI 共同成长的学习系统。</p>
+    <p class="section-subtitle reveal" data-i18n="feat.subtitle">这是一个让你和 AI 共同成长的学习系统。</p>
     <div class="feat-grid">
       <!-- 1: Verified Claims -->
       <div class="feat-card reveal">
@@ -857,7 +909,7 @@ img { max-width: 100%; display: block; }
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </div>
         <h3 data-i18n="feat.f6.title">Privacy First</h3>
-        <p data-i18n="feat.f6.desc">strict_local / redacted_remote / explicit_remote 三档隐私。Secret scan 在所有操作之前执行，绝不泄露。</p>
+        <p data-i18n="feat.f6.desc">strict_local / redacted_remote / explicit_remote 三档隐私。远端请求前会执行隐私与脱敏门禁。</p>
       </div>
       <!-- 7: Providers -->
       <div class="feat-card reveal reveal-delay-2">
@@ -874,6 +926,27 @@ img { max-width: 100%; display: block; }
         </div>
         <h3 data-i18n="feat.f8.title">15 Tool Targets</h3>
         <p data-i18n="feat.f8.desc">Claude、Codex、Gemini、Cursor、GitHub Actions、Git hooks 等 CLI / IDE / CI 目标都能接入。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== Export & Integrate ===== -->
+<section class="section-pad" id="integrate">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="integ.eyebrow">TAKE IT WITH YOU</div>
+    <h2 class="section-title reveal" data-i18n="integ.title">学完之后，带着走</h2>
+    <p class="section-subtitle reveal" data-i18n="integ.subtitle">把学习记录导出、复习，或接进你的 agent 与 CI。</p>
+    <div class="feat-grid feat-grid--3">
+      <div class="feat-card reveal">
+        <div class="feat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+        <h3 data-i18n="integ.c1.title">导出到 Anki / TSV</h3>
+        <p data-i18n="integ.c1.desc">WebUI 一键导出 Anki <code>.apkg</code>；CLI 用 export-results 写 results.tsv，export preview 生成本地静态预览包。</p>
+      </div>
+      <div class="feat-card reveal reveal-delay-1">
+        <div class="feat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div>
+        <h3 data-i18n="integ.c3.title">接入 15 个工具目标</h3>
+        <p data-i18n="integ.c3.desc">Claude、Codex、Cursor、Copilot、GitHub Actions、Git hooks 等 CLI / IDE / CI 的项目级接入指引。</p>
       </div>
     </div>
   </div>
@@ -940,6 +1013,23 @@ img { max-width: 100%; display: block; }
 
 <div class="b-divider" aria-hidden="true"><span class="mark">&sect;</span></div>
 
+<!-- ===== Tutorial Video ===== -->
+<section class="section-pad" id="video">
+  <div class="container">
+    <div class="section-eyebrow reveal" style="text-align:center;" data-i18n="video.eyebrow">TUTORIAL VIDEO</div>
+    <h2 class="section-title reveal" style="text-align:center;" data-i18n="video.title">看一遍完整流程</h2>
+    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;" data-i18n="video.subtitle">从 learn 到复习，一个真实 run 的完整演示（带字幕）。</p>
+    <div class="video-wrap reveal">
+      <div class="video-frame">
+        <video id="tutorialVideo" controls preload="none" playsinline poster="./video/public/screenshots/en/en-dashboard.png" data-current="">
+          <source src="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" type="video/mp4" />
+        </video>
+      </div>
+      <p class="video-link"><a id="tutorialVideoLink" href="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" target="_blank" rel="noopener" data-i18n="video.open">在新标签页打开视频 ↗</a></p>
+    </div>
+  </div>
+</section>
+
 <!-- ===== Terminal Demo ===== -->
 <section class="section-pad" id="demo">
   <div class="container">
@@ -960,11 +1050,30 @@ img { max-width: 100%; display: block; }
         <div><span class="ok">&check; </span><span data-i18n="demo.t2">Generated 12 verified claims</span> <span class="info">(10 verified, 2 weak)</span></div>
         <div><span class="ok">&check; </span><span data-i18n="demo.t3">Created lesson</span> <span class="info">(full/hint/compact)</span></div>
         <div><span class="ok">&check; </span><span data-i18n="demo.t4">Generated 5 quiz questions</span></div>
-        <div><span class="ok">&check; </span>Score: <span class="score">86/100</span> (PASS) <span class="info">&mdash; weakest: quiz_transfer</span></div>
-        <div><span class="arrow">&rarr; </span><span data-i18n="demo.t5">Opening</span> <span class="info">http://localhost:8765</span> ...</div>
+        <div><span class="ok">&check; </span>Score: <span class="score">86/100</span> (PASS) <span class="info">; weakest: quiz_transfer</span></div>
+        <div><span class="arrow">&rarr; </span><span data-i18n="demo.t5">Opening</span> <span class="info">http://127.0.0.1:8765</span> ...</div>
       </div>
     </div>
     <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="demo.caption">示例输出。具体数字取决于你的 diff。</p>
+  </div>
+</section>
+
+<!-- ===== Screenshots ===== -->
+<section class="section-pad" id="screens" style="background: var(--subtle);">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="screens.eyebrow">WEBUI</div>
+    <h2 class="section-title reveal" data-i18n="screens.title">界面预览</h2>
+    <p class="section-subtitle reveal" data-i18n="screens.subtitle">Dashboard、Lesson、Diff、Quiz、Review、Concepts、Settings：一个本地 React SPA。</p>
+    <div class="shots-grid">
+      <figure class="shot reveal"><img loading="lazy" data-shot="dashboard" src="./video/public/screenshots/en/en-dashboard.png" alt="Dashboard" /><figcaption data-i18n="shot.dashboard">运行面板：运行记录、分数、棘轮轨迹</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="lesson" src="./video/public/screenshots/en/en-lesson.png" alt="Lesson" /><figcaption data-i18n="shot.lesson">课程页：带证据链的解释</figcaption></figure>
+      <figure class="shot reveal"><img loading="lazy" data-shot="diff" src="./video/public/screenshots/en/en-diff.png" alt="Diff" /><figcaption data-i18n="shot.diff">差异查看器：claim 高亮</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="quiz" src="./video/public/screenshots/en/en-quiz.png" alt="Quiz" /><figcaption data-i18n="shot.quiz">测验：证据在作答前锁定</figcaption></figure>
+      <figure class="shot reveal"><img loading="lazy" data-shot="review" src="./video/public/screenshots/en/en-review.png" alt="Review" /><figcaption data-i18n="shot.review">复习：FSRS 间隔重复</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="concepts-graph" src="./video/public/screenshots/en/en-concepts-graph.png" alt="Concept graph" /><figcaption data-i18n="shot.concepts">概念图谱：跨 diff 概念</figcaption></figure>
+      <figure class="shot reveal"><img loading="lazy" data-shot="rundetail-overview" src="./video/public/screenshots/en/en-rundetail-overview.png" alt="Run detail overview" /><figcaption data-i18n="shot.score">运行详情：概览与分数</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="settings" src="./video/public/screenshots/en/en-settings.png" alt="Settings" /><figcaption data-i18n="shot.settings">设置：供应商与偏好</figcaption></figure>
+    </div>
   </div>
 </section>
 
@@ -973,7 +1082,7 @@ img { max-width: 100%; display: block; }
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="cmp.eyebrow">COMPARISON</div>
     <h2 class="section-title reveal" data-i18n="cmp.title">AhaDiff vs. Alternatives</h2>
-    <p class="section-subtitle reveal" data-i18n="cmp.subtitle">不是取代 Code Review，而是补上缺失的学习环。</p>
+    <p class="section-subtitle reveal" data-i18n="cmp.subtitle">保留 Code Review，再补上缺失的学习环。</p>
     <div class="cmp-wrap reveal">
       <table class="cmp-table">
         <thead>
@@ -1042,31 +1151,84 @@ img { max-width: 100%; display: block; }
 
 <div class="b-divider" aria-hidden="true"><span class="mark">&sect;</span></div>
 
+<!-- ===== Commands ===== -->
+<section class="section-pad" id="commands">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="cmds.eyebrow">COMMANDS</div>
+    <h2 class="section-title reveal" data-i18n="cmds.title">一套命令覆盖学习闭环</h2>
+    <p class="section-subtitle reveal" data-i18n="cmds.subtitle">从捕获到复习，常用命令一览。</p>
+    <div class="cmp-wrap reveal">
+      <table class="cmd-table">
+        <tbody>
+          <tr><td class="cmd-name"><code>ahadiff init</code></td><td class="cmd-desc" data-i18n="cmds.init">在仓库里初始化 .ahadiff/ 状态目录</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff provider test</code></td><td class="cmd-desc" data-i18n="cmds.provider">注册并探测一个 LLM 供应商</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff learn &lt;range&gt;</code></td><td class="cmd-desc" data-i18n="cmds.learn">把一段 diff 变成带证据的课程</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff quiz &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.quiz">对刚学的 run 做主动回忆测验</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff review</code></td><td class="cmd-desc" data-i18n="cmds.review">按 FSRS 复习到期卡片</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff verify &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.verify">重新校验 claims 与评分</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff improve --rounds N</code></td><td class="cmd-desc" data-i18n="cmds.improve">在 git worktree 里迭代优化质量</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff serve</code></td><td class="cmd-desc" data-i18n="cmds.serve">打开本地 Web UI</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff export preview</code></td><td class="cmd-desc" data-i18n="cmds.export">生成本地静态预览包</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整命令和 10 种捕获来源见使用指南。</p>
+  </div>
+</section>
+
 <!-- ===== Getting Started ===== -->
 <section class="section-pad start b-focal" id="start">
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="start.eyebrow">SOURCE CHECKOUT</div>
     <h2 class="section-title reveal" data-i18n="start.title">三步开始</h2>
     <p class="section-subtitle reveal" data-i18n="start.subtitle">几步之内，从安装到第一节课。</p>
-    <div class="start-grid">
-      <div class="start-card reveal">
-        <div class="start-num">1</div>
-        <h3 data-i18n="start.c1.title">Install &amp; configure</h3>
-        <p data-i18n="start.c1.desc">当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI，然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。</p>
-        <div class="code-block"><span class="prompt">$ </span><span class="cmd">uv tool install --editable .</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff init</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff provider test --name gpt55 --provider-class openai_responses --base-url "$AHADIFF_PROVIDER_BASE_URL" --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote</span></div>
+    <div class="start-steps">
+      <div class="start-step reveal">
+        <div class="start-step__head">
+          <div class="start-step__n">1</div>
+          <h3 data-i18n="start.c1.title">安装并配置</h3>
+          <p data-i18n="start.c1.desc">当前还未发布到 PyPI；源码 checkout 中用 uv 安装本机 CLI，然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。</p>
+          <div class="start-tip" data-i18n="start.c1.tip">提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加供应商，保存前还能预览模型限额。</div>
+        </div>
+        <div class="start-step__body">
+          <div class="code-block"><span class="prompt">$ </span><span class="cmd">uv tool install --editable .</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff init</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_API_KEY="&lt;your-provider-api-key&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff provider test \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--name default \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--provider-class openai \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--base-url "$AHADIFF_PROVIDER_BASE_URL" \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--api-key-env AHADIFF_PROVIDER_API_KEY</span></div>
+        </div>
       </div>
-      <div class="start-card reveal reveal-delay-1">
-        <div class="start-num">2</div>
-        <h3 data-i18n="start.c2.title">Learn</h3>
-        <p data-i18n="start.c2.desc">在你的项目中运行 learn 命令，分析最近一次提交的 diff。</p>
-        <div class="code-block"><span class="prompt">$ </span><span class="cmd">cd your-project</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
+      <div class="start-step reveal reveal-delay-1">
+        <div class="start-step__head">
+          <div class="start-step__n">2</div>
+          <h3 data-i18n="start.c2.title">学习</h3>
+          <p data-i18n="start.c2.desc">在你的项目中运行 learn 命令，分析最近一次提交的 diff。</p>
+        </div>
+        <div class="start-step__body">
+          <div class="code-block"><span class="prompt">$ </span><span class="cmd">cd your-project</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
+        </div>
       </div>
-      <div class="start-card reveal reveal-delay-2">
-        <div class="start-num">3</div>
-        <h3 data-i18n="start.c3.title">Review</h3>
-        <p data-i18n="start.c3.desc">打开 Web UI 进行 SRS 复习和测验，巩固知识。</p>
-        <div class="code-block"><span class="prompt">$ </span><span class="cmd">ahadiff serve</span><br/><span style="color:#6BB3D9;"># Opens http://localhost:8765</span></div>
+      <div class="start-step reveal reveal-delay-2">
+        <div class="start-step__head">
+          <div class="start-step__n">3</div>
+          <h3 data-i18n="start.c3.title">复习</h3>
+          <p data-i18n="start.c3.desc">打开 Web UI 进行 SRS 复习和测验，巩固知识。</p>
+        </div>
+        <div class="start-step__body">
+          <div class="code-block"><span class="prompt">$ </span><span class="cmd">ahadiff serve</span><br/><span style="color:#6BB3D9;"># Opens http://127.0.0.1:8765</span></div>
+        </div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FAQ ===== -->
+<section class="section-pad" id="faq" style="background: var(--subtle);">
+  <div class="container">
+    <div class="section-eyebrow reveal" data-i18n="faq.eyebrow">FAQ</div>
+    <h2 class="section-title reveal" data-i18n="faq.title">你可能会问</h2>
+    <div class="faq-list reveal">
+      <details class="faq-item"><summary data-i18n="faq.q1">我的代码会被上传吗？</summary><div class="faq-a" data-i18n="faq.a1">默认 strict_local，不向任何远端模型发送内容。要用远端模型时，必须显式切到 redacted_remote 或 explicit_remote；远端请求前会执行隐私与脱敏门禁。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q2">需要从 PyPI 安装吗？</summary><div class="faq-a" data-i18n="faq.a2">暂时还没发布到 PyPI。从源码 checkout 用 uv tool install --editable . 安装本机 CLI 即可。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q3">支持哪些模型？</summary><div class="faq-a" data-i18n="faq.a3">BYOK，覆盖 8 种 API 格式（OpenAI / Anthropic / Gemini / Azure / Ollama / LM Studio 等），并会自动探测上下文长度。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q4">要花钱吗？</summary><div class="faq-a" data-i18n="faq.a4">AhaDiff 本身免费、在本地运行；你只为自己的 LLM 供应商付费（BYOK）。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q5">评分会因为模型不稳定而乱跳吗？</summary><div class="faq-a" data-i18n="faq.a5">评分主体是 8 维确定性打分；LLM judge 只是可选 advisory，即使 judge 失败也会保留确定性分数。</div></details>
     </div>
   </div>
 </section>
@@ -1090,10 +1252,10 @@ img { max-width: 100%; display: block; }
 <!-- ===== Footer ===== -->
 <footer class="footer">
   <div class="footer-links">
-    <a href="https://github.com/agi-is-coming/ahadiff" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener">GitHub</a>
     <a href="./USER_GUIDE.en.html" data-i18n="footer.docsEn">English User Guide</a>
     <a href="./USER_GUIDE.zh.html" data-i18n="footer.docsZh">中文使用指南</a>
-    <a href="https://github.com/agi-is-coming/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
   </div>
   <p data-i18n="footer.credit">Made by the AhaDiff team.</p>
   <div class="footer-version">v1.1.0-alpha</div>
@@ -1152,7 +1314,7 @@ const T = {
   "problem.p3.title": { zh: "知识债务无声堆积", en: "Silent Knowledge Debt" },
   "problem.p3.desc": {
     zh: "用 AI 交付越快，技术债中「人脑里欠的那部分」累积越深，直到一次线上事故暴露一切。",
-    en: "The faster AI ships, the deeper the \"brain debt\" compounds — until a production incident exposes it all."
+    en: "The faster AI ships, the deeper the \"brain debt\" compounds, until a production incident exposes it all."
   },
   "how.eyebrow": { zh: "工作原理", en: "HOW IT WORKS" },
   "how.title": { zh: "四步从 Diff 到掌握", en: "Four Steps from Diff to Mastery" },
@@ -1183,8 +1345,8 @@ const T = {
   "feat.eyebrow": { zh: "核心特性", en: "FEATURES" },
   "feat.title": { zh: "每个细节都为学习设计", en: "Every Detail Designed for Learning" },
   "feat.subtitle": {
-    zh: "不是又一个文档工具，而是一个让你和 AI 共同成长的学习系统。",
-    en: "Not another docs tool. A learning system that grows with you and AI."
+    zh: "这是一个让你和 AI 共同成长的学习系统。",
+    en: "A learning system that grows with you and AI."
   },
   "feat.f1.title": { zh: "Verified Claims", en: "Verified Claims" },
   "feat.f1.desc": {
@@ -1199,7 +1361,7 @@ const T = {
   "feat.f3.title": { zh: "三阶段撤架", en: "Three-Stage Scaffolding" },
   "feat.f3.desc": {
     zh: "Full → Hint → Compact 三阶段学习撤架。由 FSRS 记忆稳定度自动驱动，越熟悉提示越少。",
-    en: "Full → Hint → Compact progressive scaffolding. Driven by FSRS memory stability — the better you know it, the less help you get."
+    en: "Full → Hint → Compact progressive scaffolding. FSRS memory stability drives how much help you see."
   },
   "feat.f4.title": { zh: "8 维评估量规", en: "8-Dimension Rubric" },
   "feat.f4.desc": {
@@ -1213,8 +1375,8 @@ const T = {
   },
   "feat.f6.title": { zh: "隐私优先", en: "Privacy First" },
   "feat.f6.desc": {
-    zh: "strict_local / redacted_remote / explicit_remote 三档隐私。Secret scan 在所有操作之前执行，绝不泄露。",
-    en: "Three privacy modes: strict_local / redacted_remote / explicit_remote. Secret scan runs before all operations."
+    zh: "strict_local / redacted_remote / explicit_remote 三档隐私。远端请求前会执行隐私与脱敏门禁。",
+    en: "Three privacy modes: strict_local / redacted_remote / explicit_remote. Privacy and redaction gates run before remote provider requests."
   },
   "feat.f7.title": { zh: "8 种 LLM 供应商", en: "8 LLM Providers" },
   "feat.f7.desc": {
@@ -1266,8 +1428,8 @@ const T = {
   "cmp.eyebrow": { zh: "对比", en: "COMPARISON" },
   "cmp.title": { zh: "AhaDiff vs. 替代方案", en: "AhaDiff vs. Alternatives" },
   "cmp.subtitle": {
-    zh: "不是取代 Code Review，而是补上缺失的学习环。",
-    en: "Not replacing Code Review. Closing the missing learning loop."
+    zh: "保留 Code Review，再补上缺失的学习环。",
+    en: "Keep Code Review, then add the missing learning loop."
   },
   "cmp.footnote": {
     zh: "本表反映 AhaDiff 自身的定位和设计重点，不是对其他工具的独立评测。",
@@ -1308,7 +1470,56 @@ const T = {
   "footer.credit": {
     zh: "由 AhaDiff 团队开发。",
     en: "Made by the AhaDiff team."
-  }
+  },
+  "nav.screens": { zh: "预览", en: "Preview" },
+  "integ.eyebrow": { zh: "带着走", en: "TAKE IT WITH YOU" },
+  "integ.title": { zh: "学完之后，带着走", en: "Learn It, Then Take It With You" },
+  "integ.subtitle": { zh: "把学习记录导出、复习，或接进你的 agent 与 CI。", en: "Export your learning record, review it, or wire it into your agent and CI." },
+  "integ.c1.title": { zh: "导出到 Anki / TSV", en: "Export to Anki / TSV" },
+  "integ.c1.desc": { zh: "WebUI 一键导出 Anki <code>.apkg</code>；CLI 用 <code>export-results</code> 写 <code>results.tsv</code>，<code>export preview</code> 生成本地静态预览包。", en: "One-click Anki <code>.apkg</code> from the WebUI; the CLI writes <code>results.tsv</code> via <code>export-results</code> and a local static preview via <code>export preview</code>." },
+  "integ.c3.title": { zh: "接入 15 个工具目标", en: "15 Tool Targets" },
+  "integ.c3.desc": { zh: "Claude、Codex、Cursor、Copilot、GitHub Actions、Git hooks 等 CLI / IDE / CI 的项目级接入指引。", en: "Project-level setup for CLI / IDE / CI targets like Claude, Codex, Cursor, Copilot, GitHub Actions, and Git hooks." },
+  "video.eyebrow": { zh: "教程视频", en: "TUTORIAL VIDEO" },
+  "video.title": { zh: "看一遍完整流程", en: "Watch the Full Walkthrough" },
+  "video.subtitle": { zh: "从 learn 到复习，一个真实 run 的完整演示（带字幕）。", en: "From learn to review: a full walkthrough on a real run (subtitled)." },
+  "video.open": { zh: "在新标签页打开视频 ↗", en: "Open the video in a new tab ↗" },
+  "screens.eyebrow": { zh: "界面", en: "WEBUI" },
+  "screens.title": { zh: "界面预览", en: "Inside the WebUI" },
+  "screens.subtitle": { zh: "Dashboard、Lesson、Diff、Quiz、Review、Concepts、Settings：一个本地 React SPA。", en: "Dashboard, Lesson, Diff, Quiz, Review, Concepts, Settings: one local React SPA." },
+  "shot.dashboard": { zh: "运行面板：运行记录、分数、棘轮轨迹", en: "Dashboard: runs, scores, ratchet trajectory" },
+  "shot.lesson": { zh: "课程页：带证据链的解释", en: "Lesson: explanations with evidence chains" },
+  "shot.diff": { zh: "差异查看器：claim 高亮", en: "Diff viewer: claim highlights" },
+  "shot.quiz": { zh: "测验：证据在作答前锁定", en: "Quiz: evidence locked until you answer" },
+  "shot.review": { zh: "复习：FSRS 间隔重复", en: "Review: FSRS spaced repetition" },
+  "shot.concepts": { zh: "概念图谱：跨 diff 概念", en: "Concept graph: cross-diff concepts" },
+  "shot.score": { zh: "运行详情：概览与分数", en: "Run detail: overview & score" },
+  "shot.settings": { zh: "设置：供应商与偏好", en: "Settings: providers & preferences" },
+  "cmds.eyebrow": { zh: "命令", en: "COMMANDS" },
+  "cmds.title": { zh: "一套命令覆盖学习闭环", en: "One Command Set for the Whole Loop" },
+  "cmds.subtitle": { zh: "从捕获到复习，常用命令一览。", en: "From capture to review: common commands at a glance." },
+  "cmds.init": { zh: "在仓库里初始化 <code>.ahadiff/</code> 状态目录", en: "Initialize the <code>.ahadiff/</code> state dir in a repo" },
+  "cmds.provider": { zh: "注册并探测一个 LLM 供应商", en: "Register and probe an LLM provider" },
+  "cmds.learn": { zh: "把一段 diff 变成带证据的课程", en: "Turn a diff into a lesson with evidence" },
+  "cmds.quiz": { zh: "对刚学的 run 做主动回忆测验", en: "Active-recall quiz on the run you just learned" },
+  "cmds.review": { zh: "按 FSRS 复习到期卡片", en: "Review due cards with FSRS" },
+  "cmds.verify": { zh: "重新校验 claims 与评分", en: "Re-verify claims and the score" },
+  "cmds.improve": { zh: "在 git worktree 里迭代优化质量", en: "Iterate quality in a git worktree" },
+  "cmds.serve": { zh: "打开本地 Web UI", en: "Open the local Web UI" },
+  "cmds.export": { zh: "生成本地静态预览包", en: "Write a local static preview bundle" },
+  "cmds.footnote": { zh: "完整命令和 10 种捕获来源见使用指南。", en: "See the User Guide for the full command set and all 10 capture sources." },
+  "faq.eyebrow": { zh: "常见问题", en: "FAQ" },
+  "faq.title": { zh: "你可能会问", en: "You Might Be Wondering" },
+  "faq.q1": { zh: "我的代码会被上传吗？", en: "Does my code get uploaded?" },
+  "faq.a1": { zh: "默认 <code>strict_local</code>，不向任何远端模型发送内容。要用远端模型时，必须显式切到 <code>redacted_remote</code> 或 <code>explicit_remote</code>；远端请求前会执行隐私与脱敏门禁。", en: "The default is <code>strict_local</code>: nothing is sent to a remote model. Remote models require explicitly switching to <code>redacted_remote</code> or <code>explicit_remote</code>; privacy and redaction gates run before the request." },
+  "faq.q2": { zh: "需要从 PyPI 安装吗？", en: "Do I install it from PyPI?" },
+  "faq.a2": { zh: "暂时还没发布到 PyPI。从源码 checkout 用 <code>uv tool install --editable .</code> 安装本机 CLI 即可。", en: "Not yet. AhaDiff isn't on PyPI. Install the local CLI from a source checkout with <code>uv tool install --editable .</code>." },
+  "faq.q3": { zh: "支持哪些模型？", en: "Which models are supported?" },
+  "faq.a3": { zh: "BYOK，覆盖 8 种 API 格式（OpenAI / Anthropic / Gemini / Azure / Ollama / LM Studio 等），并会自动探测上下文长度。", en: "BYOK across 8 API formats (OpenAI / Anthropic / Gemini / Azure / Ollama / LM Studio, and more), with context-length auto-probing." },
+  "faq.q4": { zh: "要花钱吗？", en: "Does it cost anything?" },
+  "faq.a4": { zh: "AhaDiff 本身免费、在本地运行；你只为自己的 LLM 供应商付费（BYOK）。", en: "AhaDiff itself is free and runs locally; you only pay your own LLM provider (BYOK)." },
+  "faq.q5": { zh: "评分会因为模型不稳定而乱跳吗？", en: "Is the score stable across model runs?" },
+  "faq.a5": { zh: "评分主体是 8 维确定性打分；LLM judge 只是可选 advisory，即使 judge 失败也会保留确定性分数。", en: "Scoring is primarily an 8-dimension deterministic score. The LLM judge is optional and advisory; even if it fails, the deterministic score stands." },
+  "start.c1.tip": { zh: "提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加供应商，保存前还能预览模型限额。", en: "Tip: <code>provider test</code> sends a small probe and, on success, saves the provider to <code>.ahadiff/config.toml</code>. <code>--api-key-env</code> is the environment-variable name, not the secret itself. Prefer a form? Run <code>ahadiff serve</code> first and add the provider in Settings, which can even preview model limits before you save." }
 };
 
 /* Language detection & toggle */
@@ -1326,6 +1537,26 @@ function applyLang(l) {
     var key = el.getAttribute("data-i18n");
     if (T[key] && T[key][l]) el.innerHTML = T[key][l];
   });
+  // locale-aware screenshots
+  document.querySelectorAll("img[data-shot]").forEach(function(img){
+    var shot = img.getAttribute("data-shot");
+    img.src = "./video/public/screenshots/" + l + "/" + l + "-" + shot + ".png";
+    var capKey = img.parentElement && img.parentElement.querySelector("figcaption");
+    if (capKey) { img.alt = capKey.textContent; }
+  });
+  // locale-aware tutorial video + open link
+  var vid = document.getElementById("tutorialVideo");
+  if (vid && vid.getAttribute("data-current") !== l) {
+    var vsrc = "./video/output/ahadiff-tutorial." + l + ".burned-subtitles.mp4";
+    try { vid.pause(); } catch (e) {}
+    vid.setAttribute("poster", "./video/public/screenshots/" + l + "/" + l + "-dashboard.png");
+    var source = vid.querySelector("source");
+    if (source) { source.src = vsrc; }
+    vid.load();
+    vid.setAttribute("data-current", l);
+    var vlink = document.getElementById("tutorialVideoLink");
+    if (vlink) { vlink.href = vsrc; }
+  }
   document.getElementById("langToggle").textContent = l === "zh" ? "zh / EN" : "ZH / en";
 }
 
