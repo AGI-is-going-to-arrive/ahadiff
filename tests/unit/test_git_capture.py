@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import pathlib as _pathlib
+import re
 import socket
 import subprocess
 import time
@@ -33,6 +34,12 @@ if TYPE_CHECKING:
     Path = _pathlib.Path
 else:
     Path = _pathlib.Path
+
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_ESCAPE_RE.sub("", text)
 
 
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -326,13 +333,14 @@ def test_open_learn_viewer_with_run_id_opens_run_detail(
 
 def test_learn_help_exposes_open_and_preserves_existing_flags() -> None:
     result = CliRunner().invoke(app(), ["learn", "--help"], catch_exceptions=False)
+    output = _strip_ansi(result.stdout)
 
     assert result.exit_code == 0
-    assert "--open" in result.stdout
-    assert "--changed-path" in result.stdout
-    assert "--dry-run" in result.stdout
-    assert "--force-learn" in result.stdout
-    assert "--provider" in result.stdout
+    assert "--open" in output
+    assert "--changed-path" in output
+    assert "--dry-run" in output
+    assert "--force-learn" in output
+    assert "--provider" in output
 
 
 def test_git_clean_env_strips_dangerous_git_vars_and_sets_prompt(

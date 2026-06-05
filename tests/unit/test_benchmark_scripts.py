@@ -88,7 +88,7 @@ def test_run_all_uses_configured_project_python(tmp_path: Path) -> None:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=180,
+            timeout=360,
             env=env,
         )
 

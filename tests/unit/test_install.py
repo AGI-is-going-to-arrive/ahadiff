@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 import stat
 import subprocess
 from importlib.resources import files
@@ -21,6 +22,13 @@ from ahadiff.install.template_loader import render_template
 from ahadiff.install.usage_hints import get_usage_hint
 
 _RUNNER = CliRunner()
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_ESCAPE_RE.sub("", text)
+
+
 _INSTALL_TEMPLATE_NAMES = (
     "agents_section.md.j2",
     "ahadiff-generate.yml.j2",
@@ -401,10 +409,11 @@ def test_skill_template_curated_commands_match_cli_help(
     snippets: tuple[str, ...],
 ) -> None:
     result = _RUNNER.invoke(app(), list(args))
+    output = _strip_ansi(result.output)
 
     assert result.exit_code == 0, result.output
     for snippet in snippets:
-        assert snippet in result.output
+        assert snippet in output
 
 
 @pytest.mark.parametrize("template_name", _SECTION_TEMPLATE_NAMES)
