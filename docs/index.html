@@ -775,7 +775,7 @@ img { max-width: 100%; display: block; }
     </div>
     <div class="hero-insight-body">
       <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim1">Added explicit algorithm pinning (HS256) to prevent algorithm confusion attacks</span> <span class="claim-ref">auth/session.py:15</span></div>
-      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim2">Token expiry check uses monotonic comparison with time.time()</span> <span class="claim-ref">auth/session.py:16</span></div>
+      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim2">Token expiry is checked against the current system time (time.time())</span> <span class="claim-ref">auth/session.py:16</span></div>
       <div class="claim"><span class="claim-badge weak">weak</span><span class="claim-text" data-i18n="hero.claim3">Exception handler catches all JWT errors including expired signatures</span> <span class="claim-ref">auth/session.py:17</span></div>
     </div>
   </div>
@@ -1290,8 +1290,8 @@ const T = {
     en: "Added explicit algorithm pinning (HS256) to prevent algorithm confusion attacks"
   },
   "hero.claim2": {
-    zh: "Token 过期检查使用 time.time() 进行单调比较",
-    en: "Token expiry check uses monotonic comparison with time.time()"
+    zh: "用当前系统时间（time.time()）检查 token 是否过期",
+    en: "Token expiry is checked against the current system time (time.time())"
   },
   "hero.claim3": {
     zh: "异常处理捕获所有 JWT 错误，包括过期签名",

@@ -983,6 +983,7 @@ ahadiff config show --resolved</span></div>
         <span class="badge"><span class="badge-dot sqlite"></span>3.44.6+ (backport)</span>
       </div>
       <p class="g-lead"><code>uv tool</code> ships SQLite 3.50.4 on Python 3.11.14. Already accepted.</p>
+      <p class="g-lead">A higher version number is not automatically accepted. The gate requires SQLite 3.51.3 or newer, or a backported 3.50.4+ / 3.44.6+ build, so 3.51.0-3.51.2 fall below the bar and are not accepted. If <code>ahadiff doctor</code> flags your build, switch to a Python whose bundled SQLite meets the bar, for example <code>uv tool</code>, the python.org installer, Homebrew, or conda.</p>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/en/en-welcome.png" alt="Welcome: hero tagline, intro paragraph, and the first-run quick start." />

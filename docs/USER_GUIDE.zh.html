@@ -983,6 +983,7 @@ ahadiff config show --resolved</span></div>
         <span class="badge"><span class="badge-dot sqlite"></span>3.44.6+（backport）</span>
       </div>
       <p class="g-lead"><code>uv tool</code> 在 Python 3.11.14 上自带 SQLite 3.50.4。已被接受。</p>
+      <p class="g-lead">版本号更高不代表自动被接受。门禁要求 SQLite 3.51.3 及以上，或回填补丁的 3.50.4+ / 3.44.6+ 版本，所以 3.51.0-3.51.2 低于门槛、不会被接受。如果 <code>ahadiff doctor</code> 提示你的版本不行，换一个自带 SQLite 满足门槛的 Python，例如 <code>uv tool</code>、python.org 安装包、Homebrew 或 conda。</p>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/zh/zh-welcome.png" alt="欢迎页：主标语、简介段落和首次运行的快速上手。" />
