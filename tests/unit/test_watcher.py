@@ -77,7 +77,7 @@ class TestFileWatcherInit:
     def test_raises_when_watchdog_not_available(self, tmp_path: Path) -> None:
         with (
             patch("ahadiff.core.watcher.is_watchdog_available", return_value=False),
-            pytest.raises(ConfigError, match="watchdog is not installed"),
+            pytest.raises(ConfigError, match="watchdog is required for --watch"),
         ):
             FileWatcher(tmp_path, on_change=lambda _: None)
 
@@ -468,7 +468,7 @@ class TestFileWatcherTrigger:
 
 
 class TestFileWatcherStartStop:
-    @pytest.mark.skipif(not is_watchdog_available(), reason="watchdog not installed")
+    @pytest.mark.skipif(not is_watchdog_available(), reason="watchdog unavailable")
     def test_start_and_stop(self, tmp_path: Path) -> None:
         watcher = FileWatcher(
             tmp_path,
@@ -480,7 +480,7 @@ class TestFileWatcherStartStop:
         watcher.stop()
         assert not watcher.is_running
 
-    @pytest.mark.skipif(not is_watchdog_available(), reason="watchdog not installed")
+    @pytest.mark.skipif(not is_watchdog_available(), reason="watchdog unavailable")
     def test_double_start_raises(self, tmp_path: Path) -> None:
         watcher = FileWatcher(tmp_path, on_change=lambda _: None)
         watcher.start()
@@ -490,7 +490,7 @@ class TestFileWatcherStartStop:
         finally:
             watcher.stop()
 
-    @pytest.mark.skipif(not is_watchdog_available(), reason="watchdog not installed")
+    @pytest.mark.skipif(not is_watchdog_available(), reason="watchdog unavailable")
     def test_detects_file_change(self, tmp_path: Path) -> None:
         received: list[WatchEvent] = []
         barrier = threading.Event()

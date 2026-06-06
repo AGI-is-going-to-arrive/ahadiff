@@ -19,7 +19,10 @@ logger = logging.getLogger(__name__)
 _DECK_ID = int(hashlib.sha256(b"ahadiff-review").hexdigest()[:8], 16)
 _MODEL_ID = int(hashlib.sha256(b"ahadiff-review-basic-model").hexdigest()[:8], 16)
 _DECK_NAME = "AhaDiff Review"
-_GENANKI_MISSING = "genanki not installed. Install with: pip install ahadiff[anki]"
+_GENANKI_MISSING = (
+    "genanki is required for .apkg export and is installed with ahadiff by default; "
+    "if it is missing, reinstall ahadiff."
+)
 _AHADIFF_TAG = "ahadiff"
 _MAX_APKG_CARDS = 10_000
 _REQUIRED_CARD_COLUMNS = frozenset(

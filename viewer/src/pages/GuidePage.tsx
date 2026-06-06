@@ -59,7 +59,7 @@ interface CommandEntry {
 }
 
 const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
-  { command: 'uv tool install --editable .', labelKey: 'Guide.commands_install' },
+  { command: 'pip install ahadiff', labelKey: 'Guide.commands_install' },
   { command: 'ahadiff init', labelKey: 'Guide.commands_init' },
   {
     command: 'ahadiff learn HEAD~1..HEAD',

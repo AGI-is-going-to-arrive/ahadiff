@@ -934,26 +934,23 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.1.0-alpha</span></div>
+      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.1.1</span></div>
       <h1>AhaDiff User Guide</h1>
       <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
-      <div class="start-tip">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm">Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree.</div>
+      <div class="start-tip">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm">Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. The videos were recorded before the PyPI release; use <code>pip install ahadiff</code> for the current install step.</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
     <section id="quickstart">
       <div class="section-eyebrow">Getting started</div>
       <h2>1. Quick Start</h2>
-      <p>AhaDiff is not published on PyPI yet, so install the CLI from a source checkout. Pick one of the two cards below depending on whether you want to run AhaDiff or develop it.</p>
+      <p>Install the published CLI from PyPI. Contributors can still run from a source checkout when developing AhaDiff itself.</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>Install</h3>
-          <p>Install the CLI from a source checkout, or run it directly from the source directory.</p>
-          <div class="code-block"><span class="cmd"># Not yet on PyPI; install the CLI from a source checkout
-uv tool install --editable .
-
-# Or run directly from the source directory
-uv run ahadiff --version</span></div>
+          <p>Install the CLI and bundled WebUI with pip.</p>
+          <div class="code-block"><span class="cmd">pip install ahadiff
+ahadiff --version</span></div>
         </div>
         <div class="g-card">
           <h3>Develop from source (contributors)</h3>
@@ -1229,7 +1226,7 @@ supports_native_json_schema = false</span></div>
       <p>Run one of these to open the local React SPA. <code>serve</code> opens a browser by default; add <code>--no-browser</code> to keep it headless, or <code>--watch</code> to rebuild on file changes.</p>
       <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # requires ahadiff[watchdog]</span></div>
+ahadiff serve --watch   # file watcher, included by default</span></div>
 
       <h3>Workflow at a glance</h3>
       <div class="g-rail">
@@ -1418,7 +1415,7 @@ ahadiff improve --rounds 1</span></div>
           <p>Open the local WebUI. <code>--watch</code> rebuilds on file changes.</p>
           <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # requires ahadiff[watchdog]</span></div>
+ahadiff serve --watch   # file watcher, included by default</span></div>
         </div>
       </div>
 
@@ -1499,12 +1496,12 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <h3>Anki <code>.apkg</code></h3>
           <p>Active review cards as an Anki deck.</p>
           <div class="badges" style="justify-content:flex-start;margin-top:4px">
-            <span class="badge">needs <code style="background:none;padding:0;color:inherit">anki</code> extra</span>
+            <span class="badge">default</span>
           </div>
-          <div class="code-block" style="margin-top:10px"><span class="cmd">pip install 'ahadiff[anki]'</span></div>
+          <p style="margin-top:10px">No extra install needed.</p>
         </div>
       </div>
-      <div class="g-note">APKG export needs the <code>anki</code> extra in the same AhaDiff environment. From a source checkout, reinstall with <code>uv tool install --reinstall --editable '.[anki]'</code>.</div>
+      <div class="g-note">APKG export works by default with <code>pip install ahadiff</code> because <code>genanki</code> is bundled.</div>
     </section>
 
     <!-- ===== 7. Capabilities ===== -->
@@ -1614,13 +1611,13 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
         </div>
         <div class="feat-card">
           <h3>APKG export</h3>
-          <p>Needs the <code>anki</code> extra.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Install with <code>uv tool install --reinstall --editable '.[anki]'</code> from a source checkout. Active review cards export through the <code>anki</code> extra.</p></div></details>
+          <p>Works by default; <code>genanki</code> is bundled.</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG export works by default with <code>pip install ahadiff</code> because <code>genanki</code> is bundled. Active review cards export without any extra install.</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Watch</h3>
-          <p>Needs the watchdog dependency.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Without it, run <code>ahadiff learn</code> manually. The extra enables <code>ahadiff serve --watch</code>.</p></div></details>
+          <p>Works by default; the file watcher is bundled.</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The file watcher is included by default, so <code>ahadiff serve --watch</code> works out of the box. You can also run <code>ahadiff learn</code> manually.</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Graphify refresh</h3>
@@ -1800,7 +1797,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>Screenshots are committed PNGs served from the docs tree; the workflow animation is CSS. For release status, see GitHub Actions.</p>
-      <div class="footer-version">v1.1.0-alpha</div>
+      <div class="footer-version">v1.1.1</div>
     </footer>
   </main>
 </div>

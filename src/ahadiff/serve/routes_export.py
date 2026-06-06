@@ -119,7 +119,8 @@ async def get_export_apkg(request: Request) -> Response:
     except ImportError:
         return error_response(
             ErrorCode.FEATURE_UNAVAILABLE,
-            "genanki not installed. Install with: pip install ahadiff[anki]",
+            "genanki is required for .apkg export and is installed with ahadiff "
+            "by default; if it is missing, reinstall ahadiff.",
             status=501,
         )
     return Response(

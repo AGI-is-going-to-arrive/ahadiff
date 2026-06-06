@@ -55,6 +55,7 @@ from .core.paths import (
 )
 from .core.sqlite_util import safe_sqlite_connect
 from .i18n import normalize_locale, resolve_locale
+from .serve.static import _resolve_viewer_dist  # pyright: ignore[reportPrivateUsage]
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -1965,7 +1966,7 @@ def serve_cmd(
         )
         app_instance = create_app(
             serve_state,
-            viewer_dist=root / "viewer" / "dist",
+            viewer_dist=_resolve_viewer_dist(),
         )
 
         file_watcher = None
@@ -2002,8 +2003,9 @@ def serve_cmd(
                 app_instance.state.file_watcher = file_watcher
             else:
                 console.print(
-                    "[yellow]Warning[/yellow]: watchdog not installed; "
-                    "--watch requires: pip install ahadiff[watchdog]"
+                    "[yellow]Warning[/yellow]: watchdog is required for --watch "
+                    "and is installed with ahadiff by default; if it is missing, "
+                    "reinstall ahadiff."
                 )
 
         url = f"http://127.0.0.1:{resolved_port}"
@@ -2291,7 +2293,8 @@ def watch_cmd(
     try:
         if not is_watchdog_available():
             raise AhaDiffError(
-                "watchdog is not installed; install with: pip install ahadiff[watchdog]"
+                "watchdog is required for --watch and is installed with ahadiff "
+                "by default; if it is missing, reinstall ahadiff."
             )
         root, _has_git = _resolve_learn_workspace_root(repo_root, allow_non_git=False)
         config = WatcherConfig(

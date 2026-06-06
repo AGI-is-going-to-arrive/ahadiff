@@ -97,6 +97,12 @@ def supports_tree_sitter_path(path: str) -> bool:
     )
 
 
+def reset_caches() -> None:
+    """Clear tree-sitter runtime caches used by symbol extraction."""
+    _load_language_for_path.cache_clear()
+    _load_tree_sitter_runtime.cache_clear()
+
+
 @lru_cache(maxsize=9)
 def _load_language_for_path(path: str) -> tuple[TreeSitterLanguageKey, object]:
     suffix = _path_suffix(path)
@@ -849,5 +855,6 @@ __all__ = [
     "TreeSitterExtractionResult",
     "TreeSitterSymbolCandidate",
     "extract_tree_sitter_symbols",
+    "reset_caches",
     "supports_tree_sitter_path",
 ]

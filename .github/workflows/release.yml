@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHON_VERSION: "3.12"
+      NODE_VERSION: "22"
+      PNPM_VERSION: "10.33.0"
       SQLITE_AUTOCONF_VERSION: "3510300"
       SQLITE_DOWNLOAD_YEAR: "2026"
     steps:
@@ -71,8 +73,30 @@ jobs:
       - name: Gate - type check
         run: uv run pyright
 
-      - name: Gate - wheel build
-        run: uv build --wheel
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: viewer/pnpm-lock.yaml
+
+      - name: Gate - viewer build
+        working-directory: viewer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Gate - distribution build
+        run: uv build
+
+      - name: Gate - wheel content
+        run: python scripts/check_wheel_webui.py dist/*.whl
 
       - name: Gate - CLI smoke
         run: |
@@ -89,11 +113,11 @@ jobs:
           ahadiff doctor --repo-root .
           ahadiff learn --help > /dev/null
 
-      - name: Upload wheel artifact
+      - name: Upload distribution artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheel
-          path: dist/*.whl
+          name: distributions
+          path: dist/*
 
   gate-windows-runtime:
     name: Release Gate (Windows Runtime)
@@ -132,12 +156,13 @@ jobs:
     needs: [gate-linux, gate-windows-runtime]
     if: startsWith(github.ref, 'refs/tags/v') && github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: wheel
+          name: distributions
           path: dist
 
       - name: Publish to PyPI

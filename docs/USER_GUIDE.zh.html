@@ -934,26 +934,23 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.1.0-alpha</span></div>
+      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.1.1</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
       <p class="guide-lead">AhaDiff 把一次 git diff 变成带代码证据的课程、一份可验证的 claim 清单、测验、复习卡、概念图谱和质量棘轮。它默认 local-first：每个仓库自己的 AhaDiff 状态都存在 <code>.ahadiff/</code> 下。</p>
-      <div class="start-tip">视频教程：<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">英文讲解（MP4）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm">中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。</div>
+      <div class="start-tip">视频教程：<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">英文讲解（MP4）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm">中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。视频录制早于 PyPI 发布；当前安装步骤以 <code>pip install ahadiff</code> 为准。</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
     <section id="quickstart">
       <div class="section-eyebrow">上手</div>
       <h2>1. 快速开始</h2>
-      <p>AhaDiff 还未发布到 PyPI，需要从源码 checkout 安装 CLI。按你的目的从下面两张卡片里二选一：直接运行 AhaDiff，还是参与开发。</p>
+      <p>从 PyPI 安装已发布的 CLI。只有参与 AhaDiff 开发时，才需要从源码 checkout 运行。</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>安装</h3>
-          <p>从源码 checkout 安装 CLI，或直接在源码目录里运行。</p>
-          <div class="code-block"><span class="cmd"># 还未发布到 PyPI；从源码 checkout 安装 CLI
-uv tool install --editable .
-
-# 或者直接在源码目录运行
-uv run ahadiff --version</span></div>
+          <p>用 pip 安装 CLI 和内置 WebUI。</p>
+          <div class="code-block"><span class="cmd">pip install ahadiff
+ahadiff --version</span></div>
         </div>
         <div class="g-card">
           <h3>从源码开发（贡献者）</h3>
@@ -1229,7 +1226,7 @@ supports_native_json_schema = false</span></div>
       <p>运行下面任意一条打开本地 React SPA。<code>serve</code> 默认会打开浏览器；加 <code>--no-browser</code> 保持无头，或加 <code>--watch</code> 在文件改动时重建。</p>
       <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # 需要 ahadiff[watchdog]</span></div>
+ahadiff serve --watch   # 文件监听，默认已包含</span></div>
 
       <h3>工作流一览</h3>
       <div class="g-rail">
@@ -1418,7 +1415,7 @@ ahadiff improve --rounds 1</span></div>
           <p>打开本地 WebUI。<code>--watch</code> 在文件改动时重建。</p>
           <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # 需要 ahadiff[watchdog]</span></div>
+ahadiff serve --watch   # 文件监听，默认已包含</span></div>
         </div>
       </div>
 
@@ -1499,12 +1496,12 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <h3>Anki <code>.apkg</code></h3>
           <p>把活跃复习卡导出为 Anki 牌组。</p>
           <div class="badges" style="justify-content:flex-start;margin-top:4px">
-            <span class="badge">需要 <code style="background:none;padding:0;color:inherit">anki</code> extra</span>
+            <span class="badge">默认</span>
           </div>
-          <div class="code-block" style="margin-top:10px"><span class="cmd">pip install 'ahadiff[anki]'</span></div>
+          <p style="margin-top:10px">无需额外安装。</p>
         </div>
       </div>
-      <div class="g-note">APKG 导出需要在同一个 AhaDiff 环境里装上 <code>anki</code> extra。从源码 checkout 时，用 <code>uv tool install --reinstall --editable '.[anki]'</code> 重新安装。</div>
+      <div class="g-note">APKG 导出用 <code>pip install ahadiff</code> 默认即可用，因为已内置 <code>genanki</code>。</div>
     </section>
 
     <!-- ===== 7. Capabilities ===== -->
@@ -1614,13 +1611,13 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
         </div>
         <div class="feat-card">
           <h3>APKG 导出</h3>
-          <p>需要 <code>anki</code> extra。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>从源码 checkout 用 <code>uv tool install --reinstall --editable '.[anki]'</code> 安装。当前活跃复习卡通过 <code>anki</code> extra 导出。</p></div></details>
+          <p>默认即可用；已内置 <code>genanki</code>。</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG 导出用 <code>pip install ahadiff</code> 默认即可用，因为已内置 <code>genanki</code>。当前活跃复习卡无需额外安装即可导出。</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Watch</h3>
-          <p>需要 watchdog 依赖。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>没有它就手动运行 <code>ahadiff learn</code>。该 extra 启用 <code>ahadiff serve --watch</code>。</p></div></details>
+          <p>默认即可用；文件监听已内置。</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>文件监听默认已包含，<code>ahadiff serve --watch</code> 开箱即用。你也可以手动运行 <code>ahadiff learn</code>。</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Graphify refresh</h3>
@@ -1800,7 +1797,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>截图是从文档树提供的已提交 PNG；工作流动画用 CSS 实现。发布状态见 GitHub Actions。</p>
-      <div class="footer-version">v1.1.0-alpha</div>
+      <div class="footer-version">v1.1.1</div>
     </footer>
   </main>
 </div>

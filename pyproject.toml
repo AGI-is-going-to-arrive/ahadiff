@@ -4,12 +4,27 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ahadiff"
-version = "1.1.0a0"
+version = "1.1.1"
 description = "Local-first verified diff learning layer."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "AhaDiff" }]
+keywords = ["diff", "learning", "srs", "code-review", "llm", "local-first"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development",
+]
 dependencies = [
   "fsrs>=6.3.1,<7",
+  "genanki>=0.13,<1",
   "httpx>=0.28,<1",
   "jinja2>=3.1,<4",
   "mcp>=1.0,<2",
@@ -17,24 +32,6 @@ dependencies = [
   "pydantic>=2.11,<3",
   "rich>=14,<15",
   "starlette>=0.49,<1",
-  "typer>=0.16,<1",
-  "uvicorn>=0.38,<1",
-]
-
-[project.scripts]
-ahadiff = "ahadiff.cli:main"
-
-[project.optional-dependencies]
-anki = [
-  "genanki>=0.13,<1",
-]
-optimizer = [
-  "fsrs[optimizer]>=6.3.1,<7",
-]
-watchdog = [
-  "watchdog>=6,<7",
-]
-tree-sitter = [
   "tree-sitter>=0.24,<1",
   "tree-sitter-c-sharp>=0.23,<1",
   "tree-sitter-go>=0.25,<1",
@@ -44,7 +41,28 @@ tree-sitter = [
   "tree-sitter-rust>=0.24,<1",
   "tree-sitter-ruby>=0.23,<1",
   "tree-sitter-typescript>=0.23,<1",
+  "typer>=0.16,<1",
+  "uvicorn>=0.38,<1",
+  "watchdog>=6,<7",
 ]
+
+[project.scripts]
+ahadiff = "ahadiff.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/AGI-is-going-to-arrive/ahadiff"
+Repository = "https://github.com/AGI-is-going-to-arrive/ahadiff"
+Documentation = "https://github.com/AGI-is-going-to-arrive/ahadiff"
+Issues = "https://github.com/AGI-is-going-to-arrive/ahadiff/issues"
+
+[project.optional-dependencies]
+anki = []
+# Optional advanced FSRS parameter auto-tuning; requires torch and is not core.
+optimizer = [
+  "fsrs[optimizer]>=6.3.1,<7",
+]
+watchdog = []
+tree-sitter = []
 
 [dependency-groups]
 dev = [
@@ -64,6 +82,32 @@ dev = [
   "tree-sitter-typescript>=0.23,<1",
   "watchdog>=6,<7",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ahadiff"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"viewer/dist" = "ahadiff/_webui"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src/ahadiff",
+  "/pyproject.toml",
+  "/README.md",
+  "/README.zh.md",
+  "/LICENSE",
+]
+exclude = [
+  "/docs/video/output",
+  "/viewer/coverage",
+  "/viewer/playwright-report",
+  "/viewer/playwright-report-real-serve",
+  "/viewer/test-results",
+  "/viewer/node_modules",
+]
+
+[tool.hatch.build.targets.sdist.force-include]
+"viewer/dist" = "viewer/dist"
 
 [tool.pytest.ini_options]
 addopts = "-ra"

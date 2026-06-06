@@ -33,6 +33,8 @@ jobs:
             python_version: "3.12"
     env:
       PYTHON_VERSION: ${{ matrix.python_version }}
+      NODE_VERSION: "22"
+      PNPM_VERSION: "10.33.0"
       SQLITE_AUTOCONF_VERSION: "3510300"
       SQLITE_DOWNLOAD_YEAR: "2026"
     steps:
@@ -80,6 +82,22 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run pyright
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: viewer/pnpm-lock.yaml
+      - name: Build viewer
+        working-directory: viewer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
       - run: uv build --wheel
       - run: uv run python -m ahadiff --version
 

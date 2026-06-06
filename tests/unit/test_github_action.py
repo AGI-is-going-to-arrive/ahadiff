@@ -279,6 +279,11 @@ def test_repository_release_gate_has_blocking_doctor_and_windows_runtime() -> No
 
     publish = cast("dict[str, Any]", jobs["publish"])
     assert publish["needs"] == ["gate-linux", "gate-windows-runtime"]
+    assert "uv build\n" in workflow_text
+    assert "Upload distribution artifacts" in workflow_text
+    assert "name: distributions" in workflow_text
+    assert "path: dist/*" in workflow_text
+    assert "packages-dir: dist" in workflow_text
 
 
 def test_repository_pages_deploys_docs_on_push() -> None:

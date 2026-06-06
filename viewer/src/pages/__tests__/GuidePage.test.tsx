@@ -99,7 +99,7 @@ describe('GuidePage command examples', () => {
     const html = renderToStaticMarkup(<GuidePage />);
     const commands = extractRenderedCommands(html);
 
-    expect(commands).toContain('uv tool install --editable .');
+    expect(commands).toContain('pip install ahadiff');
     expect(commands).toContain('ahadiff learn HEAD~1..HEAD');
     expect(commands).toContain('ahadiff learn --staged --unstaged --include-untracked');
     expect(commands).toContain('ahadiff learn --staged');
@@ -134,7 +134,7 @@ describe('GuidePage command examples', () => {
     expect(commands).not.toContain('ahadiff db finalize-targeted');
     expect(commands).not.toContain('ahadiff unlock');
     expect(commands).not.toContain('ahadiff mark');
-    expect(commands).not.toContain('pip install ahadiff');
+    expect(commands).not.toContain('uv tool install --editable .');
     expect(commands).not.toContain(
       'ahadiff learn HEAD~1..HEAD --provider gpt55 --privacy-mode explicit_remote',
     );

@@ -76,7 +76,7 @@ vi.mock('../../utils/platform', async () => {
   return {
     ...actual,
     detectPlatform: () => 'linux' as const,
-    getInstallCommand: () => 'uv tool install --editable .',
+    getInstallCommand: () => 'pip install ahadiff',
     getShellHint: () => 'Terminal',
     getEnvVarCommand: (_p: unknown, name: string, value: string) =>
       `export ${name}="${value}"`,

@@ -6,6 +6,8 @@
 
 [中文](./README.zh.md) · [Landing page](https://agi-is-going-to-arrive.github.io/ahadiff/) · [User Guide](./docs/USER_GUIDE.en.html) · [English tutorial video (subtitled)](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [Chinese tutorial video (Bilibili)](https://www.bilibili.com/video/BV1b57k6yEWm)
 
+> Tutorial videos were recorded before the PyPI release; use `pip install ahadiff` for the current install step.
+
 ---
 
 ## What it is
@@ -41,12 +43,21 @@ AI writes code faster, but developers can understand less of what actually chang
 
 ## Install
 
-AhaDiff is not on PyPI yet. Install from source:
+```bash
+pip install ahadiff
+ahadiff --version   # should print ahadiff 1.1.1
+```
+This ships a working WebUI out of the box, and all default features work with no extras.
+
+`pip install 'ahadiff[optimizer]'` is only needed for FSRS parameter auto-optimization, which pulls in a heavy torch dependency. Base review and scheduling work without it.
+
+### From source (contributors)
+
 ```bash
 git clone https://github.com/AGI-is-going-to-arrive/ahadiff.git
 cd ahadiff
 uv tool install --editable .
-ahadiff --version   # should print ahadiff 1.1.0a0
+cd viewer && pnpm install && pnpm build   # builds the dev WebUI
 ```
 
 ## Configure a provider
@@ -104,14 +115,14 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 - **Scoring**: each run gets an 8-dimension deterministic score, with an optional advisory LLM judge when configured. No-spec `spec_alignment` is shown as N/A / `0/0` and excluded from the overall score; judge results never override `score.json.verdict`. Diff Coverage is based on visible `line_map.json` files and line-weighted hunks, and hard-gate details show the adaptive claim-anchor threshold used for that run. If the optional judge fails, the deterministic score is still kept and the failure is saved as a redacted `judge_failure.json`.
 - **WebUI**: `ahadiff serve` opens Welcome, Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide. The viewer uses a light, editorial paper-style theme, with fonts bundled locally so nothing loads from a CDN. Run Detail shows Score, Judge, Artifacts, and a sanitized judge-failure panel when the optional LLM judge could not complete. The Welcome Before/After demo keeps long raw diffs collapsed with a line count and a Show all / Collapse control; short or empty diffs stay simple.
 - **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
-- **Export**: from the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg`; the `.apkg` export needs the `anki` extra in the same AhaDiff environment (from a source checkout run `uv tool install --reinstall --editable '.[anki]'`).
+- **Export**: from the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg`; `.apkg` export uses the bundled `genanki`, available by default.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
 - **AI tool integration**: project-level guidance for 15 CLI / IDE / CI targets. Settings groups the targets, shows localized usage hints and a provider-free local demo, and keeps write/remove behind confirmation. Guide shows commands plus read-only cards that explain usage and preview the files AhaDiff would write. Supported targets include Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, OpenCode, Cursor, Cline, Continue, Roo, Windsurf, Aider, GitHub Actions, and Git hooks.
 - **Auto-iteration**: `ahadiff improve` optimizes prompts in an isolated worktree and keeps only better results.
 - **Privacy**: three tiers: strict_local, redacted_remote, explicit_remote. The default is strict_local.
 - **i18n**: English and Chinese for the WebUI and prompt output language. CLI help and most CLI diagnostics are in English.
 - **Cross-platform**: macOS and Linux are the primary tested platforms; Windows is supported for the core CLI and serve flows. `--compare-dir` and the `hooks` install target are macOS/Linux only. Installer writes and rollbacks use atomic replacement; POSIX restores file mode before replace, while Windows uses a best-effort mode restore after replace.
-- **Validation scope**: the latest local pre-release audit covered backend unit/integration/eval tests, ruff/pyright, wheel build, viewer Vitest/typecheck/build, real-serve smoke, Guide browser checks, i18n parity, and live learn runs for the documented capture sources. A clean full Playwright matrix, remote CI, and a real Windows runner remain separate release gates.
+- **Validation scope**: the latest local release audit covered backend unit/integration/eval tests, ruff/pyright, wheel build, viewer Vitest/typecheck/build, real-serve smoke, Guide browser checks, i18n parity, and live learn runs for the documented capture sources. A clean full Playwright matrix, remote CI, and a real Windows runner remain separate release gates.
 - **Security**: URL secret redaction, provider URL validation, provider API-key environment validation, input validation, prompt injection detection, safety hard gates, and redacted judge-failure reporting.
 
 ## Screenshots
@@ -247,6 +258,10 @@ Loop: edit → commit → evaluate → keep if better, reset if worse → record
 3. **Local-first trust**: privacy tiers are explicit, and local stays local by default
 4. **Paper-like seriousness**: academic feel, not a loud SaaS landing page
 5. **One accent per style**: warm paper background plus a single accent color
+
+### Acknowledgements
+
+Thanks to the [linux.do](https://linux.do/) community for feedback and support.
 
 ### License
 

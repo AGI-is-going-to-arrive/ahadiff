@@ -76,7 +76,8 @@ class FileWatcher:
     ) -> None:
         if not is_watchdog_available():
             raise ConfigError(
-                "watchdog is not installed; install with: pip install ahadiff[watchdog]"
+                "watchdog is required for --watch and is installed with ahadiff "
+                "by default; if it is missing, reinstall ahadiff."
             )
         resolved = watch_path.resolve()
         if not resolved.is_dir():

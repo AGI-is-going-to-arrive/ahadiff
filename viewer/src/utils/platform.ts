@@ -19,9 +19,8 @@ export function detectPlatform(): Platform {
 }
 
 export function getInstallCommand(_platform: Platform): string {
-  // AhaDiff is not published on PyPI yet. Install the CLI from the current
-  // source checkout into uv's isolated tool environment.
-  return 'uv tool install --editable .';
+  // Install the published CLI from PyPI.
+  return 'pip install ahadiff';
 }
 
 export function getShellHint(platform: Platform): string {

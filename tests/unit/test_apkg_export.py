@@ -256,7 +256,7 @@ def test_export_apkg_reports_missing_optional_dependency(
 
     monkeypatch.setattr(apkg_export, "import_module", _fail_import)
 
-    with pytest.raises(ImportError, match=r"pip install ahadiff\[anki\]"):
+    with pytest.raises(ImportError, match="genanki is required for .apkg export"):
         apkg_export.export_apkg(tmp_path / "review.sqlite")
 
 
@@ -304,7 +304,8 @@ def test_export_apkg_route_returns_501_when_dependency_missing(
     assert response.status_code == 501
     assert response.json() == {
         "error_code": "FEATURE_UNAVAILABLE",
-        "error": "genanki not installed. Install with: pip install ahadiff[anki]",
+        "error": "genanki is required for .apkg export and is installed with "
+        "ahadiff by default; if it is missing, reinstall ahadiff.",
         "status": 501,
     }
 

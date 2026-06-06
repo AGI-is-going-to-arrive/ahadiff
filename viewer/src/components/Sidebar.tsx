@@ -39,7 +39,7 @@ interface SidebarProps {
   onNavigate?: () => void;
 }
 
-const VIEWER_VERSION = 'v1.1.0-alpha.0';
+const VIEWER_VERSION = 'v1.1.1';
 const PRIVACY_MODE_LABEL_KEYS: Record<string, MessageKey> = {
   strict_local: 'Settings_page.privacy_mode_strict_local',
   redacted_remote: 'Settings_page.privacy_mode_redacted_remote',
