@@ -290,6 +290,41 @@ class TestMCPReadOnly:
         assert abs(avg - 88.0) < 1e-9
         assert stats["last_run_at"] == "2026-05-01T00:00:00Z"
 
+    def test_stats_exclude_improve_run_from_source_diff_aggregates(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        db_path = tmp_path / "review.sqlite"
+        _seed_review_db(db_path)
+        sync_result_event(
+            db_path,
+            ResultEvent(
+                event_id="018f0f52-91c0-7abc-8123-000000000102",
+                run_id="run-mcp-derived",
+                event_type="improve_run",
+                timestamp="2026-05-02T00:00:00Z",
+                source_ref="abc1234",
+                base_ref=None,
+                prompt_version="prompt123",
+                eval_bundle_version="eval123",
+                rubric_version="rubric-v1",
+                overall=100.0,
+                verdict="PASS",
+                status=cast("Any", "keep"),
+                weakest_dim="accuracy",
+                note_json=None,
+            ),
+        )
+
+        stats = _get_stats(tmp_path, db_path)
+
+        assert stats["total_result_events"] == 2
+        assert stats["total_runs"] == 1
+        avg = cast("float | None", stats["avg_overall_score"])
+        assert avg is not None
+        assert abs(avg - 88.0) < 1e-9
+        assert stats["last_run_at"] == "2026-05-02T00:00:00Z"
+
     def test_missing_db_raises_storage_error(self, tmp_path: Path) -> None:
         missing = tmp_path / "absent.sqlite"
         with pytest.raises(StorageError, match="MCP read-only DB does not exist"):

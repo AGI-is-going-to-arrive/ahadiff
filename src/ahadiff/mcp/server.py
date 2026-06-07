@@ -1143,7 +1143,9 @@ def _count_table_rows(connection: sqlite3.Connection, table_name: str) -> int:
 def _count_distinct_runs(connection: sqlite3.Connection) -> int:
     if not _table_exists(connection, "result_events"):
         return 0
-    row = connection.execute("SELECT COUNT(DISTINCT run_id) FROM result_events").fetchone()
+    row = connection.execute(
+        "SELECT COUNT(DISTINCT run_id) FROM result_events WHERE event_type != 'improve_run'"
+    ).fetchone()
     return int(row[0]) if row is not None else 0
 
 
@@ -1168,6 +1170,7 @@ def _avg_overall_score(connection: sqlite3.Connection) -> float | None:
         SELECT AVG(overall)
         FROM result_events
         WHERE status IN ('baseline', 'keep', 'keep_final')
+          AND event_type != 'improve_run'
         """
     ).fetchone()
     if row is None or row[0] is None:

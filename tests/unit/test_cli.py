@@ -38,6 +38,26 @@ def _init_git_repo(path: Path) -> None:
         errors="replace",
         timeout=30,
     )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
 
 
 def _write_repo_config(repo_root: Path) -> None:
@@ -100,6 +120,41 @@ def _provider_config() -> ProviderConfig:
         model_name="local-model",
         base_url="http://127.0.0.1:11434",
         api_key_env="AHADIFF_PROVIDER_API_KEY",
+    )
+
+
+def _write_source_checkout_prompts(repo_root: Path) -> None:
+    prompt_files = {
+        "lesson_generate.md": "lesson generate v1\n",
+        "lesson_hint.md": "lesson hint v1\n",
+        "lesson_compact.md": "lesson compact v1\n",
+        "quiz_generate.md": "quiz generate v1\n",
+        "claim_extract.md": "claim extract v1\n",
+        "improve_program.md": "improve program v1\n",
+    }
+    for directory in (repo_root / "prompts", repo_root / "src" / "ahadiff" / "prompts"):
+        directory.mkdir(parents=True, exist_ok=True)
+        for name, content in prompt_files.items():
+            (directory / name).write_text(content, encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "prompts", "src/ahadiff/prompts"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "prompt fixtures"],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
     )
 
 
@@ -381,6 +436,7 @@ def test_runtime_provider_uses_configured_generate_provider_with_multiple_remote
 
 def test_improve_lang_is_passed_to_run_improve_loop(tmp_path: Path, monkeypatch: Any) -> None:
     repo_root = _repo_root(tmp_path, monkeypatch)
+    _write_source_checkout_prompts(repo_root)
     captured: dict[str, Any] = {}
 
     def fake_resolve_runtime_provider(**kwargs: Any) -> tuple[ProviderConfig, None, str, bool]:
@@ -413,6 +469,7 @@ def test_improve_lang_is_passed_to_run_improve_loop(tmp_path: Path, monkeypatch:
 def test_improve_without_lang_still_runs(tmp_path: Path, monkeypatch: Any) -> None:
     monkeypatch.delenv("AHADIFF_LANG", raising=False)
     repo_root = _repo_root(tmp_path, monkeypatch)
+    _write_source_checkout_prompts(repo_root)
     captured: dict[str, Any] = {}
 
     def fake_resolve_runtime_provider(**kwargs: Any) -> tuple[ProviderConfig, None, str, bool]:
@@ -448,6 +505,7 @@ def test_improve_uses_ahadiff_lang_when_lang_flag_is_omitted(
 ) -> None:
     monkeypatch.setenv("AHADIFF_LANG", "zh-CN")
     repo_root = _repo_root(tmp_path, monkeypatch)
+    _write_source_checkout_prompts(repo_root)
     captured: dict[str, Any] = {}
 
     def fake_resolve_runtime_provider(**kwargs: Any) -> tuple[ProviderConfig, None, str, bool]:

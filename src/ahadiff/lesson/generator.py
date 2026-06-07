@@ -146,6 +146,7 @@ def generate_lesson(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    steering_context: str | None = None,
     structured_output_mode: EnforcementMode = "json_object",
     structured_validation_retries: int = 0,
 ) -> LessonFull:
@@ -165,6 +166,7 @@ def generate_lesson(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
+        steering_context=steering_context,
         structured_output_mode=structured_output_mode,
         structured_validation_retries=structured_validation_retries,
     )
@@ -191,6 +193,7 @@ def generate_hint(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    steering_context: str | None = None,
     structured_output_mode: EnforcementMode = "json_object",
     structured_validation_retries: int = 0,
 ) -> LessonHint:
@@ -210,6 +213,7 @@ def generate_hint(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
+        steering_context=steering_context,
         structured_output_mode=structured_output_mode,
         structured_validation_retries=structured_validation_retries,
     )
@@ -233,6 +237,7 @@ def generate_compact(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    steering_context: str | None = None,
     structured_output_mode: EnforcementMode = "json_object",
     structured_validation_retries: int = 0,
 ) -> LessonCompact:
@@ -252,6 +257,7 @@ def generate_compact(
         input_token_budget=input_token_budget,
         output_token_budget=output_token_budget,
         output_token_cap=output_token_cap,
+        steering_context=steering_context,
         structured_output_mode=structured_output_mode,
         structured_validation_retries=structured_validation_retries,
     )
@@ -623,6 +629,8 @@ def generate_lessons_from_run(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     lesson_output_token_caps: Mapping[LessonVariant, int] | None = None,
+    lesson_variants: tuple[LessonVariant, ...] | None = None,
+    steering_context: str | None = None,
     on_sub_progress: Callable[[str], None] | None = None,
     structured_output_mode: EnforcementMode = "json_object",
     structured_validation_retries: int = 0,
@@ -632,67 +640,87 @@ def generate_lessons_from_run(
         run_path=run_path,
         workspace_root=workspace_root,
     )
-    if on_sub_progress is not None:
-        on_sub_progress("Generating full lesson (1/3)")
-    full = generate_lesson(
-        bundle=bundle,
-        provider_config=provider_config,
-        api_key=api_key,
-        security_config=security_config,
-        output_lang=output_lang,
-        client=client,
-        request_timeout_seconds=request_timeout_seconds,
-        max_concurrent=max_concurrent,
-        qps_limit=qps_limit,
-        retry_attempts=retry_attempts,
-        privacy_mode=privacy_mode,
-        input_token_budget=input_token_budget,
-        output_token_budget=output_token_budget,
-        output_token_cap=_output_token_cap_for_variant("full", lesson_output_token_caps),
-        structured_output_mode=structured_output_mode,
-        structured_validation_retries=structured_validation_retries,
-    )
-    if on_sub_progress is not None:
-        on_sub_progress("Generating hint lesson (2/3)")
-    hint = generate_hint(
-        bundle=bundle,
-        provider_config=provider_config,
-        api_key=api_key,
-        security_config=security_config,
-        output_lang=output_lang,
-        client=client,
-        request_timeout_seconds=request_timeout_seconds,
-        max_concurrent=max_concurrent,
-        qps_limit=qps_limit,
-        retry_attempts=retry_attempts,
-        privacy_mode=privacy_mode,
-        input_token_budget=input_token_budget,
-        output_token_budget=output_token_budget,
-        output_token_cap=_output_token_cap_for_variant("hint", lesson_output_token_caps),
-        structured_output_mode=structured_output_mode,
-        structured_validation_retries=structured_validation_retries,
-    )
-    if on_sub_progress is not None:
-        on_sub_progress("Generating compact lesson (3/3)")
-    compact = generate_compact(
-        bundle=bundle,
-        provider_config=provider_config,
-        api_key=api_key,
-        security_config=security_config,
-        output_lang=output_lang,
-        client=client,
-        request_timeout_seconds=request_timeout_seconds,
-        max_concurrent=max_concurrent,
-        qps_limit=qps_limit,
-        retry_attempts=retry_attempts,
-        privacy_mode=privacy_mode,
-        input_token_budget=input_token_budget,
-        output_token_budget=output_token_budget,
-        output_token_cap=_output_token_cap_for_variant("compact", lesson_output_token_caps),
-        structured_output_mode=structured_output_mode,
-        structured_validation_retries=structured_validation_retries,
-    )
-    return write_lesson_artifacts(
+    selected_variants = _normalize_lesson_variants(lesson_variants)
+    full: LessonFull | None = None
+    hint: LessonHint | None = None
+    compact: LessonCompact | None = None
+    if "full" in selected_variants:
+        if on_sub_progress is not None:
+            on_sub_progress("Generating full lesson (1/3)")
+        full = generate_lesson(
+            bundle=bundle,
+            provider_config=provider_config,
+            api_key=api_key,
+            security_config=security_config,
+            output_lang=output_lang,
+            client=client,
+            request_timeout_seconds=request_timeout_seconds,
+            max_concurrent=max_concurrent,
+            qps_limit=qps_limit,
+            retry_attempts=retry_attempts,
+            privacy_mode=privacy_mode,
+            input_token_budget=input_token_budget,
+            output_token_budget=output_token_budget,
+            output_token_cap=_output_token_cap_for_variant("full", lesson_output_token_caps),
+            steering_context=steering_context,
+            structured_output_mode=structured_output_mode,
+            structured_validation_retries=structured_validation_retries,
+        )
+    if "hint" in selected_variants:
+        if on_sub_progress is not None:
+            on_sub_progress("Generating hint lesson (2/3)")
+        hint = generate_hint(
+            bundle=bundle,
+            provider_config=provider_config,
+            api_key=api_key,
+            security_config=security_config,
+            output_lang=output_lang,
+            client=client,
+            request_timeout_seconds=request_timeout_seconds,
+            max_concurrent=max_concurrent,
+            qps_limit=qps_limit,
+            retry_attempts=retry_attempts,
+            privacy_mode=privacy_mode,
+            input_token_budget=input_token_budget,
+            output_token_budget=output_token_budget,
+            output_token_cap=_output_token_cap_for_variant("hint", lesson_output_token_caps),
+            steering_context=steering_context,
+            structured_output_mode=structured_output_mode,
+            structured_validation_retries=structured_validation_retries,
+        )
+    if "compact" in selected_variants:
+        if on_sub_progress is not None:
+            on_sub_progress("Generating compact lesson (3/3)")
+        compact = generate_compact(
+            bundle=bundle,
+            provider_config=provider_config,
+            api_key=api_key,
+            security_config=security_config,
+            output_lang=output_lang,
+            client=client,
+            request_timeout_seconds=request_timeout_seconds,
+            max_concurrent=max_concurrent,
+            qps_limit=qps_limit,
+            retry_attempts=retry_attempts,
+            privacy_mode=privacy_mode,
+            input_token_budget=input_token_budget,
+            output_token_budget=output_token_budget,
+            output_token_cap=_output_token_cap_for_variant("compact", lesson_output_token_caps),
+            steering_context=steering_context,
+            structured_output_mode=structured_output_mode,
+            structured_validation_retries=structured_validation_retries,
+        )
+    if selected_variants == ("full", "hint", "compact"):
+        if full is None or hint is None or compact is None:
+            raise AssertionError("all lesson variants should have been generated")
+        return write_lesson_artifacts(
+            run_path=run_path,
+            full=full,
+            hint=hint,
+            compact=compact,
+            overwrite=overwrite,
+        )
+    return write_selected_lesson_artifacts(
         run_path=run_path,
         full=full,
         hint=hint,
@@ -725,6 +753,59 @@ def write_lesson_artifacts(
         paths.misconception_path: full.render_misconceptions_markdown(),
         paths.not_proven_path: full.render_not_proven_markdown(),
     }
+    _write_lesson_artifact_texts(
+        run_path=run_path,
+        lesson_dir=lesson_dir,
+        artifact_texts=artifact_texts,
+        overwrite=overwrite,
+    )
+    return paths
+
+
+def write_selected_lesson_artifacts(
+    *,
+    run_path: Path,
+    full: LessonFull | None = None,
+    hint: LessonHint | None = None,
+    compact: LessonCompact | None = None,
+    overwrite: bool = False,
+) -> LessonArtifactPaths:
+    lesson_dir = run_path / "lesson"
+    paths = LessonArtifactPaths(
+        lesson_dir=lesson_dir,
+        full_path=lesson_dir / "lesson.full.md",
+        hint_path=lesson_dir / "lesson.hint.md",
+        compact_path=lesson_dir / "lesson.compact.md",
+        misconception_path=lesson_dir / "misconception.md",
+        not_proven_path=lesson_dir / "not_proven.md",
+    )
+    artifact_texts: dict[Path, str] = {}
+    if full is not None:
+        artifact_texts[paths.full_path] = full.render_markdown()
+        artifact_texts[paths.misconception_path] = full.render_misconceptions_markdown()
+        artifact_texts[paths.not_proven_path] = full.render_not_proven_markdown()
+    if hint is not None:
+        artifact_texts[paths.hint_path] = hint.render_markdown()
+    if compact is not None:
+        artifact_texts[paths.compact_path] = compact.render_markdown()
+    if not artifact_texts:
+        raise InputError("at least one lesson variant must be generated")
+    _write_lesson_artifact_texts(
+        run_path=run_path,
+        lesson_dir=lesson_dir,
+        artifact_texts=artifact_texts,
+        overwrite=overwrite,
+    )
+    return paths
+
+
+def _write_lesson_artifact_texts(
+    *,
+    run_path: Path,
+    lesson_dir: Path,
+    artifact_texts: dict[Path, str],
+    overwrite: bool,
+) -> None:
     _validate_lesson_artifact_paths(artifact_texts, overwrite=overwrite)
     staging_root = _temporary_work_dir(run_path, prefix=".lesson-stage.")
     backup_root = _temporary_work_dir(run_path, prefix=".lesson-backup.")
@@ -742,7 +823,6 @@ def write_lesson_artifacts(
     finally:
         shutil.rmtree(staging_root, ignore_errors=True)
         shutil.rmtree(backup_root, ignore_errors=True)
-    return paths
 
 
 def build_lesson_payload(
@@ -751,6 +831,7 @@ def build_lesson_payload(
     bundle: RedactedRunBundle,
     variant: LessonVariant,
     output_lang: str = "en",
+    steering_context: str | None = None,
 ) -> str:
     prompt_header = f"## Requested Output\nTarget: {_VARIANT_TITLES[variant]}"
     metadata_payload = {
@@ -761,11 +842,15 @@ def build_lesson_payload(
         "degraded_flags": bundle.metadata.get("degraded_flags", {}),
         "learnability": bundle.metadata.get("learnability", {}),
     }
-    return "\n\n".join(
-        (
-            prompt_text.strip(),
-            prompt_header,
-            "## Output language\n" + prompt_language_instruction(output_lang),
+    sections = [
+        prompt_text.strip(),
+        prompt_header,
+        "## Output language\n" + prompt_language_instruction(output_lang),
+    ]
+    if steering_context:
+        sections.append("## Regeneration steering\n" + steering_context.strip())
+    sections.extend(
+        [
             "## Run metadata\n```json\n"
             + json.dumps(metadata_payload, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```",
@@ -773,8 +858,9 @@ def build_lesson_payload(
             "## patch.diff\n```diff\n" + bundle.patch_text.rstrip() + "\n```",
             "## line_map.json\n```json\n" + bundle.line_map_text.rstrip() + "\n```",
             "## symbols.json\n```json\n" + bundle.symbols_text.rstrip() + "\n```",
-        )
+        ]
     )
+    return "\n\n".join(sections)
 
 
 def load_lesson_prompt(variant: LessonVariant) -> str:
@@ -808,6 +894,7 @@ def _generate_variant_payload(
     input_token_budget: int | None = None,
     output_token_budget: int | None = None,
     output_token_cap: int | None = None,
+    steering_context: str | None = None,
     structured_output_mode: EnforcementMode = "json_object",
     structured_validation_retries: int = 0,
 ) -> str:
@@ -817,6 +904,7 @@ def _generate_variant_payload(
         bundle=bundle,
         variant=variant,
         output_lang=output_lang,
+        steering_context=steering_context,
     )
     prompt_fingerprint = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:12]
     resolved_privacy_mode = privacy_mode or bundle.privacy_mode
@@ -916,6 +1004,25 @@ def _output_token_cap_for_variant(
     if caps is None:
         return _VARIANT_OUTPUT_CAPS[variant]
     return caps.get(variant, _VARIANT_OUTPUT_CAPS[variant])
+
+
+def _normalize_lesson_variants(
+    lesson_variants: tuple[LessonVariant, ...] | None,
+) -> tuple[LessonVariant, ...]:
+    if lesson_variants is None:
+        return ("full", "hint", "compact")
+    if not lesson_variants:
+        raise InputError("at least one lesson variant must be requested")
+    seen: set[LessonVariant] = set()
+    normalized: list[LessonVariant] = []
+    for variant in lesson_variants:
+        if variant not in _PROMPT_FILENAMES:
+            raise InputError(f"unsupported lesson variant: {variant}")
+        if variant in seen:
+            continue
+        seen.add(variant)
+        normalized.append(variant)
+    return tuple(normalized)
 
 
 def _resolve_request_max_output_tokens(
@@ -1047,4 +1154,5 @@ __all__ = [
     "load_redacted_run_bundle",
     "RedactedRunBundle",
     "write_lesson_artifacts",
+    "write_selected_lesson_artifacts",
 ]

@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
       <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.1.1</span></div>
       <h1>AhaDiff User Guide</h1>
       <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
-      <div class="start-tip">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm">Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. The videos were recorded before the PyPI release; use <code>pip install ahadiff</code> for the current install step.</div>
+      <div class="start-tip">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm">Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code>. The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
@@ -1402,14 +1402,14 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
       <div class="g-cards">
         <div class="g-card">
           <h3>Learn and verify</h3>
-          <p>Generate a run, then check and grade it.</p>
+          <p>Generate a run, then check, grade, and improve it.</p>
           <div class="code-block"><span class="cmd">ahadiff learn --last
 ahadiff quiz RUN_ID
 ahadiff review
 ahadiff claims RUN_ID
 ahadiff verify RUN_ID
 ahadiff score RUN_ID
-ahadiff improve --rounds 1</span></div>
+ahadiff improve-run RUN_ID</span></div>
         </div>
         <div class="g-card">
           <h3>Serve</h3>
@@ -1419,6 +1419,8 @@ ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # file watcher, included by default</span></div>
         </div>
       </div>
+
+      <p><code>improve-run RUN_ID</code> regenerates a lesson and keeps the new copy only when the deterministic score strictly improves, saving it as a separate run and leaving the original untouched. It works in any install, including <code>pip</code>. The separate <code>improve</code> command tunes AhaDiff's own generation prompts and only runs inside an AhaDiff source checkout.</p>
 
       <h3>Maintenance clusters</h3>
       <div class="g-cards">

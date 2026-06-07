@@ -165,6 +165,11 @@ import_graphify_artifact = _lazy_attr("git.capture", "import_graphify_artifact")
 write_input_artifacts = _lazy_attr("git.capture", "write_input_artifacts")
 repo_write_lock = _lazy_attr("git.repo", "repo_write_lock")
 unlock_repo_write_lock = _lazy_attr("git.repo", "unlock_repo_write_lock")
+assert_prompt_tuning_source_checkout = _lazy_attr(
+    "improve.preflight",
+    "assert_prompt_tuning_source_checkout",
+)
+run_regenerate = _lazy_attr("improve", "run_regenerate")
 run_improve_loop = _lazy_attr("improve", "run_improve_loop")
 available_targets = _lazy_attr("install", "available_targets")
 get_target = _lazy_attr("install", "get_target")
@@ -1835,6 +1840,7 @@ def improve_cmd(
                 "improve does not support redacted_remote privacy mode; "
                 "use strict_local or explicit_remote"
             )
+        assert_prompt_tuning_source_checkout(root)
         resolved_output_lang = _resolve_output_lang_from_snapshot(snapshot, cli_lang=lang)
         security_config = load_security_config(root)
         state_dir = project_state_dir(root)
@@ -1907,6 +1913,130 @@ def improve_cmd(
             console.print(table)
         else:
             console.print("[yellow]Improve[/yellow]: no new rounds were executed")
+        for warning in result.warnings:
+            error_console.print(f"[yellow]Warning[/yellow]: {warning}")
+    except Exception as error:  # pragma: no cover - exercised through CLI tests
+        _handle_cli_error(error)
+
+
+@_APP.command("improve-run")
+def improve_run_cmd(
+    run_id: Annotated[str, typer.Argument(help="Existing run id to regenerate.")],
+    candidates: Annotated[
+        int,
+        typer.Option(
+            "--candidates",
+            min=1,
+            max=10,
+            help="Number of regenerated lesson candidates to try.",
+        ),
+    ] = 3,
+    repo_root: Annotated[
+        Path,
+        typer.Option("--repo-root", help="Repository root, workspace root, or any path inside it."),
+    ] = Path(),
+    privacy_mode: Annotated[
+        str | None,
+        typer.Option("--privacy-mode", help="Temporary CLI override."),
+    ] = None,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="Configured provider alias under [providers.<name>]."),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="One-off provider API base URL for improve-run."),
+    ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model override for lesson regeneration."),
+    ] = None,
+    provider_class: Annotated[
+        str,
+        typer.Option("--provider-class", help="Provider class for one-off improve-run."),
+    ] = "openai",
+    api_key_env: Annotated[
+        str,
+        typer.Option(
+            "--api-key-env",
+            help="Env var name used to resolve the API key for improve-run.",
+        ),
+    ] = "AHADIFF_PROVIDER_API_KEY",
+    lang: Annotated[
+        str | None,
+        typer.Option("--lang", help="Temporary output language override."),
+    ] = None,
+) -> None:
+    try:
+        root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        config_overrides = _cli_overrides(privacy_mode=privacy_mode, lang=lang)
+        snapshot = (
+            load_config(root, cli_overrides=config_overrides)
+            if has_git_repo
+            else load_workspace_config(root, cli_overrides=config_overrides)
+        )
+        llm_config = cast("dict[str, Any]", snapshot.values["llm"])
+        provider_limits = cast("dict[str, Any]", snapshot.values["provider"])
+        effective_privacy_mode = str(snapshot.values["privacy_mode"])
+        resolved_output_lang = _resolve_output_lang_from_snapshot(snapshot, cli_lang=lang)
+        security_config = (
+            load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+        )
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        lock_path = lock_file_path(root) if has_git_repo else state_dir / "ahadiff.lock"
+        (
+            provider_config,
+            effective_api_key,
+            transport_target,
+            provider_selection_explicit,
+        ) = _resolve_runtime_provider(
+            snapshot=snapshot,
+            operation_label="improve-run",
+            provider_name=provider,
+            provider_class=provider_class,
+            base_url=base_url,
+            model=model,
+            api_key_env=api_key_env,
+            privacy_mode=effective_privacy_mode,
+            stdin_interactive=sys.stdin.isatty(),
+            local_hosts=security_config.local_hosts,
+            strict_local_hosts=security_config.strict_local_hosts,
+        )
+        resolved_privacy_mode = _privacy_mode_for_explicit_provider_call(
+            effective_privacy_mode,
+            transport_target=transport_target,
+            provider_selection_explicit=provider_selection_explicit,
+        )
+
+        with repo_write_lock(lock_path, command="improve-run") as _:
+            initialize_review_db(state_dir / "review.sqlite")
+            with console.status("[bold]Regenerating lesson candidates...[/bold]", spinner="dots"):
+                result = run_regenerate(
+                    run_id,
+                    candidates=candidates,
+                    workspace_root=root,
+                    state_dir=state_dir,
+                    provider_config=provider_config,
+                    api_key=effective_api_key,
+                    security_config=security_config,
+                    output_lang=resolved_output_lang,
+                    request_timeout_seconds=int(llm_config["request_timeout_seconds"]),
+                    max_concurrent=int(llm_config["max_concurrent"]),
+                    qps_limit=int(provider_limits["qps_limit"]),
+                    retry_attempts=int(llm_config["retry_attempts"]),
+                    privacy_mode=resolved_privacy_mode,
+                )
+
+        if result.accepted_run_id is None:
+            console.print("[yellow]Improve-run[/yellow]: no improvement, baseline kept")
+            console.print(f"[bold]Baseline run[/bold]: {result.baseline_run_id}")
+            console.print(f"[bold]Baseline score[/bold]: {result.baseline_overall:.2f}")
+            return
+        console.print(f"[green]Accepted run[/green]: {result.accepted_run_id}")
+        console.print(f"[bold]Baseline run[/bold]: {result.baseline_run_id}")
+        console.print(f"[bold]Baseline score[/bold]: {result.baseline_overall:.2f}")
+        console.print(f"[bold]Accepted score[/bold]: {result.accepted_overall:.2f}")
+        console.print(f"[bold]Result event[/bold]: {result.event_id}")
         for warning in result.warnings:
             error_console.print(f"[yellow]Warning[/yellow]: {warning}")
     except Exception as error:  # pragma: no cover - exercised through CLI tests

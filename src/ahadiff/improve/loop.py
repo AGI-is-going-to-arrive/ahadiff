@@ -30,6 +30,7 @@ from ahadiff.llm import ProviderRequest, make_provider
 from ahadiff.llm.cost import effective_output_cap, resolve_model_limits
 from ahadiff.review.database import load_result_events_for_improve_chain, load_result_events_from_db
 
+from .preflight import assert_prompt_tuning_source_checkout
 from .program import (
     ImproveSessionState,
     build_replay_learn_args,
@@ -241,6 +242,7 @@ def _run_improve_loop_unlocked(
         )
 
     _reject_existing_pending_worktrees(state_dir, allowed_session_id=resume_session_id)
+    assert_prompt_tuning_source_checkout(repo_root)
     expected_branch = _current_branch(repo_root)
     expected_head = _current_head(repo_root)
 

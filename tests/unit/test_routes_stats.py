@@ -305,6 +305,68 @@ class TestGetStats:
         assert isinstance(body["weakest_dimensions"], list)
         assert body["last_run_at"] is not None
 
+    def test_stats_exclude_improve_run_events_from_source_diff_score_aggregates(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO result_events (event_id, run_id, event_type, timestamp,
+                                           source_ref, base_ref, prompt_version,
+                                           eval_bundle_version, rubric_version,
+                                           overall, verdict, status, weakest_dim,
+                                           note_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        "evt_baseline",
+                        "run_" + "1" * 32,
+                        "learn",
+                        "2026-04-10T12:00:00Z",
+                        "abc123",
+                        "def456",
+                        "v1",
+                        "v1",
+                        "v1",
+                        80.0,
+                        "PASS",
+                        "baseline",
+                        "accuracy",
+                        None,
+                    ),
+                    (
+                        "evt_improve",
+                        "run_" + "2" * 32,
+                        "improve_run",
+                        "2026-04-11T12:00:00Z",
+                        "abc123",
+                        "def456",
+                        "v1",
+                        "v1",
+                        "v1",
+                        100.0,
+                        "PASS",
+                        "keep",
+                        "evidence",
+                        None,
+                    ),
+                ],
+            )
+
+        client = _client(state_dir)
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["avg_overall_score"] == 80.0
+        assert body["weakest_dimensions"] == ["accuracy"]
+
     def test_total_concepts_uses_sqlite_and_falls_back_to_jsonl_when_stale(
         self,
         tmp_path: Path,

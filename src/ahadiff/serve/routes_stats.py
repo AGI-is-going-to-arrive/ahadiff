@@ -192,6 +192,7 @@ def _query_review_stats(db_path: Path) -> dict[str, Any]:
                     """
                     SELECT AVG(overall) FROM result_events
                     WHERE status IN ('baseline', 'keep', 'keep_final')
+                      AND event_type != 'improve_run'
                     """
                 ).fetchone()
                 if row and row[0] is not None:
@@ -211,6 +212,7 @@ def _query_review_stats(db_path: Path) -> dict[str, Any]:
                     FROM result_events
                     WHERE weakest_dim IS NOT NULL AND weakest_dim != ''
                       AND status IN ('baseline', 'keep', 'keep_final')
+                      AND event_type != 'improve_run'
                     GROUP BY weakest_dim
                     ORDER BY cnt DESC
                     LIMIT 10

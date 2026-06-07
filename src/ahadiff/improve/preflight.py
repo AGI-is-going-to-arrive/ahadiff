@@ -11,15 +11,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ahadiff.core.errors import InputError
+from ahadiff.core.errors import AhaDiffError, InputError
 from ahadiff.git.repo import run_git
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-__all__ = ["current_branch", "current_head", "prompts_are_dirty"]
+__all__ = [
+    "assert_prompt_tuning_source_checkout",
+    "current_branch",
+    "current_head",
+    "prompt_tuning_missing_head_paths",
+    "prompts_are_dirty",
+]
 
 _GIT_TIMEOUT_SECONDS = 10
+_PROMPT_TUNING_SOURCE_CHECKOUT_ERROR = (
+    "prompt-tuning improve only runs inside an ahadiff source checkout; "
+    "use `ahadiff improve-run <run_id>` to regenerate a lesson"
+)
 
 
 def current_branch(repo_root: Path) -> str | None:
@@ -82,3 +92,39 @@ def prompts_are_dirty(repo_root: Path) -> bool:
     if result.returncode != 0:
         return False
     return bool(result.stdout.strip())
+
+
+def prompt_tuning_missing_head_paths(repo_root: Path) -> tuple[str, ...]:
+    """Return mutable prompt paths that are absent from repo HEAD."""
+    from .program import mutable_prompt_names
+
+    missing: list[str] = []
+    for filename in mutable_prompt_names():
+        for relative_path in (
+            f"prompts/{filename}",
+            f"src/ahadiff/prompts/{filename}",
+        ):
+            if not _head_path_exists(repo_root, relative_path):
+                missing.append(relative_path)
+    return tuple(missing)
+
+
+def assert_prompt_tuning_source_checkout(repo_root: Path) -> None:
+    """Fail fast when prompt-tuning improve is invoked outside AhaDiff source."""
+    if prompt_tuning_missing_head_paths(repo_root):
+        raise AhaDiffError(_PROMPT_TUNING_SOURCE_CHECKOUT_ERROR)
+
+
+def _head_path_exists(repo_root: Path, relative_path: str) -> bool:
+    try:
+        result = run_git(
+            repo_root,
+            "cat-file",
+            "-e",
+            f"HEAD:{relative_path}",
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (InputError, OSError):
+        return False
+    return result.returncode == 0

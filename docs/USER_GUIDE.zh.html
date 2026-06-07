@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
       <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.1.1</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
       <p class="guide-lead">AhaDiff 把一次 git diff 变成带代码证据的课程、一份可验证的 claim 清单、测验、复习卡、概念图谱和质量棘轮。它默认 local-first：每个仓库自己的 AhaDiff 状态都存在 <code>.ahadiff/</code> 下。</p>
-      <div class="start-tip">视频教程：<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">英文讲解（MP4）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm">中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。视频录制早于 PyPI 发布；当前安装步骤以 <code>pip install ahadiff</code> 为准。</div>
+      <div class="start-tip">视频教程：<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">英文讲解（MP4）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm">中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。安装以 <code>pip install ahadiff</code> 为准；英文讲解已是最新，中文 B 站视频正在同步更新。</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
@@ -1402,14 +1402,14 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       <div class="g-cards">
         <div class="g-card">
           <h3>学习与验证</h3>
-          <p>生成一次运行，然后检查并评分。</p>
+          <p>生成一次运行，然后检查、评分、改进。</p>
           <div class="code-block"><span class="cmd">ahadiff learn --last
 ahadiff quiz RUN_ID
 ahadiff review
 ahadiff claims RUN_ID
 ahadiff verify RUN_ID
 ahadiff score RUN_ID
-ahadiff improve --rounds 1</span></div>
+ahadiff improve-run RUN_ID</span></div>
         </div>
         <div class="g-card">
           <h3>Serve</h3>
@@ -1419,6 +1419,8 @@ ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # 文件监听，默认已包含</span></div>
         </div>
       </div>
+
+      <p><code>improve-run RUN_ID</code> 会重新生成一篇课程，只有确定性评分确实更高时才保留新副本，并作为独立的运行写入、原来那次保持不变。任何安装方式都能用，包括 <code>pip</code>。另一个 <code>improve</code> 命令调整的是 AhaDiff 自身的生成 prompt，只能在 AhaDiff 源码 checkout 里运行。</p>
 
       <h3>维护分组</h3>
       <div class="g-cards">
