@@ -6,7 +6,7 @@
 
 [English](./README.md) · [介绍页](https://agi-is-going-to-arrive.github.io/ahadiff/) · [使用指南](./docs/USER_GUIDE.zh.html) · [英文视频教程（带字幕）](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [中文视频教程（B 站）](https://www.bilibili.com/video/BV1b57k6yEWm)
 
-> 视频录制早于 PyPI 发布；当前安装步骤以 `pip install ahadiff` 为准。
+> 安装以 `pip install ahadiff` 为准；英文视频已是最新，中文 B 站视频正在同步更新。
 
 ---
 

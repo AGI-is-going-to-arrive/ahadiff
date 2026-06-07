@@ -6,7 +6,7 @@
 
 [中文](./README.zh.md) · [Landing page](https://agi-is-going-to-arrive.github.io/ahadiff/) · [User Guide](./docs/USER_GUIDE.en.html) · [English tutorial video (subtitled)](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [Chinese tutorial video (Bilibili)](https://www.bilibili.com/video/BV1b57k6yEWm)
 
-> Tutorial videos were recorded before the PyPI release; use `pip install ahadiff` for the current install step.
+> Install with `pip install ahadiff`. The English video shows this step; the Chinese Bilibili cut is being refreshed to match.
 
 ---
 
