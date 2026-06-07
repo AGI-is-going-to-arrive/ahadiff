@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.2.0</span></div>
+      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.0</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
       <p class="guide-lead">AhaDiff 把一次 git diff 变成带代码证据的课程、一份可验证的 claim 清单、测验、复习卡、概念图谱和质量棘轮。它默认 local-first：每个仓库自己的 AhaDiff 状态都存在 <code>.ahadiff/</code> 下。</p>
       <div class="start-tip">视频教程：<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">英文讲解（MP4）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm">中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。安装以 <code>pip install ahadiff</code> 为准；英文讲解已是最新，中文 B 站视频正在同步更新。</div>
@@ -1275,7 +1275,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
           <li><code>.roo/rules/ahadiff.md</code></li>
           <li><code>.windsurf/rules/ahadiff.md</code></li>
         </ul>
-        仓库级指引段落仍写在用户自管的文件里，例如 <code>CLAUDE.md</code>、<code>AGENTS.md</code>、<code>GEMINI.md</code> 和 <code>.github/copilot-instructions.md</code>。本仓库忽略生成的 <code>.agents/</code> 安装，所以本地 Codex / Antigravity 的 skill 产出默认不会被提交。</div>
+        仓库级指引段落仍写在用户自管的文件里，例如 <code>CLAUDE.md</code>、<code>AGENTS.md</code>、<code>GEMINI.md</code> 和 <code>.github/copilot-instructions.md</code>。本仓库忽略生成的 <code>.agents/</code> 安装，所以本地 Codex / Antigravity 的 skill 产出默认不会被提交。hooks 目标与 MCP 注册见常用命令一节。</div>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/zh/zh-dashboard.png" alt="仪表盘：最近运行、分数、通过率、棘轮趋势和复习活动。" />
@@ -1421,6 +1421,13 @@ ahadiff improve-run RUN_ID</span></div>
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # 文件监听，默认已包含</span></div>
         </div>
+        <div class="g-card">
+          <h3>Watch</h3>
+          <p>工作区变更自动 learn。<code>ahadiff serve --watch</code> 是另一个功能，只负责重建 WebUI。</p>
+          <div class="code-block"><span class="cmd">ahadiff watch
+ahadiff watch --debounce 2.0 --cooldown 30.0
+ahadiff watch --dry-run</span></div>
+        </div>
       </div>
 
       <p><code>improve-run RUN_ID</code> 会重新生成一篇课程，只有确定性评分确实更高时才保留新副本，并作为独立的运行写入、原来那次保持不变。用 <code>--candidates N</code>（默认 3，范围 1-10）控制尝试多少个重生候选；值越大越可能拿到更高分，但更费 token 和时间。任何安装方式都能用，包括 <code>pip</code>。另一个 <code>improve</code> 命令调整的是 AhaDiff 自身的生成 prompt，只能在 AhaDiff 源码 checkout 里运行。</p>
@@ -1457,6 +1464,20 @@ ahadiff export preview RUN_ID</span></div>
           <p>需要 opt-in。从一次运行构建 challenge，再查看状态。</p>
           <div class="code-block"><span class="cmd">ahadiff challenge build RUN_ID
 ahadiff challenge status</span></div>
+        </div>
+        <div class="g-card">
+          <h3><span class="cap-group-label">MCP</span></h3>
+          <p>AhaDiff 自带只读 MCP server，提供 7 个工具：runs、run 摘要、到期卡片、搜索、概念、统计、lesson 问答。每个仓库注册一次：</p>
+          <div class="code-block"><span class="cmd"># Claude Code
+claude mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;
+# Codex CLI
+codex mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;</span></div>
+        </div>
+        <div class="g-card">
+          <h3><span class="cap-group-label">Git hooks</span></h3>
+          <p><code>ahadiff install hooks</code> 写入仅提醒的 git hooks：每次 commit 后，post-commit hook 打印一行提示（运行 <code>ahadiff learn HEAD~1..HEAD</code> 学回这次提交）；push 前 pre-push hook 打印 verify 提醒。这些 hooks 不会运行 learn，不会阻塞 commit，自身失败也会被吞掉。加 <code>--auto-learn</code> 进入免操作模式：post-commit hook 在后台运行 <code>ahadiff learn --last</code>，输出追加到 <code>.ahadiff/hooks.log</code>。learnability gate 照常生效，琐碎提交在调用 LLM 前就会跳过。两次 commit 间隔过近时，per-repo 写锁会让第二个 learn 直接失败并写入日志；查看日志或自己重跑 <code>ahadiff learn --last</code>。带或不带该 flag 重跑 <code>ahadiff install hooks</code> 即可原地切换模式。仅支持 macOS/Linux。</p>
+          <div class="code-block"><span class="cmd">ahadiff install hooks
+ahadiff install hooks --auto-learn</span></div>
         </div>
       </div>
 
@@ -1621,9 +1642,14 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG 导出用 <code>pip install ahadiff</code> 默认即可用，因为已内置 <code>genanki</code>。当前活跃复习卡无需额外安装即可导出。</p></div></details>
         </div>
         <div class="feat-card">
-          <h3>Watch</h3>
+          <h3>Serve --watch（界面重建）</h3>
           <p>默认即可用；文件监听已内置。</p>
           <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>文件监听默认已包含，<code>ahadiff serve --watch</code> 开箱即用。你也可以手动运行 <code>ahadiff learn</code>。</p></div></details>
+        </div>
+        <div class="feat-card">
+          <h3>Watch（自动 learn）</h3>
+          <p>监听工作区变更并自动 learn。</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p><code>ahadiff watch</code> 监听工作区（未暂存 + 未跟踪文件），变更后自动运行 learn。默认 debounce 2.0s、cooldown 30.0s。<code>--dry-run</code> 只捕获 diff 不生成 lesson；<code>--force-learn</code> 跳过 learnability gate。可在任意目录运行。日志文件请放在仓库之外：写进被监听目录会再次触发 watcher。</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Graphify refresh</h3>
@@ -1775,7 +1801,7 @@ ahadiff config show --resolved</span></div>
           </tbody>
         </table>
       </div>
-      <div class="g-note"><code>--compare-dir</code> 需要仅在 macOS / Linux 上可用的安全目录文件描述符，其他平台 fail closed。<code>hooks</code> 目标使用 POSIX shell 钩子。回滚在 POSIX 上于原子替换前恢复权限模式，并在缺少 <code>fchmod</code> 的平台于替换后尽力恢复权限模式。</div>
+      <div class="g-note"><code>--compare-dir</code> 需要仅在 macOS / Linux 上可用的安全目录文件描述符，其他平台 fail closed。<code>hooks</code> 目标使用 POSIX shell 钩子。hooks 默认仅提醒；--auto-learn 变体见 Git hooks 卡片。回滚在 POSIX 上于原子替换前恢复权限模式，并在缺少 <code>fchmod</code> 的平台于替换后尽力恢复权限模式。</div>
 
       <h3>验证快照</h3>
       <p class="g-lead">当前文档快照记录的本地检查。发布和 CI 状态以 GitHub Actions 为准。</p>
@@ -1803,7 +1829,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>截图是从文档树提供的已提交 PNG；工作流动画用 CSS 实现。发布状态见 GitHub Actions。</p>
-      <div class="footer-version">v1.2.0</div>
+      <div class="footer-version">v1.3.0</div>
     </footer>
   </main>
 </div>

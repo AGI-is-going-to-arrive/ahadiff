@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.2.0</span></div>
+      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.0</span></div>
       <h1>AhaDiff User Guide</h1>
       <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
       <div class="start-tip">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm">Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code>. The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
@@ -1275,7 +1275,7 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
           <li><code>.roo/rules/ahadiff.md</code></li>
           <li><code>.windsurf/rules/ahadiff.md</code></li>
         </ul>
-        Repo guidance sections still live in user-managed files such as <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code>, and <code>.github/copilot-instructions.md</code>. This repository ignores generated <code>.agents/</code> installs so local Codex / Antigravity skill output is not committed by default.</div>
+        Repo guidance sections still live in user-managed files such as <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code>, and <code>.github/copilot-instructions.md</code>. This repository ignores generated <code>.agents/</code> installs so local Codex / Antigravity skill output is not committed by default. Common Commands covers the hooks target and MCP registration.</div>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/en/en-dashboard.png" alt="Dashboard: recent runs, scores, pass rate, ratchet trends, and review activity." />
@@ -1421,6 +1421,13 @@ ahadiff improve-run RUN_ID</span></div>
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # file watcher, included by default</span></div>
         </div>
+        <div class="g-card">
+          <h3>Watch</h3>
+          <p>Auto-learn on working-tree changes. <code>ahadiff serve --watch</code> is a different feature; it rebuilds the WebUI.</p>
+          <div class="code-block"><span class="cmd">ahadiff watch
+ahadiff watch --debounce 2.0 --cooldown 30.0
+ahadiff watch --dry-run</span></div>
+        </div>
       </div>
 
       <p><code>improve-run RUN_ID</code> regenerates a lesson and keeps the new copy only when the deterministic score strictly improves, saving it as a separate run and leaving the original untouched. Use <code>--candidates N</code> (default 3, range 1-10) to control how many regeneration attempts are tried; a higher value improves the chance of beating the score but costs more tokens and time. It works in any install, including <code>pip</code>. The separate <code>improve</code> command tunes AhaDiff's own generation prompts and only runs inside an AhaDiff source checkout.</p>
@@ -1457,6 +1464,20 @@ ahadiff export preview RUN_ID</span></div>
           <p>Opt-in. Build a challenge from a run, then check state.</p>
           <div class="code-block"><span class="cmd">ahadiff challenge build RUN_ID
 ahadiff challenge status</span></div>
+        </div>
+        <div class="g-card">
+          <h3><span class="cap-group-label">MCP</span></h3>
+          <p>AhaDiff ships a read-only MCP server with 7 tools: runs, run summaries, due cards, search, concepts, stats, and lesson Q&amp;A. Register it once per repo:</p>
+          <div class="code-block"><span class="cmd"># Claude Code
+claude mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;
+# Codex CLI
+codex mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;</span></div>
+        </div>
+        <div class="g-card">
+          <h3><span class="cap-group-label">Git hooks</span></h3>
+          <p><code>ahadiff install hooks</code> writes reminder-only git hooks. After each commit the post-commit hook prints one line: run <code>ahadiff learn HEAD~1..HEAD</code> to learn back this commit. Before each push the pre-push hook prints a verify reminder. The hooks never run learn, never block a commit, and swallow their own failures. Add <code>--auto-learn</code> for hands-free mode: the post-commit hook runs <code>ahadiff learn --last</code> in the background and appends output to <code>.ahadiff/hooks.log</code>. The learnability gate still applies, so trivial commits skip before any LLM call. When two commits land in quick succession, the per-repo write lock stops the second learn; check the log or re-run <code>ahadiff learn --last</code> yourself. Re-run <code>ahadiff install hooks</code> with or without the flag to switch modes in place. macOS/Linux only.</p>
+          <div class="code-block"><span class="cmd">ahadiff install hooks
+ahadiff install hooks --auto-learn</span></div>
         </div>
       </div>
 
@@ -1621,9 +1642,14 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG export works by default with <code>pip install ahadiff</code> because <code>genanki</code> is bundled. Active review cards export without any extra install.</p></div></details>
         </div>
         <div class="feat-card">
-          <h3>Watch</h3>
+          <h3>Serve --watch (UI rebuild)</h3>
           <p>Works by default; the file watcher is bundled.</p>
           <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The file watcher is included by default, so <code>ahadiff serve --watch</code> works out of the box. You can also run <code>ahadiff learn</code> manually.</p></div></details>
+        </div>
+        <div class="feat-card">
+          <h3>Watch (auto-learn)</h3>
+          <p>Filesystem-driven auto-learn for working-tree changes.</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p><code>ahadiff watch</code> watches the working tree (unstaged and untracked files) and runs learn on change. Defaults: 2.0s debounce, 30.0s cooldown. <code>--dry-run</code> captures the diff without generating a lesson; <code>--force-learn</code> bypasses the learnability gate. Run it from any directory. Keep its log file outside the repo: a log inside the watched tree re-triggers the watcher.</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Graphify refresh</h3>
@@ -1775,7 +1801,7 @@ ahadiff config show --resolved</span></div>
           </tbody>
         </table>
       </div>
-      <div class="g-note"><code>--compare-dir</code> needs the secure directory file descriptor available on macOS / Linux only, and fails closed elsewhere. The <code>hooks</code> target uses POSIX shell hooks. Rollback restores mode before atomic replace on POSIX, and uses a best-effort mode restore after replace where <code>fchmod</code> is missing.</div>
+      <div class="g-note"><code>--compare-dir</code> needs the secure directory file descriptor available on macOS / Linux only, and fails closed elsewhere. The <code>hooks</code> target uses POSIX shell hooks. Hooks are reminder-only by default; see the Git hooks card for the --auto-learn variant. Rollback restores mode before atomic replace on POSIX, and uses a best-effort mode restore after replace where <code>fchmod</code> is missing.</div>
 
       <h3>Validation snapshot</h3>
       <p class="g-lead">Local checks recorded for the current docs snapshot. Release and CI status belong in GitHub Actions.</p>
@@ -1803,7 +1829,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>Screenshots are committed PNGs served from the docs tree; the workflow animation is CSS. For release status, see GitHub Actions.</p>
-      <div class="footer-version">v1.2.0</div>
+      <div class="footer-version">v1.3.0</div>
     </footer>
   </main>
 </div>

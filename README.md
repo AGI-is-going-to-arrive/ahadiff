@@ -44,7 +44,7 @@ AI writes code faster, but developers can understand less of what actually chang
 
 ```bash
 pip install ahadiff
-ahadiff --version   # should print ahadiff 1.2.0
+ahadiff --version   # should print ahadiff 1.3.0
 ```
 This ships a working WebUI out of the box, and all default features work with no extras.
 
@@ -99,6 +99,8 @@ ahadiff serve
 ```
 `ahadiff serve` opens http://127.0.0.1:8765 automatically. Pass `--no-browser` to stay in the terminal. You'll see the Dashboard with your first run, then click through to Lesson, Diff, and Quiz.
 
+To run this after every commit, see `ahadiff install hooks --auto-learn`.
+
 Two more things to try:
 ```bash
 ahadiff quiz <run_id>    # test yourself on what you just learned
@@ -118,7 +120,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 - **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
 - **Export**: from the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg`; `.apkg` export uses the bundled `genanki`, available by default.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
-- **AI tool integration**: project-level guidance for 15 CLI / IDE / CI targets. Settings groups the targets, shows localized usage hints and a provider-free local demo, and keeps write/remove behind confirmation. Guide shows commands plus read-only cards that explain usage and preview the files AhaDiff would write. Supported targets include Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, OpenCode, Cursor, Cline, Continue, Roo, Windsurf, Aider, GitHub Actions, and Git hooks.
+- **AI tool integration**: project-level guidance for 15 CLI / IDE / CI targets. Settings groups the targets, shows localized usage hints and a provider-free local demo, and keeps write/remove behind confirmation. Guide shows commands plus read-only cards that explain usage and preview the files AhaDiff would write. Supported targets include Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, OpenCode, Cursor, Cline, Continue, Roo, Windsurf, Aider, GitHub Actions, and Git hooks (Git hooks stay reminder-only; add `--auto-learn` for background learn after each commit).
 - **Auto-iteration**: `ahadiff improve-run <run_id>` regenerates a lesson on an existing run and keeps the new copy only when the deterministic score strictly improves, saving it as a separate run and leaving the original untouched — this works in any install, including `pip`. The separate `ahadiff improve` command tunes AhaDiff's own generation prompts and only runs inside an AhaDiff source checkout.
 - **Privacy**: three tiers: strict_local, redacted_remote, explicit_remote. The default is strict_local.
 - **i18n**: English and Chinese for the WebUI and prompt output language. CLI help and most CLI diagnostics are in English.
@@ -190,6 +192,12 @@ ahadiff install --detect        # auto-detect your tools
 ahadiff install claude          # also: cursor, copilot, codex, gemini, antigravity, antigravity-cli, aider, windsurf, cline, roo, continue, ...
 ```
 15 targets supported. Run `ahadiff install --help` for the full list, or configure in the WebUI under Settings → AI Tool Guidance.
+
+Git hooks stay reminder-only by default. `ahadiff install hooks --auto-learn` switches the post-commit hook to run `ahadiff learn --last` in the background (log: `.ahadiff/hooks.log`). Register the read-only MCP server (7 tools) with your agent:
+```bash
+claude mcp add ahadiff -- ahadiff mcp-server --repo-root <path>   # Claude Code
+codex mcp add ahadiff -- ahadiff mcp-server --repo-root <path>    # Codex CLI
+```
 
 Settings groups targets into CLI / IDE / CI, shows quick-start steps, example prompts, expected behavior, platform notes, and a provider-free local demo. Guide uses the same usage hints inside default-collapsed tool cards and shows what files would be written before you apply changes; actual write/remove stays in Settings.
 
