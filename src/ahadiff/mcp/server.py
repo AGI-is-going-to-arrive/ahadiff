@@ -1182,7 +1182,9 @@ def _avg_overall_score(connection: sqlite3.Connection) -> float | None:
 def _max_timestamp(connection: sqlite3.Connection) -> str | None:
     if not _table_exists(connection, "result_events"):
         return None
-    row = connection.execute("SELECT MAX(timestamp) FROM result_events").fetchone()
+    row = connection.execute(
+        "SELECT MAX(timestamp) FROM result_events WHERE event_type != 'improve_run'"
+    ).fetchone()
     return None if row is None or row[0] is None else str(row[0])
 
 

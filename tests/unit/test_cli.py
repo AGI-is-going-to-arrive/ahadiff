@@ -846,8 +846,42 @@ def test_cli_learn_fails_fast_when_sqlite_runtime_gate_fails(
 
     assert result.exit_code == 1
     assert called is False
-    assert "SQLite runtime 3.51.0 is below 3.51.3" in result.stderr
-    assert "Python build with SQLite >= 3.51.3" in result.stderr
+    minimum = cli_module._sqlite_gate_minimum_text()  # pyright: ignore[reportPrivateUsage]
+    assert f"SQLite runtime 3.51.0 is below {minimum}" in result.stderr
+    assert f"Python build with SQLite >= {minimum}" in result.stderr
+
+
+def test_cli_watch_fails_fast_when_sqlite_runtime_gate_fails(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo_root = _repo_root(tmp_path, monkeypatch)
+    constructed = False
+
+    import ahadiff.core.watcher as watcher_module
+
+    class UnexpectedWatcher:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            nonlocal constructed
+            constructed = True
+            raise AssertionError("watcher should not start")
+
+    monkeypatch.setattr(watcher_module, "is_watchdog_available", lambda: True)
+    monkeypatch.setattr(watcher_module, "FileWatcher", UnexpectedWatcher)
+    monkeypatch.setattr(cli_module, "_sqlite_version_tuple", lambda: (3, 51, 0))
+    monkeypatch.setattr(cli_module.sqlite3, "sqlite_version", "3.51.0")
+
+    result = _RUNNER.invoke(
+        app(),
+        ["watch", "--repo-root", str(repo_root)],
+        catch_exceptions=False,
+    )
+
+    minimum = cli_module._sqlite_gate_minimum_text()  # pyright: ignore[reportPrivateUsage]
+    assert result.exit_code == 1
+    assert constructed is False
+    assert f"SQLite runtime 3.51.0 is below {minimum}" in result.stderr
+    assert f"Python build with SQLite >= {minimum}" in result.stderr
 
 
 def test_verify_existing_score_message_points_to_force(

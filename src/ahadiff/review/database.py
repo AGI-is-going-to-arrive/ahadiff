@@ -2684,7 +2684,8 @@ def _sqlite_backports_text() -> str:
 
 def _sqlite_runtime_remedy() -> str:
     return (
-        "Remedy: recreate the environment with a Python build with SQLite >= 3.51.3 "
+        "Remedy: recreate the environment with a Python build with SQLite >= "
+        f"{_sqlite_minimum_text()} "
         "(or an allowed backport); current python.org or Homebrew Python builds are "
         "known options. "
         f"This process is using Python's standard-library sqlite3 module from {sqlite3.__file__}."

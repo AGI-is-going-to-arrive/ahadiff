@@ -27,7 +27,7 @@ from ahadiff.core.config import (
 )
 from ahadiff.core.errors import ConfigError, InputError, ProviderError, SafetyError, StorageError
 from ahadiff.core.ids import make_event_id
-from ahadiff.core.paths import path_identity_key, workspace_identity_key
+from ahadiff.core.paths import path_identity_key, usage_db_path, workspace_identity_key
 from ahadiff.safety.audit import append_audit_record, build_provider_audit_record
 from ahadiff.safety.gates import TransportTarget, enforce_privacy_mode
 from ahadiff.safety.injection import scan_model_output, strip_model_output_fences
@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from ahadiff.llm.schemas import ProbeContextResult
 
 log = logging.getLogger(__name__)
+_USAGE_RECORD_WARNING_KEYS: set[str] = set()
 
 
 class Provider(Protocol):
@@ -800,7 +801,7 @@ class ManagedProvider:
                 )
             )
         except (InputError, OSError, sqlite3.Error, StorageError) as error:
-            log.warning("failed to record LLM usage for cache key %s: %s", cache_key, error)
+            _log_usage_record_failure_once(cache_key, error)
 
 
 @contextmanager
@@ -836,6 +837,18 @@ def _rate_limiter_state(key: str) -> _RateLimiterState:
         return _RATE_LIMITERS.setdefault(key, _RateLimiterState())
 
 
+def _log_usage_record_failure_once(cache_key: str, error: BaseException) -> None:
+    try:
+        warning_key = path_identity_key(usage_db_path())
+    except (InputError, OSError, StorageError):
+        warning_key = "<usage-db-path-unavailable>"
+    with _STATE_LOCK:
+        if warning_key in _USAGE_RECORD_WARNING_KEYS:
+            return
+        _USAGE_RECORD_WARNING_KEYS.add(warning_key)
+    log.warning("failed to record LLM usage for cache key %s: %s", cache_key, error)
+
+
 def _append_unique_notes(notes: tuple[str, ...], *new_notes: str) -> tuple[str, ...]:
     merged = list(notes)
     for note in new_notes:
@@ -850,6 +863,7 @@ def reset_provider_runtime_state(provider_key: str | None = None) -> None:
             _SEMAPHORES.clear()
             _RATE_LIMITERS.clear()
             _CIRCUITS.clear()
+            _USAGE_RECORD_WARNING_KEYS.clear()
             return
         _SEMAPHORES.pop(provider_key, None)
         _RATE_LIMITERS.pop(provider_key, None)

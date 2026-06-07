@@ -264,7 +264,8 @@ def _sqlite_gate_failure_message() -> str:
     return (
         f"SQLite runtime {sqlite3.sqlite_version} is below {_sqlite_gate_minimum_text()}; "
         f"allowed backports are {_sqlite_gate_backports_text()}. "
-        "Remedy: recreate the environment with a Python build with SQLite >= 3.51.3 "
+        "Remedy: recreate the environment with a Python build with SQLite >= "
+        f"{_sqlite_gate_minimum_text()} "
         "(or an allowed backport); current python.org or Homebrew Python builds are "
         "known options. "
         f"This process is using Python's standard-library sqlite3 module from {sqlite3.__file__}."
@@ -2463,6 +2464,7 @@ def watch_cmd(
                 "by default; if it is missing, reinstall ahadiff."
             )
         root, _has_git = _resolve_learn_workspace_root(repo_root, allow_non_git=False)
+        _assert_sqlite_runtime_supported_for_learn()
         config = WatcherConfig(
             debounce_seconds=debounce,
             cooldown_seconds=cooldown,

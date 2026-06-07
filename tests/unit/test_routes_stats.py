@@ -366,6 +366,7 @@ class TestGetStats:
         body = resp.json()
         assert body["avg_overall_score"] == 80.0
         assert body["weakest_dimensions"] == ["accuracy"]
+        assert body["last_run_at"] == "2026-04-10T12:00:00Z"
 
     def test_stats_exclude_improve_run_directories_from_artifact_counts(
         self,

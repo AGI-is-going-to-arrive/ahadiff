@@ -355,7 +355,11 @@ class TestUsage:
         assert body["total_calls"] == 1
         assert body["models"][0]["model_id"] == "legacy-model"
 
-    def test_usage_corrupt_db_returns_500(self, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    def test_usage_corrupt_db_self_heals_to_empty_summary(
+        self,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
         usage_db = tmp_path / "usage.sqlite"
         usage_db.write_text("not a sqlite db", encoding="utf-8")
         monkeypatch.setattr("ahadiff.core.paths.usage_db_path", _usage_db_factory(usage_db))
@@ -363,9 +367,16 @@ class TestUsage:
 
         resp = client.get("/api/usage", headers=_AUTH)
 
-        assert resp.status_code == 500
-        assert resp.json()["error_code"] == "STORAGE_USAGE_DB"
-        assert resp.json()["error"] == "usage_database_unavailable"
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["models"] == []
+        assert body["total_calls"] == 0
+        quarantined = [
+            path
+            for path in tmp_path.glob("usage.sqlite.corrupt-*")
+            if not path.name.endswith(("-wal", "-shm", "-journal"))
+        ]
+        assert len(quarantined) == 1
 
     def test_usage_invalid_time_filter_returns_400(
         self, tmp_path: Path, monkeypatch: MonkeyPatch

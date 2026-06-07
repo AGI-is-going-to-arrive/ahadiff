@@ -19,6 +19,7 @@ from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
 from ahadiff.core.budget import CaptureRecommendation
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
 from ahadiff.core.task_runner import TaskRunner
+from ahadiff.review import database as review_database
 from ahadiff.serve import ServeState, create_app, routes_learn
 
 if TYPE_CHECKING:
@@ -1100,6 +1101,45 @@ def test_post_learn_prechecks_repo_write_lock(tmp_path: Path) -> None:
     body = _json_object(resp)
     assert body["error_code"] == "LOCK_CONFLICT"
     assert body["error"] == "run_in_progress"
+
+
+def test_post_learn_prechecks_sqlite_runtime_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitted = False
+    minimum = review_database._sqlite_minimum_text()  # pyright: ignore[reportPrivateUsage]
+    message = f"SQLite runtime 3.51.0 is below {minimum}"
+
+    def fail_sqlite_gate() -> None:
+        raise routes_learn.AhaDiffError(message)
+
+    def submit_if_capacity(*_args: object, **_kwargs: object) -> str:
+        nonlocal submitted
+        submitted = True
+        raise AssertionError("learn task should not be submitted")
+
+    runner = SimpleNamespace(submit_if_capacity=submit_if_capacity)
+    monkeypatch.setattr(
+        routes_learn,
+        "_assert_sqlite_runtime_supported_for_learn",
+        fail_sqlite_gate,
+    )
+    app = create_app(
+        ServeState(
+            state_dir=tmp_path,
+            token="test-token",
+            task_runner=cast("Any", runner),
+        )
+    )
+    client = TestClient(app, base_url="http://localhost:8765")
+    resp = _post_learn(client, body={})
+
+    assert submitted is False
+    assert resp.status_code == 500
+    body = _json_object(resp)
+    assert body["error_code"] == "STORAGE_REVIEW_DB"
+    assert body["error"] == message
 
 
 # ---------------------------------------------------------------------------

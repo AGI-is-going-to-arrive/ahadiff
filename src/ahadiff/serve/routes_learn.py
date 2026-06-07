@@ -361,6 +361,20 @@ def _precheck_repo_write_lock(state: Any) -> JSONResponse | None:
         thread_write_lock.release()
 
 
+def _assert_sqlite_runtime_supported_for_learn() -> None:
+    from ahadiff.review import database as review_database
+
+    review_database._assert_sqlite_runtime_supported()  # pyright: ignore[reportPrivateUsage]
+
+
+def _precheck_sqlite_runtime_for_learn() -> JSONResponse | None:
+    try:
+        _assert_sqlite_runtime_supported_for_learn()
+    except AhaDiffError as exc:
+        return error_response(ErrorCode.STORAGE_REVIEW_DB, str(exc))
+    return None
+
+
 def _estimate_risk(
     *,
     estimated_tokens: int,
@@ -621,6 +635,9 @@ async def post_learn(request: Request) -> JSONResponse:
     lock_error = _precheck_repo_write_lock(state)
     if lock_error is not None:
         return lock_error
+    sqlite_error = _precheck_sqlite_runtime_for_learn()
+    if sqlite_error is not None:
+        return sqlite_error
 
     if not params.get("lang"):
         cookie_lang = request.cookies.get("ahadiff_lang")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -302,6 +303,14 @@ def _usage_record() -> UsageRecord:
         execution_origin="test",
         request_id="req-1",
     )
+
+
+def _usage_quarantine_files(path: Path) -> list[Path]:
+    return [
+        candidate
+        for candidate in path.parent.glob(f"{path.name}.corrupt-*")
+        if not candidate.name.endswith(("-wal", "-shm", "-journal"))
+    ]
 
 
 def test_llm_reexports_provider_response_byte_cap() -> None:
@@ -1800,6 +1809,40 @@ def test_usage_db_retries_locked_write_and_records_once(
     assert rows == [("a" * 64, 0)]
 
 
+def test_usage_db_locked_quick_check_does_not_quarantine_valid_database(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    monkeypatch.setattr(usage_module, "_USAGE_BUSY_TIMEOUT_MS", 1)
+    monkeypatch.setattr(usage_module, "_USAGE_WRITE_ATTEMPTS", 1)
+
+    def force_delete_journal(_db_path: Path) -> str:
+        return "DELETE"
+
+    monkeypatch.setattr(usage_module, "_resolve_sqlite_journal_mode", force_delete_journal)
+    usage_module.record_usage_event(_usage_record(), db_path=db_path)
+    original_bytes = db_path.read_bytes()
+
+    lock_connection = sqlite3.connect(db_path, timeout=0.001, check_same_thread=False)
+    lock_connection.execute("BEGIN EXCLUSIVE")
+    try:
+        locked_record = replace(_usage_record(), cache_key="b" * 64, request_id="req-locked")
+        with pytest.raises(StorageError) as error:
+            usage_module.record_usage_event(locked_record, db_path=db_path)
+    finally:
+        lock_connection.rollback()
+        lock_connection.close()
+
+    error_text = str(error.value).casefold()
+    assert "locked" in error_text or "busy" in error_text
+    assert _usage_quarantine_files(db_path) == []
+    assert db_path.read_bytes() == original_bytes
+    with sqlite3.connect(db_path) as connection:
+        row_count = connection.execute("SELECT COUNT(*) FROM llm_usage").fetchone()[0]
+    assert row_count == 1
+
+
 def test_usage_schema_initialization_is_thread_safe(tmp_path: Path) -> None:
     db_path = tmp_path / "usage.sqlite"
     usage_module._SCHEMA_INITIALIZED.pop(  # pyright: ignore[reportPrivateUsage]
@@ -1833,19 +1876,186 @@ def test_usage_db_corrupt_quick_check_raises_storage_error(tmp_path: Path) -> No
     db_path = tmp_path / "usage.sqlite"
     db_path.write_bytes(b"not a sqlite database")
 
-    with pytest.raises(StorageError, match="quick_check"):
-        usage_module.connect_usage_db(db_path)
+    with usage_module.connect_usage_db(db_path) as connection:
+        usage_module._ensure_usage_schema(connection, db_path)  # pyright: ignore[reportPrivateUsage]
+        row = connection.execute("SELECT COUNT(*) FROM llm_usage").fetchone()
+
+    assert row is not None
+    assert int(row[0]) == 0
+    assert len(_usage_quarantine_files(db_path)) == 1
+
+
+def test_usage_db_reindex_repair_preserves_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    usage_module.record_usage_event(_usage_record(), db_path=db_path)
+    real_quick_check = usage_module._fetch_usage_quick_check  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def fail_once(connection: sqlite3.Connection) -> str | None:
+        nonlocal calls
+        if calls == 0:
+            calls += 1
+            return "row 1 missing from index idx_llm_usage_cache_key"
+        return real_quick_check(connection)
+
+    monkeypatch.setattr(usage_module, "_fetch_usage_quick_check", fail_once)
+    caplog.set_level(logging.WARNING, logger="ahadiff.llm.usage")
+
+    with usage_module.connect_usage_db(db_path) as connection:
+        row = connection.execute("SELECT COUNT(*) FROM llm_usage").fetchone()
+
+    assert row is not None
+    assert int(row[0]) == 1
+    repair_logs = [
+        record for record in caplog.records if "repaired global usage DB" in record.message
+    ]
+    assert len(repair_logs) == 1
+    assert _usage_quarantine_files(db_path) == []
+
+
+def test_usage_db_quarantines_when_reindex_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    usage_module.record_usage_event(_usage_record(), db_path=db_path)
+    original_quick_check = usage_module._fetch_usage_quick_check  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def fail_once(connection: sqlite3.Connection) -> str | None:
+        nonlocal calls
+        if calls == 0:
+            calls += 1
+            return "row 1 missing from index idx_llm_usage_cache_key"
+        return original_quick_check(connection)
+
+    def fail_reindex(_connection: sqlite3.Connection) -> None:
+        raise sqlite3.DatabaseError("reindex failed")
+
+    monkeypatch.setattr(usage_module, "_fetch_usage_quick_check", fail_once)
+    monkeypatch.setattr(usage_module, "_reindex_usage_db", fail_reindex)
+    caplog.set_level(logging.WARNING, logger="ahadiff.llm.usage")
+
+    with usage_module.connect_usage_db(db_path) as connection:
+        usage_module._ensure_usage_schema(connection, db_path)  # pyright: ignore[reportPrivateUsage]
+        row = connection.execute("SELECT COUNT(*) FROM llm_usage").fetchone()
+
+    quarantined = _usage_quarantine_files(db_path)
+    assert len(quarantined) == 1
+    assert row is not None
+    assert int(row[0]) == 0
+    quarantine_logs = [
+        record
+        for record in caplog.records
+        if "quarantined corrupt global usage DB" in record.message
+    ]
+    assert len(quarantine_logs) == 1
+    assert str(quarantined[0]) in quarantine_logs[0].message
+
+
+def test_usage_db_concurrent_corruption_healers_adopt_single_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    corrupt_bytes = b"not a sqlite database"
+    db_path.write_bytes(corrupt_bytes)
+    quarantine_path = db_path.with_name(f"{db_path.name}.corrupt-race")
+    start = threading.Barrier(2)
+    both_need_quarantine = threading.Barrier(2)
+    results: list[int] = []
+    errors: list[BaseException] = []
+
+    def fail_reindex(_path: Path) -> bool:
+        return False
+
+    def race_to_same_quarantine(_path: Path) -> Path:
+        both_need_quarantine.wait(timeout=5)
+        return quarantine_path
+
+    monkeypatch.setattr(usage_module, "_attempt_usage_reindex", fail_reindex)
+    monkeypatch.setattr(usage_module, "_usage_quarantine_path", race_to_same_quarantine)
+
+    def worker() -> None:
+        try:
+            start.wait(timeout=5)
+            with usage_module.connect_usage_db(db_path, create_parent=True) as connection:
+                usage_module._ensure_usage_schema(  # pyright: ignore[reportPrivateUsage]
+                    connection,
+                    db_path,
+                )
+                row = connection.execute("SELECT COUNT(*) FROM llm_usage").fetchone()
+            results.append(int(row[0]))
+        except BaseException as exc:  # pragma: no cover - asserted below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert errors == []
+    assert sorted(results) == [0, 0]
+    assert _usage_quarantine_files(db_path) == [quarantine_path]
+    assert quarantine_path.read_bytes() == corrupt_bytes
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
 
 
 def test_usage_db_rejects_unsupported_sqlite_runtime(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    db_path.write_bytes(b"not a sqlite database")
     monkeypatch.setattr(usage_module.sqlite3, "sqlite_version_info", (3, 40, 0))
     monkeypatch.setattr(usage_module.sqlite3, "sqlite_version", "3.40.0")
 
     with pytest.raises(StorageError, match="SQLite runtime"):
-        usage_module.connect_usage_db(tmp_path / "usage.sqlite", create_parent=True)
+        usage_module.connect_usage_db(db_path, create_parent=True)
+    assert db_path.read_bytes() == b"not a sqlite database"
+    assert _usage_quarantine_files(db_path) == []
+
+
+def test_provider_usage_write_failure_warns_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fail_record_usage(*_args: object, **_kwargs: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    workspace_root = tmp_path / "repo"
+    client = httpx.Client(
+        transport=httpx.MockTransport(lambda _: _openai_success_response(content="OK")),
+        trust_env=False,
+    )
+    monkeypatch.setattr(provider_module, "record_usage_event", fail_record_usage)
+    caplog.set_level(logging.WARNING, logger="ahadiff.llm.provider")
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        workspace_root=workspace_root,
+        client=client,
+    )
+    try:
+        assert provider.generate(_request()).content == "OK"
+        assert provider.generate(_request()).content == "OK"
+    finally:
+        provider.close()
+
+    warnings = [
+        record
+        for record in caplog.records
+        if record.levelno == logging.WARNING and "failed to record LLM usage" in record.message
+    ]
+    assert len(warnings) == 1
 
 
 def test_provider_ignores_cache_entry_with_mismatched_eval_bundle_version(

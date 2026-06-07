@@ -257,7 +257,9 @@ def _query_review_stats(db_path: Path) -> dict[str, Any]:
 
             # Last run timestamp
             try:
-                row = conn.execute("SELECT MAX(timestamp) FROM result_events").fetchone()
+                row = conn.execute(
+                    "SELECT MAX(timestamp) FROM result_events WHERE event_type != 'improve_run'"
+                ).fetchone()
                 if row and row[0] is not None:
                     result["last_run_at"] = str(row[0])
             except sqlite3.OperationalError as exc:

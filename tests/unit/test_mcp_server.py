@@ -323,7 +323,7 @@ class TestMCPReadOnly:
         avg = cast("float | None", stats["avg_overall_score"])
         assert avg is not None
         assert abs(avg - 88.0) < 1e-9
-        assert stats["last_run_at"] == "2026-05-02T00:00:00Z"
+        assert stats["last_run_at"] == "2026-05-01T00:00:00Z"
 
     def test_missing_db_raises_storage_error(self, tmp_path: Path) -> None:
         missing = tmp_path / "absent.sqlite"
