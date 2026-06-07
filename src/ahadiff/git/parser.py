@@ -104,6 +104,13 @@ class ChangedFileRecord:
         return self.display_path
 
 
+@dataclass(frozen=True)
+class _ParsedHunkBody:
+    lines: tuple[DiffLineRecord, ...]
+    consumed_old: int
+    consumed_new: int
+
+
 def parse_unified_diff(patch_text: str) -> tuple[ChangedFileRecord, ...]:
     lines = patch_text.splitlines()
     segments = split_unified_diff_segments(lines)
@@ -302,12 +309,7 @@ def _build_hunk(
     new_count = int(match.group(4) or "1")
     section_header = match.group(5).strip() or None
 
-    old_cursor = old_start
-    new_cursor = new_start
-    consumed_old = 0
-    consumed_new = 0
     has_truncated_marker = any(line == "[truncated]" for line in body_lines)
-    parsed_lines: list[DiffLineRecord] = []
     normalized_body_lines: list[str] = []
 
     for raw_line in body_lines:
@@ -320,29 +322,80 @@ def _build_hunk(
             )
             raw_line = raw_line[:_MAX_LINE_LEN]
         normalized_body_lines.append(raw_line)
+
+    parsed_body = _parse_hunk_body(
+        body_lines=normalized_body_lines,
+        old_start=old_start,
+        new_start=new_start,
+        skip_leaked_metadata=False,
+    )
+
+    if not has_truncated_marker and (
+        parsed_body.consumed_old != old_count or parsed_body.consumed_new != new_count
+    ):
+        fallback_body = _parse_hunk_body(
+            body_lines=normalized_body_lines,
+            old_start=old_start,
+            new_start=new_start,
+            skip_leaked_metadata=True,
+        )
+        if fallback_body.consumed_old == old_count and fallback_body.consumed_new == new_count:
+            parsed_body = fallback_body
+
+    if not has_truncated_marker and (
+        parsed_body.consumed_old != old_count or parsed_body.consumed_new != new_count
+    ):
+        raise InputError(
+            "unified diff hunk body does not match header counts: "
+            f"{header} (expected old={old_count}, new={new_count}; "
+            f"parsed old={parsed_body.consumed_old}, new={parsed_body.consumed_new})"
+        )
+
+    return HunkRecord(
+        path=path,
+        change_kind=change_kind,
+        header=header,
+        old_start=old_start,
+        old_count=old_count,
+        new_start=new_start,
+        new_count=new_count,
+        section_header=section_header,
+        hunk_id=make_hunk_id(path, old_start, new_start, section_header),
+        hunk_hash=compute_hunk_hash(header=header, body_lines=normalized_body_lines),
+        raw_lines=tuple(normalized_body_lines),
+        lines=parsed_body.lines,
+    )
+
+
+def _parse_hunk_body(
+    *,
+    body_lines: list[str],
+    old_start: int,
+    new_start: int,
+    skip_leaked_metadata: bool,
+) -> _ParsedHunkBody:
+    old_cursor = old_start
+    new_cursor = new_start
+    consumed_old = 0
+    consumed_new = 0
+    parsed_lines: list[DiffLineRecord] = []
+
+    seen_body_line = False
+    for index, raw_line in enumerate(body_lines):
         if raw_line.startswith("\\ "):
             continue
         if raw_line == "[truncated]":
             continue
-        if (
-            raw_line.startswith("index ")
-            or raw_line.startswith("--- ")
-            or raw_line.startswith("+++ ")
-            or raw_line.startswith("old mode ")
-            or raw_line.startswith("new mode ")
-            or raw_line.startswith("new file mode ")
-            or raw_line.startswith("deleted file mode ")
-            or raw_line.startswith("similarity index ")
-            or raw_line.startswith("dissimilarity index ")
-            or raw_line.startswith("rename from ")
-            or raw_line.startswith("rename to ")
-            or raw_line.startswith("copy from ")
-            or raw_line.startswith("copy to ")
-            or raw_line.startswith("diff --git ")
+        if skip_leaked_metadata and _should_skip_leaked_hunk_metadata(
+            body_lines=body_lines,
+            index=index,
+            seen_body_line=seen_body_line,
         ):
             continue
         prefix = raw_line[:1]
         if prefix not in {" ", "+", "-"}:
+            if _is_leaked_hunk_metadata(raw_line):
+                continue
             raise InputError(
                 f"unified diff hunk line is missing prefix (line length={len(raw_line)})"
             )
@@ -361,27 +414,79 @@ def _build_hunk(
             parsed_lines.append(DiffLineRecord("add", content, None, new_cursor))
             new_cursor += 1
             consumed_new += 1
+        seen_body_line = True
 
-    if not has_truncated_marker and (consumed_old != old_count or consumed_new != new_count):
-        raise InputError(
-            "unified diff hunk body does not match header counts: "
-            f"{header} (expected old={old_count}, new={new_count}; "
-            f"parsed old={consumed_old}, new={consumed_new})"
-        )
-
-    return HunkRecord(
-        path=path,
-        change_kind=change_kind,
-        header=header,
-        old_start=old_start,
-        old_count=old_count,
-        new_start=new_start,
-        new_count=new_count,
-        section_header=section_header,
-        hunk_id=make_hunk_id(path, old_start, new_start, section_header),
-        hunk_hash=compute_hunk_hash(header=header, body_lines=normalized_body_lines),
-        raw_lines=tuple(normalized_body_lines),
+    return _ParsedHunkBody(
         lines=tuple(parsed_lines),
+        consumed_old=consumed_old,
+        consumed_new=consumed_new,
+    )
+
+
+def _should_skip_leaked_hunk_metadata(
+    *,
+    body_lines: list[str],
+    index: int,
+    seen_body_line: bool,
+) -> bool:
+    raw_line = body_lines[index]
+    if not _is_leaked_hunk_metadata(raw_line):
+        return False
+    if raw_line[:1] not in {" ", "+", "-"}:
+        return True
+    if seen_body_line:
+        return False
+    return _is_leaked_file_header_pair_line(body_lines, index)
+
+
+def _is_leaked_file_header_pair_line(body_lines: list[str], index: int) -> bool:
+    raw_line = body_lines[index]
+    if _is_old_file_header_line(raw_line):
+        return index + 1 < len(body_lines) and _is_new_file_header_line(body_lines[index + 1])
+    if _is_new_file_header_line(raw_line):
+        return index > 0 and _is_old_file_header_line(body_lines[index - 1])
+    return False
+
+
+def _is_old_file_header_line(raw_line: str) -> bool:
+    return raw_line.startswith("--- ") and _looks_like_diff_header_path(
+        raw_line.removeprefix("--- "),
+        prefixes=("a/", "a\\"),
+    )
+
+
+def _is_new_file_header_line(raw_line: str) -> bool:
+    return raw_line.startswith("+++ ") and _looks_like_diff_header_path(
+        raw_line.removeprefix("+++ "),
+        prefixes=("b/", "b\\"),
+    )
+
+
+def _looks_like_diff_header_path(candidate: str, *, prefixes: tuple[str, ...]) -> bool:
+    token = candidate.strip()
+    if token == "/dev/null":
+        return True
+    if token.startswith('"'):
+        token = token[1:]
+    return token.startswith(prefixes)
+
+
+def _is_leaked_hunk_metadata(raw_line: str) -> bool:
+    return (
+        raw_line.startswith("index ")
+        or raw_line.startswith("--- ")
+        or raw_line.startswith("+++ ")
+        or raw_line.startswith("old mode ")
+        or raw_line.startswith("new mode ")
+        or raw_line.startswith("new file mode ")
+        or raw_line.startswith("deleted file mode ")
+        or raw_line.startswith("similarity index ")
+        or raw_line.startswith("dissimilarity index ")
+        or raw_line.startswith("rename from ")
+        or raw_line.startswith("rename to ")
+        or raw_line.startswith("copy from ")
+        or raw_line.startswith("copy to ")
+        or raw_line.startswith("diff --git ")
     )
 
 

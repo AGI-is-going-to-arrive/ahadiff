@@ -33,6 +33,7 @@ _BUILTIN_IGNORE_PATTERNS: tuple[str, ...] = (
     ".DS_Store",
     "node_modules",
     ".venv",
+    "graphify-out",
 )
 _FAILURE_LOG_THRESHOLD = 5
 
@@ -118,10 +119,14 @@ class FileWatcher:
             return True
 
     def _should_ignore(self, path: str) -> bool:
+        if not path.strip():
+            return True
         try:
             resolved = Path(path).resolve()
             rel_parts = resolved.relative_to(self._watch_path).parts
         except (ValueError, OSError):
+            return True
+        if not rel_parts:
             return True
         if ".." in rel_parts:
             return True
@@ -131,8 +136,13 @@ class FileWatcher:
         paths: list[str] = []
         for attr in ("src_path", "dest_path"):
             path = getattr(event, attr, None)
-            if path is not None and path not in paths and not self._should_ignore(path):
-                paths.append(path)
+            if path is None:
+                continue
+            path_text = str(path)
+            if not path_text.strip():
+                continue
+            if path_text not in paths and not self._should_ignore(path_text):
+                paths.append(path_text)
         return tuple(paths)
 
     def _handle_fs_event(self, event: Any) -> None:

@@ -48,6 +48,7 @@ _INSTALL_TEMPLATE_NAMES = (
     "gemini_section.md.j2",
     "gemini_skill.md.j2",
     "opencode_agent.md.j2",
+    "post_commit_hook_auto.sh.j2",
     "post_commit_hook.sh.j2",
     "pre_push_hook.sh.j2",
     "roo_rules.md.j2",
@@ -147,7 +148,7 @@ _TEMPLATE_CLI_HELP_CHECKS = (
         ),
     ),
     (("improve", "--help"), ("--rounds",)),
-    (("install", "--help"), ("--detect", "--dry-run")),
+    (("install", "--help"), ("--detect", "--dry-run", "--auto-learn")),
     (("export", "preview", "--help"), ("RUN_ID", "--out")),
     (("graph", "--help"), ("status", "import", "refresh")),
     (("concepts", "--help"), ("list", "verify", "lint")),
@@ -232,6 +233,20 @@ def test_install_usage_hints_cover_registered_targets() -> None:
 
 def test_install_usage_hint_unknown_target_returns_none() -> None:
     assert get_usage_hint("missing", "en") is None
+
+
+def test_hooks_usage_hint_describes_reminder_and_auto_learn_modes() -> None:
+    en_hint = get_usage_hint("hooks", "en")
+    zh_hint = get_usage_hint("hooks", "zh-CN")
+
+    assert en_hint is not None
+    assert zh_hint is not None
+    assert "--auto-learn" in en_hint.expected_behavior
+    assert ".ahadiff/hooks.log" in en_hint.expected_behavior
+    assert "reminder" in en_hint.expected_behavior
+    assert "--auto-learn" in zh_hint.expected_behavior
+    assert ".ahadiff/hooks.log" in zh_hint.expected_behavior
+    assert "提醒" in zh_hint.expected_behavior
 
 
 def _git(repo_root: Path, *args: str) -> None:
@@ -887,7 +902,8 @@ def test_uninstall_dry_run_previews_removals_without_mutating(tmp_path: Path) ->
     assert install_result.exit_code == 0
     assert dry_run.exit_code == 0
     assert "Remove codex AhaDiff install artifacts." in dry_run.output
-    assert "- remove: AGENTS.md" in dry_run.output
+    assert "- remove: .agents/skills/ahadiff/SKILL.md" in dry_run.output
+    assert "- remove section: AGENTS.md" in dry_run.output
     assert "AHADIFF:BEGIN target=codex" in (repo_root / "AGENTS.md").read_text(encoding="utf-8")
 
 
@@ -1016,6 +1032,83 @@ def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: 
     uninstall_result = _RUNNER.invoke(app(), ["uninstall", "hooks", "--repo-root", str(repo_root)])
     assert uninstall_result.exit_code == 0
     assert "AHADIFF:BEGIN target=hooks" not in post_commit.read_text(encoding="utf-8")
+
+
+def test_hooks_default_install_matches_reminder_template(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+
+    assert result.exit_code == 0, result.output
+    post_commit = repo_root / ".git" / "hooks" / "post-commit"
+    assert post_commit.read_text(encoding="utf-8") == (
+        "#!/bin/sh\n\n" + render_template("post_commit_hook.sh.j2") + "\n"
+    )
+
+
+def test_hooks_auto_learn_switches_section_in_place_and_is_idempotent(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    default_result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+    auto_result = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--auto-learn"],
+    )
+    post_commit = repo_root / ".git" / "hooks" / "post-commit"
+    first_auto_text = post_commit.read_text(encoding="utf-8")
+    second_auto_result = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--auto-learn"],
+    )
+    pre_push = repo_root / ".git" / "hooks" / "pre-push"
+    auto_text = post_commit.read_text(encoding="utf-8")
+    pre_push_text = pre_push.read_text(encoding="utf-8")
+    preview = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--dry-run", "--auto-learn"],
+    )
+    manifest = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--manifest", "--auto-learn"],
+    )
+    reverted_result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+
+    assert default_result.exit_code == 0, default_result.output
+    assert auto_result.exit_code == 0, auto_result.output
+    assert second_auto_result.exit_code == 0, second_auto_result.output
+    assert auto_text == first_auto_text
+    assert auto_text.count("AHADIFF:BEGIN target=hooks") == 1
+    assert "ahadiff learn --last" in auto_text
+    assert ".ahadiff/hooks.log" in auto_text
+    assert "nohup" in auto_text
+    assert post_commit.stat().st_mode & 0o111
+    assert pre_push_text == "#!/bin/sh\n\n" + render_template("pre_push_hook.sh.j2") + "\n"
+    assert preview.exit_code == 0, preview.output
+    assert "auto-learn" in preview.output
+    assert manifest.exit_code == 0, manifest.output
+    assert json.loads(manifest.output)["actions"]["preview"][0]["action"] == "merge-section"
+    assert reverted_result.exit_code == 0, reverted_result.output
+    assert post_commit.read_text(encoding="utf-8") == (
+        "#!/bin/sh\n\n" + render_template("post_commit_hook.sh.j2") + "\n"
+    )
+
+
+def test_hooks_auto_learn_is_rejected_for_non_hooks_target(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["install", "codex", "--repo-root", str(repo_root), "--auto-learn"],
+    )
+
+    assert result.exit_code == 1
+    assert "--auto-learn is only supported for: ahadiff install hooks" in result.output
 
 
 def test_append_hook_section_preserves_existing_hook_mode(tmp_path: Path) -> None:

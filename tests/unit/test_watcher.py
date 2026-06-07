@@ -115,6 +115,16 @@ class TestFileWatcherIgnorePatterns:
             watcher = FileWatcher(tmp_path, on_change=lambda _: None)
             assert watcher._should_ignore(str(tmp_path / ".ahadiff" / "review.sqlite"))
 
+    def test_ignores_graphify_out_directory(self, tmp_path: Path) -> None:
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            assert watcher._should_ignore(str(tmp_path / "graphify-out" / "graph.json"))
+
+    def test_ignores_watch_root_path(self, tmp_path: Path) -> None:
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            assert watcher._should_ignore(str(tmp_path))
+
     def test_ignores_pycache(self, tmp_path: Path) -> None:
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
             watcher = FileWatcher(tmp_path, on_change=lambda _: None)
@@ -167,6 +177,58 @@ class TestFileWatcherIgnorePatterns:
 
 
 class TestFileWatcherEventPaths:
+    def test_empty_src_path_is_filtered_when_cwd_is_watch_root(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            event = SimpleNamespace(src_path="", dest_path=None)
+
+            assert watcher._changed_event_paths(event) == ()
+
+    def test_empty_src_path_is_filtered_when_cwd_is_not_watch_root(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        cwd = tmp_path / "cwd"
+        repo_root.mkdir()
+        cwd.mkdir()
+        monkeypatch.chdir(cwd)
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(repo_root, on_change=lambda _: None)
+            event = SimpleNamespace(src_path="", dest_path=None)
+
+            assert watcher._changed_event_paths(event) == ()
+
+    def test_whitespace_only_path_is_filtered_before_resolve(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            event = SimpleNamespace(src_path="   ", dest_path=None)
+
+            assert watcher._changed_event_paths(event) == ()
+
+    def test_empty_dest_path_is_filtered(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            event = SimpleNamespace(src_path=str(tmp_path / "src" / "main.py"), dest_path="")
+
+            assert watcher._changed_event_paths(event) == (str(tmp_path / "src" / "main.py"),)
+
     def test_move_event_includes_dest_path(self, tmp_path: Path) -> None:
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
             watcher = FileWatcher(tmp_path, on_change=lambda _: None)

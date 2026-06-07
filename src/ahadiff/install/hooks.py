@@ -178,10 +178,18 @@ class HooksTarget:
         _ensure_posix_hooks_supported()
         _ensure_git_repo(context)
         post_commit, pre_push = self._hook_paths(context)
+        # Auto-learn v1 semantics:
+        # - Concurrent commits rely on the per-repo write lock; the second in-flight
+        #   learn fails fast into .ahadiff/hooks.log instead of blocking the commit.
+        # - The normal learnability gate still applies to background hook learns.
+        # - SQLite runtime gate failures fail fast and are written to hooks.log.
+        post_commit_template = (
+            "post_commit_hook_auto.sh.j2" if context.auto_learn else "post_commit_hook.sh.j2"
+        )
         _append_hook_section(
             post_commit,
             self.name,
-            render_template("post_commit_hook.sh.j2"),
+            render_template(post_commit_template),
         )
         _append_hook_section(
             pre_push,
@@ -200,9 +208,14 @@ class HooksTarget:
 
     def _plan(self, context: InstallContext):
         post_commit, pre_push = self._hook_paths(context)
+        summary = (
+            "Install non-blocking AhaDiff git hooks with auto-learn after commits."
+            if context.auto_learn
+            else "Install non-blocking AhaDiff git hook reminders."
+        )
         return plan_for(
             self.name,
-            "Install non-blocking AhaDiff git hook reminders.",
+            summary,
             [
                 InstallAction(post_commit, "merge-section"),
                 InstallAction(pre_push, "merge-section"),
@@ -229,7 +242,11 @@ def _append_hook_section(path: Path, target: str, section: str) -> None:
     if existing_hook:
         pattern = _hook_pattern(target)
         if pattern.search(original):
-            content = pattern.sub(section.strip(), original, count=1)
+            content = pattern.sub(
+                lambda match: _hook_replacement(match, section),
+                original,
+                count=1,
+            )
         else:
             separator = "\n\n" if original and not original.endswith("\n\n") else ""
             content = f"{original}{separator}{section}"
@@ -288,6 +305,11 @@ def _hook_pattern(target: str) -> re.Pattern[str]:
         rf"# AHADIFF:END\n?",
         re.DOTALL,
     )
+
+
+def _hook_replacement(match: re.Match[str], section: str) -> str:
+    prefix = "\n" if match.group(0).startswith("\n") else ""
+    return f"{prefix}{section.strip()}"
 
 
 def _ensure_git_repo(context: InstallContext) -> None:

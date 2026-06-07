@@ -1,0 +1,17 @@
+# AHADIFF:BEGIN target=hooks
+# Boundaries:
+# - Keep provider credentials in environment variables.
+# - Do not commit `.ahadiff/audit.private.jsonl`.
+# - Treat `.ahadiff/` as local state.
+# - Prefer verified claims with file-line evidence.
+# - Do not upload `.ahadiff/` artifacts to external services without explicit user consent.
+(
+  if command -v ahadiff >/dev/null 2>&1; then
+    printf '%s\n' 'AhaDiff: learning back this commit in the background (log: .ahadiff/hooks.log)'
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+    mkdir -p "$repo_root/.ahadiff" 2>/dev/null || exit 0
+    cd "$repo_root" || exit 0
+    nohup ahadiff learn --last >> "$repo_root/.ahadiff/hooks.log" 2>&1 &
+  fi
+) || true
+# AHADIFF:END

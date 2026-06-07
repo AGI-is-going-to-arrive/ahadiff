@@ -102,8 +102,8 @@ _TARGETS: dict[str, _TargetUsage] = {
         "ci",
         "Git hooks",
         "Git hooks",
-        "git commit; git push",
-        "git commit; git push",
+        "ahadiff install hooks; ahadiff install hooks --auto-learn",
+        "ahadiff install hooks；ahadiff install hooks --auto-learn",
     ),
     "opencode": _TargetUsage(
         "cli",
@@ -140,7 +140,7 @@ def get_usage_hint(target_name: str, locale: str) -> ToolUsageHint | None:
         invocation_pattern=usage.zh_invocation if localized else usage.en_invocation,
         quick_start_steps=list(_quick_start_steps(usage.category, label, localized)),
         example_prompts=list(_example_prompts(usage.category, label, localized)),
-        expected_behavior=_expected_behavior(usage.category, label, localized),
+        expected_behavior=_expected_behavior(target_name, usage.category, label, localized),
         platform_notes=_platform_notes(target_name, localized),
     )
 
@@ -214,7 +214,24 @@ def _example_prompts(
     )
 
 
-def _expected_behavior(category: ToolCategory, label: str, localized: bool) -> str:
+def _expected_behavior(
+    target_name: str,
+    category: ToolCategory,
+    label: str,
+    localized: bool,
+) -> str:
+    if target_name == "hooks":
+        if localized:
+            return (
+                f"{label} 默认只在 commit 后提醒学习、push 前提醒验证；"
+                "--auto-learn 会在 post-commit 后台运行 `ahadiff learn --last`，"
+                "日志写入 `.ahadiff/hooks.log`。"
+            )
+        return (
+            f"{label} defaults to commit-time learn reminders and push-time verify reminders; "
+            "--auto-learn runs `ahadiff learn --last` from post-commit in the background "
+            "and logs to `.ahadiff/hooks.log`."
+        )
     if localized:
         if category == "ci":
             return f"{label} 会在自动化边界生成或验证 AhaDiff 学习产物。"

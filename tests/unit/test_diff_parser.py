@@ -103,6 +103,31 @@ def test_parse_unified_diff_tolerates_index_line_in_body() -> None:
     assert normal_hunk.context_new_lines == (5, 7)
 
 
+def test_parse_unified_diff_recovers_leaked_file_headers_before_body_stream() -> None:
+    patch = (
+        "diff --git a/file.py b/file.py\n"
+        "index abc1234..def5678 100644\n"
+        "--- a/file.py\n"
+        "+++ b/file.py\n"
+        "@@ -1,2 +1,3 @@\n"
+        "index abc1234..def5678 100644\n"
+        "--- a/file.py\n"
+        "+++ b/file.py\n"
+        " line1\n"
+        "+added\n"
+        " line2\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    hunk = changed_files[0].hunks[0]
+    assert hunk.context_old_lines == (1, 2)
+    assert hunk.context_new_lines == (1, 3)
+    assert hunk.added_lines == (2,)
+    assert [line.content for line in hunk.lines] == ["line1", "added", "line2"]
+
+
 def test_parse_unified_diff_marks_rename_and_binary_segments() -> None:
     patch = (
         "diff --git a/src/old_name.py b/src/new_name.py\n"
@@ -327,6 +352,100 @@ def test_parse_unified_diff_does_not_split_control_looking_added_lines() -> None
         '+    marker = "@@ -1 +1 @@"',
         "+    return marker",
     )
+
+
+def test_parse_unified_diff_preserves_literal_diff_marker_content_lines() -> None:
+    patch = (
+        "diff --git a/log.txt b/log.txt\n"
+        "new file mode 100644\n"
+        "index 0000000..1111111\n"
+        "--- /dev/null\n"
+        "+++ b/log.txt\n"
+        "@@ -0,0 +1,5 @@\n"
+        "+diff --git a/x b/x\n"
+        "+--- a/x\n"
+        "++++ b/x\n"
+        "+@@ -1,2 +1,2 @@\n"
+        "+context line\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    hunk = changed_files[0].hunks[0]
+    assert hunk.raw_lines == (
+        "+diff --git a/x b/x",
+        "+--- a/x",
+        "++++ b/x",
+        "+@@ -1,2 +1,2 @@",
+        "+context line",
+    )
+    assert [line.content for line in hunk.lines] == [
+        "diff --git a/x b/x",
+        "--- a/x",
+        "+++ b/x",
+        "@@ -1,2 +1,2 @@",
+        "context line",
+    ]
+
+
+def test_parse_unified_diff_treats_prefixed_plus_and_minus_headers_as_content() -> None:
+    patch = (
+        "diff --git a/log.txt b/log.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/log.txt\n"
+        "+++ b/log.txt\n"
+        "@@ -1 +1 @@\n"
+        "--- literal old line\n"
+        "+++ literal new line\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    hunk = changed_files[0].hunks[0]
+    assert hunk.lines[0].kind == "delete"
+    assert hunk.lines[0].content == "-- literal old line"
+    assert hunk.lines[1].kind == "add"
+    assert hunk.lines[1].content == "++ literal new line"
+
+
+def test_parse_unified_diff_rejects_fallback_that_drops_prefixed_removed_line() -> None:
+    patch = (
+        "diff --git a/log.txt b/log.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/log.txt\n"
+        "+++ b/log.txt\n"
+        "@@ -10,1 +10,0 @@\n"
+        "--- hidden deleted line\n"
+        "-real deleted line\n"
+    )
+
+    with pytest.raises(InputError, match="hunk body does not match header counts"):
+        parse_unified_diff(patch)
+
+
+def test_parse_unified_diff_counts_prefixed_header_lookalikes_when_counts_match() -> None:
+    patch = (
+        "diff --git a/log.txt b/log.txt\n"
+        "index 1111111..2222222 100644\n"
+        "--- a/log.txt\n"
+        "+++ b/log.txt\n"
+        "@@ -10,1 +20,1 @@\n"
+        "--- hidden deleted line\n"
+        "+++ hidden added line\n"
+    )
+
+    changed_files = parse_unified_diff(patch)
+
+    assert len(changed_files) == 1
+    hunk = changed_files[0].hunks[0]
+    assert hunk.deleted_lines == (10,)
+    assert hunk.added_lines == (20,)
+    assert hunk.lines[0].kind == "delete"
+    assert hunk.lines[0].content == "-- hidden deleted line"
+    assert hunk.lines[1].kind == "add"
+    assert hunk.lines[1].content == "++ hidden added line"
 
 
 def test_parse_unified_diff_rejects_malformed_hunk_header() -> None:

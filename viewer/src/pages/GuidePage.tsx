@@ -131,6 +131,10 @@ function setupCommands(platform: Platform): ReadonlyArray<CommandEntry> {
 
 const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff watch', labelKey: 'Guide.advanced_watch' },
+  {
+    command: 'ahadiff install hooks --auto-learn',
+    labelKey: 'Guide.commands_install_hooks_auto',
+  },
   { command: 'ahadiff graph status', labelKey: 'Guide.advanced_graph_status' },
   { command: 'ahadiff graph import', labelKey: 'Guide.advanced_graph_import' },
   { command: 'ahadiff graph refresh', labelKey: 'Guide.advanced_graph_refresh' },
@@ -155,6 +159,14 @@ const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
     labelKey: 'Guide.commands_improve_run',
   },
   { command: 'ahadiff mcp-server', labelKey: 'Guide.commands_mcp_server' },
+  {
+    command: 'claude mcp add ahadiff -- ahadiff mcp-server --repo-root <path>',
+    labelKey: 'Guide.commands_mcp_register_claude',
+  },
+  {
+    command: 'codex mcp add ahadiff -- ahadiff mcp-server --repo-root <path>',
+    labelKey: 'Guide.commands_mcp_register_codex',
+  },
   {
     command: 'ahadiff challenge build RUN_ID',
     labelKey: 'Guide.commands_challenge_build',

@@ -1327,10 +1327,19 @@ def install_cmd(
         bool,
         typer.Option("--layer2", help="Install opt-in GitHub Action generation workflow."),
     ] = False,
+    auto_learn: Annotated[
+        bool,
+        typer.Option("--auto-learn", help="Install opt-in post-commit background learn hook."),
+    ] = False,
 ) -> None:
     try:
         root = find_repo_root(repo_root)
-        context = _install_context_cls()(repo_root=root, force=force, layer2=layer2)
+        context = _install_context_cls()(
+            repo_root=root,
+            force=force,
+            layer2=layer2,
+            auto_learn=auto_learn,
+        )
         if detect:
             table = Table(title="AhaDiff install targets")
             table.add_column("Target")
@@ -1344,6 +1353,8 @@ def install_cmd(
             raise AhaDiffError(f"install target is required; expected one of: {allowed}")
         if layer2 and target != "github-action":
             raise AhaDiffError("--layer2 is only supported for: ahadiff install github-action")
+        if auto_learn and target != "hooks":
+            raise AhaDiffError("--auto-learn is only supported for: ahadiff install hooks")
         installer = get_target(target)
         if manifest:
             console.print(manifest_preview_for(installer, context))

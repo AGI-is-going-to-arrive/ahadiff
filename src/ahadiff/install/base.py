@@ -30,6 +30,7 @@ class InstallContext:
     repo_root: Path
     force: bool = False
     layer2: bool = False
+    auto_learn: bool = False
 
 
 @dataclass(frozen=True)
@@ -91,12 +92,13 @@ class InstallPlan:
 
     def render_uninstall(self, repo_root: Path) -> str:
         lines = [f"Remove {self.target} AhaDiff install artifacts.", ""]
-        for action in self.actions:
+        for action in self.manifest().uninstall_actions:
             try:
                 display_path = action.path.relative_to(repo_root).as_posix()
             except ValueError:
                 display_path = str(action.path)
-            lines.append(f"- remove: {display_path}")
+            action_label = "remove section" if action.action == "remove-section" else action.action
+            lines.append(f"- {action_label}: {display_path}")
         return "\n".join(lines).rstrip() + "\n"
 
 
