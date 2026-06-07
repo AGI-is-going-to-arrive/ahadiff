@@ -2652,14 +2652,9 @@ def _assert_sqlite_runtime_supported() -> None:
     version = _sqlite_version_tuple()
     if _sqlite_gate_ok(version):
         return
-    minimum = ".".join(str(part) for part in _SQLITE_MIN_VERSION)
-    backports = ", ".join(
-        f"{'.'.join(str(p) for p in floor)}+"
-        for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
-    )
     raise StorageError(
-        f"SQLite runtime {sqlite3.sqlite_version} is below {minimum}; "
-        f"allowed backports are {backports}"
+        f"SQLite runtime {sqlite3.sqlite_version} is below {_sqlite_minimum_text()}; "
+        f"allowed backports are {_sqlite_backports_text()}. {_sqlite_runtime_remedy()}"
     )
 
 
@@ -2674,6 +2669,26 @@ def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
         return True
     floor = _SQLITE_ALLOWED_BACKPORT_MINIMUMS.get(version[:2])
     return floor is not None and version >= floor
+
+
+def _sqlite_minimum_text() -> str:
+    return ".".join(str(part) for part in _SQLITE_MIN_VERSION)
+
+
+def _sqlite_backports_text() -> str:
+    return ", ".join(
+        f"{'.'.join(str(part) for part in floor)}+"
+        for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
+    )
+
+
+def _sqlite_runtime_remedy() -> str:
+    return (
+        "Remedy: recreate the environment with a Python build with SQLite >= 3.51.3 "
+        "(or an allowed backport); current python.org or Homebrew Python builds are "
+        "known options. "
+        f"This process is using Python's standard-library sqlite3 module from {sqlite3.__file__}."
+    )
 
 
 # ---------------------------------------------------------------------------

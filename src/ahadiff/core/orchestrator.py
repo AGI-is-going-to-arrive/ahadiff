@@ -668,7 +668,8 @@ def _resolve_provider_from_config(
         raw_providers_table = snapshot.values.get("providers")
         if not isinstance(raw_providers_table, dict) or not raw_providers_table:
             raise AhaDiffError(
-                f"{operation_label} requires --base-url or a configured [providers.<name>] entry"
+                f"{operation_label} requires --base-url or a configured provider entry "
+                "under providers.<name>"
             )
         providers_table = cast("dict[str, Any]", raw_providers_table)
         resolved_name = provider_name

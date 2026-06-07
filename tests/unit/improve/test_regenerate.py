@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +15,7 @@ from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, ProviderConfig, ResultEvent, SourceHunk
 from ahadiff.core.config import SecurityConfig, write_default_config
-from ahadiff.core.errors import AhaDiffError
+from ahadiff.core.errors import AhaDiffError, InputError
 from ahadiff.eval.deterministic import DimensionScore
 from ahadiff.eval.evaluator import ScoreReport
 from ahadiff.eval.gates import HardGateResult, HardGateSummary
@@ -288,6 +289,86 @@ def test_run_regenerate_resolves_non_git_workspace_and_keeps_baseline_unchanged(
     assert accepted_score["overall"] == 76.0
 
 
+def test_run_regenerate_removes_accepted_candidate_when_append_result_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "plain-project"
+    workspace.mkdir()
+    state_dir = workspace / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_run(workspace, "run_base", overall=70.0)
+
+    def fake_evaluate_run(path: Path) -> ScoreReport:
+        return _score_report(run_id=path.name, overall=72.0)
+
+    def fail_append_result(**_kwargs: object) -> object:
+        raise RuntimeError("simulated append failure")
+
+    monkeypatch.setattr(
+        regenerate_module,
+        "generate_lessons_from_run",
+        _fake_generate_lessons_from_run,
+    )
+    monkeypatch.setattr(regenerate_module, "evaluate_run", fake_evaluate_run)
+    monkeypatch.setattr(regenerate_module, "append_result", fail_append_result)
+
+    with pytest.raises(RuntimeError, match="simulated append failure"):
+        run_regenerate(
+            "run_base",
+            candidates=1,
+            workspace_root=workspace,
+            provider_config=_provider_config(),
+            api_key=None,
+            security_config=SecurityConfig(),
+        )
+
+    assert sorted(path.name for path in (state_dir / "runs").iterdir()) == ["run_base"]
+    assert load_result_events_from_db(state_dir / "review.sqlite") == ()
+
+
+def test_run_regenerate_removes_accepted_candidate_when_publish_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "plain-project"
+    workspace.mkdir()
+    state_dir = workspace / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    _write_run(workspace, "run_base", overall=70.0)
+
+    def fake_evaluate_run(path: Path) -> ScoreReport:
+        return _score_report(run_id=path.name, overall=72.0)
+
+    def fail_publish_result_artifacts(**_kwargs: object) -> None:
+        raise RuntimeError("simulated publish failure")
+
+    monkeypatch.setattr(
+        regenerate_module,
+        "generate_lessons_from_run",
+        _fake_generate_lessons_from_run,
+    )
+    monkeypatch.setattr(regenerate_module, "evaluate_run", fake_evaluate_run)
+    monkeypatch.setattr(
+        regenerate_module,
+        "publish_result_artifacts",
+        fail_publish_result_artifacts,
+    )
+
+    with pytest.raises(RuntimeError, match="simulated publish failure"):
+        run_regenerate(
+            "run_base",
+            candidates=1,
+            workspace_root=workspace,
+            provider_config=_provider_config(),
+            api_key=None,
+            security_config=SecurityConfig(),
+        )
+
+    assert sorted(path.name for path in (state_dir / "runs").iterdir()) == ["run_base"]
+    assert load_result_events_from_db(state_dir / "review.sqlite") == ()
+
+
 def test_run_regenerate_persists_bundled_prompt_version_when_workspace_has_stray_prompts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -443,6 +524,28 @@ def test_run_regenerate_keeps_baseline_when_no_candidate_strictly_improves(
     assert result.message == "no improvement, baseline kept"
     assert sorted(path.name for path in (state_dir / "runs").iterdir()) == ["run_base"]
     assert load_result_events_from_db(state_dir / "review.sqlite") == ()
+
+
+def test_regenerate_rejects_windows_reparse_point_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run_base"
+    run_path.mkdir()
+    reparse_child = run_path / "lesson"
+    reparse_child.mkdir()
+    real_lstat = Path.lstat
+
+    def fake_lstat(self: Path) -> object:
+        result = real_lstat(self)
+        if self == reparse_child:
+            return SimpleNamespace(st_mode=stat.S_IFDIR, st_file_attributes=0x400)
+        return result
+
+    monkeypatch.setattr(Path, "lstat", fake_lstat)
+
+    with pytest.raises(InputError, match="Windows reparse point or junction"):
+        regenerate_module._reject_symlink_tree(run_path)  # pyright: ignore[reportPrivateUsage]
 
 
 class _CapturingLessonProvider:
@@ -751,3 +854,20 @@ def test_improve_run_cli_calls_run_regenerate_for_non_git_workspace(
     assert captured["kwargs"]["state_dir"] == state_dir
     assert captured["kwargs"]["output_lang"] == "en"
     assert "Accepted run" in result.stdout
+
+
+def test_improve_run_cli_missing_provider_message_keeps_entity_word(tmp_path: Path) -> None:
+    workspace = tmp_path / "plain-project"
+    workspace.mkdir()
+    state_dir = workspace / ".ahadiff"
+    state_dir.mkdir()
+    write_default_config(state_dir / "config.toml")
+
+    result = _RUNNER.invoke(
+        app(),
+        ["improve-run", "run_base", "--repo-root", str(workspace)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "improve-run requires --base-url or a configured provider entry" in result.stderr

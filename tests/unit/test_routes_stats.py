@@ -367,6 +367,182 @@ class TestGetStats:
         assert body["avg_overall_score"] == 80.0
         assert body["weakest_dimensions"] == ["accuracy"]
 
+    def test_stats_exclude_improve_run_directories_from_artifact_counts(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        runs_dir = state_dir / "runs"
+        runs_dir.mkdir()
+        run_ids = {
+            "learn": "run_" + "1" * 32,
+            "improve": "run_" + "2" * 32,
+        }
+        with sqlite3.connect(db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO result_events (event_id, run_id, event_type, timestamp,
+                                           source_ref, base_ref, prompt_version,
+                                           eval_bundle_version, rubric_version,
+                                           overall, verdict, status, weakest_dim,
+                                           note_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        "evt_learn_artifacts",
+                        run_ids["learn"],
+                        "learn",
+                        "2026-04-10T12:00:00Z",
+                        "abc123",
+                        "def456",
+                        "v1",
+                        "v1",
+                        "v1",
+                        80.0,
+                        "PASS",
+                        "baseline",
+                        "accuracy",
+                        None,
+                    ),
+                    (
+                        "evt_improve_artifacts",
+                        run_ids["improve"],
+                        "improve_run",
+                        "2026-04-11T12:00:00Z",
+                        "abc123",
+                        "def456",
+                        "v1",
+                        "v1",
+                        "v1",
+                        100.0,
+                        "PASS",
+                        "keep",
+                        "evidence",
+                        None,
+                    ),
+                ],
+            )
+        for label, run_id in run_ids.items():
+            run_dir = runs_dir / run_id
+            run_dir.mkdir()
+            event_id = "evt_learn_artifacts" if label == "learn" else "evt_improve_artifacts"
+            (run_dir / "finalized.json").write_text(
+                json.dumps({"run_id": run_id, "event_id": event_id}),
+                encoding="utf-8",
+            )
+            lesson_dir = run_dir / "lesson"
+            lesson_dir.mkdir()
+            (lesson_dir / "lesson.full.md").write_text("lesson", encoding="utf-8")
+            quiz_dir = run_dir / "quiz"
+            quiz_dir.mkdir()
+            (quiz_dir / "quiz.jsonl").write_text("{}\n", encoding="utf-8")
+            (run_dir / "claims.jsonl").write_text("{}\n", encoding="utf-8")
+
+        client = _client(state_dir)
+        resp = client.get("/api/stats", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_runs"] == 1
+        assert body["total_lessons"] == 1
+        assert body["total_quizzes"] == 1
+        assert body["total_claims"] == 1
+
+    def test_spec_alignment_excludes_improve_run_events(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        db_path = state_dir / "review.sqlite"
+        initialize_review_db(db_path)
+        runs_dir = state_dir / "runs"
+        runs_dir.mkdir()
+        rows = [
+            (
+                "evt_learn_spec",
+                "run_" + "1" * 32,
+                "learn",
+                "2026-04-10T12:00:00Z",
+                8.0,
+            ),
+            (
+                "evt_improve_spec",
+                "run_" + "2" * 32,
+                "improve_run",
+                "2026-04-11T12:00:00Z",
+                2.0,
+            ),
+        ]
+        with sqlite3.connect(db_path) as conn:
+            conn.executemany(
+                """
+                INSERT INTO result_events (event_id, run_id, event_type, timestamp,
+                                           source_ref, base_ref, prompt_version,
+                                           eval_bundle_version, rubric_version,
+                                           overall, verdict, status, weakest_dim,
+                                           note_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        event_id,
+                        run_id,
+                        event_type,
+                        timestamp,
+                        "abc123",
+                        "def456",
+                        "v1",
+                        "v1",
+                        "v1",
+                        80.0,
+                        "PASS",
+                        "keep",
+                        "accuracy",
+                        None,
+                    )
+                    for event_id, run_id, event_type, timestamp, _score in rows
+                ],
+            )
+        for event_id, run_id, _event_type, _timestamp, score in rows:
+            run_dir = runs_dir / run_id
+            run_dir.mkdir()
+            (run_dir / "finalized.json").write_text(
+                json.dumps({"run_id": run_id, "event_id": event_id}),
+                encoding="utf-8",
+            )
+            (run_dir / "spec_alignment.json").write_text(
+                json.dumps(
+                    {
+                        "artifact": "spec_alignment",
+                        "schema": "ahadiff.spec_alignment",
+                        "schema_version": 1,
+                        "score": score,
+                        "summary": {
+                            "implemented": 1 if score > 5 else 0,
+                            "partial": 0,
+                            "missing": 0 if score > 5 else 1,
+                            "unknown": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+        client = _client(state_dir)
+        resp = client.get("/api/spec/alignment", headers=_AUTH)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_evaluated"] == 1
+        assert body["alignment_score"] == 8.0
+        assert body["implemented"] == 1
+        assert body["missing"] == 0
+
     def test_total_concepts_uses_sqlite_and_falls_back_to_jsonl_when_stale(
         self,
         tmp_path: Path,

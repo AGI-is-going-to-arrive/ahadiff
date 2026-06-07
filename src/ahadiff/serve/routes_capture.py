@@ -88,7 +88,7 @@ async def get_capture_recommended(request: Request) -> JSONResponse:
 
 
 def _is_provider_not_configured_error(exc: AhaDiffError) -> bool:
-    return "requires --base-url or a configured [providers.<name>] entry" in str(exc)
+    return "requires --base-url or a configured provider entry under providers.<name>" in str(exc)
 
 
 def _is_provider_ambiguous_error(exc: AhaDiffError) -> bool:

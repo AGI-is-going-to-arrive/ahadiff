@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
 
 _REGENERATE_FULL_OUTPUT_TOKEN_CAP = 32_000
 _STEERING_CLAIMS_MAX_BYTES = 256 * 1024
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
 @dataclass(frozen=True)
@@ -208,17 +210,18 @@ def run_regenerate(
         "prior_weakest_dim": baseline_report.weakest_dim,
         "mode": "improve_run",
     }
-    outcome = append_result(
-        run_path=best.run_path,
-        report=best.report,
-        status="keep",
-        base_ref=_metadata_base_ref(best.run_path),
-        event_type="improve_run",
-        note_payload=note_payload,
-        write_finalized=False,
-        prompt_version_override=prompt_version_override,
-    )
+    outcome = None
     try:
+        outcome = append_result(
+            run_path=best.run_path,
+            report=best.report,
+            status="keep",
+            base_ref=_metadata_base_ref(best.run_path),
+            event_type="improve_run",
+            note_payload=note_payload,
+            write_finalized=False,
+            prompt_version_override=prompt_version_override,
+        )
         publish_result_artifacts(
             run_path=best.run_path,
             report=best.report,
@@ -227,9 +230,13 @@ def run_regenerate(
             overwrite=False,
         )
     except Exception:
-        if outcome.sqlite_inserted:
-            rollback_result_event(run_path=best.run_path, event_id=outcome.event.event_id)
+        try:
+            if outcome is not None and outcome.sqlite_inserted:
+                rollback_result_event(run_path=best.run_path, event_id=outcome.event.event_id)
+        finally:
+            _remove_candidate_run(best.run_path)
         raise
+    assert outcome is not None
     return RegenerateRunResult(
         baseline_run_id=target.run_id,
         accepted_run_id=best.report.run_id,
@@ -332,9 +339,28 @@ def _remove_if_exists(path: Path) -> None:
 
 
 def _reject_symlink_tree(root: Path) -> None:
-    for path in root.rglob("*"):
-        if path.is_symlink():
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        try:
+            path_stat = path.lstat()
+        except OSError as exc:
+            raise InputError(f"baseline run artifact is unreadable: {path}") from exc
+        if stat.S_ISLNK(path_stat.st_mode):
             raise InputError(f"baseline run artifact must not be a symlink: {path}")
+        if _is_windows_reparse_point(path_stat):
+            raise InputError(
+                f"baseline run artifact must not be a Windows reparse point or junction: {path}"
+            )
+        if stat.S_ISDIR(path_stat.st_mode):
+            try:
+                pending.extend(path.iterdir())
+            except OSError as exc:
+                raise InputError(f"baseline run artifact directory is unreadable: {path}") from exc
+
+
+def _is_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT)
 
 
 def _load_persisted_score_report(run_path: Path) -> ScoreReport:

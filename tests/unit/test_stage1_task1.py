@@ -36,6 +36,7 @@ from ahadiff.core.paths import (
     repo_config_path,
     review_db_path,
     run_dir,
+    validate_run_id,
     workspace_identity_key,
     workspace_identity_lookup_keys,
 )
@@ -857,6 +858,12 @@ def test_path_helpers_and_global_config_dir_cover_stage1_contract(tmp_path: Path
     assert str(win_path).replace("\\", "/").endswith("AppData/Roaming/ahadiff")
 
 
+@pytest.mark.parametrize("run_id", ["CON", "NUL", "AUX.txt", "COM1", "LPT9.log"])
+def test_validate_run_id_rejects_windows_reserved_device_names(run_id: str) -> None:
+    with pytest.raises(InputError, match="Windows reserved device name"):
+        validate_run_id(run_id)
+
+
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
 def test_project_state_dir_rejects_symlink(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
@@ -1112,6 +1119,8 @@ def test_cli_doctor_exits_non_zero_when_sqlite_gate_fails(
     assert result.exit_code == 1
     assert "SQLite gate" in result.stdout
     assert "does not satisfy the frozen doctor gate" in result.stderr
+    assert "Python build with SQLite >= 3.51.3" in result.stderr
+    assert "python.org or Homebrew Python" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -1162,12 +1171,15 @@ def test_sqlite_gate_patch_floor_contract_is_consistent_across_entrypoints(
 
     assert doctor_result.exit_code == 1
     assert backport_text in doctor_result.stdout
+    assert "Python build with SQLite >= 3.51.3" in doctor_result.stderr
     with pytest.raises(StorageError) as usage_error:
         usage_module.connect_usage_db(usage_path, create_parent=True)
     with pytest.raises(StorageError) as review_error:
         review_database.connect_review_db(review_path, create_parent=True)
     assert backport_text in str(usage_error.value)
     assert backport_text in str(review_error.value)
+    assert "Python build with SQLite >= 3.51.3" in str(usage_error.value)
+    assert "Python build with SQLite >= 3.51.3" in str(review_error.value)
 
 
 def test_cli_maint_clean_orphans_removes_tmp_runs_and_audit_tmp_files(

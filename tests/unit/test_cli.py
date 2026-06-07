@@ -810,6 +810,67 @@ def test_cli_learn_delegates_to_shared_pipeline_and_preserves_quiz_mode(
     assert "pipeline warning" in result.stdout
 
 
+def test_cli_learn_fails_fast_when_sqlite_runtime_gate_fails(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo_root = _repo_root(tmp_path, monkeypatch)
+    patch_path = repo_root / "sample.patch"
+    patch_path.write_text(
+        "diff --git a/a.py b/a.py\n--- a/a.py\n+++ b/a.py\n@@ -1 +1 @@\n-old\n+new\n",
+        encoding="utf-8",
+    )
+    called = False
+
+    def fail_run_learn_pipeline(*_args: object, **_kwargs: object) -> LearnResult:
+        nonlocal called
+        called = True
+        raise AssertionError("run_learn_pipeline should not be called")
+
+    monkeypatch.setattr(cli_module, "_sqlite_version_tuple", lambda: (3, 51, 0))
+    monkeypatch.setattr(cli_module.sqlite3, "sqlite_version", "3.51.0")
+    monkeypatch.setattr(orchestrator_module, "run_learn_pipeline", fail_run_learn_pipeline)
+
+    result = _RUNNER.invoke(
+        app(),
+        [
+            "learn",
+            "--patch",
+            str(patch_path),
+            "--repo-root",
+            str(repo_root),
+            "--dry-run",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert called is False
+    assert "SQLite runtime 3.51.0 is below 3.51.3" in result.stderr
+    assert "Python build with SQLite >= 3.51.3" in result.stderr
+
+
+def test_verify_existing_score_message_points_to_force(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    repo_root = _repo_root(tmp_path, monkeypatch)
+    run_id = "run_existing_score"
+    run_path = repo_root / ".ahadiff" / "runs" / run_id
+    run_path.mkdir(parents=True)
+    (run_path / "score.json").write_text('{"overall": 88.5}\n', encoding="utf-8")
+
+    result = _RUNNER.invoke(
+        app(),
+        ["verify", run_id, "--repo-root", str(repo_root)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "score.json already exists" in result.stderr
+    assert "--force" in result.stderr
+
+
 # --- F2 regression: --api-key-env prefix validation ---
 
 

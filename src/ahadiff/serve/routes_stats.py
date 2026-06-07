@@ -62,12 +62,13 @@ _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 # ---------------------------------------------------------------------------
 
 
-def _count_run_artifacts(runs_dir: Path) -> dict[str, int]:
+def _count_run_artifacts(runs_dir: Path, db_path: Path | None = None) -> dict[str, int]:
     """Scan runs_dir subdirectories and count lessons, quizzes, and claims."""
     total_runs = 0
     total_lessons = 0
     total_quizzes = 0
     total_claims = 0
+    improve_run_event_ids = _load_improve_run_event_ids(db_path)
 
     if not runs_dir.is_dir():
         return {
@@ -89,6 +90,8 @@ def _count_run_artifacts(runs_dir: Path) -> dict[str, int]:
 
     for entry in entries:
         if not _is_finalized_run_dir(entry):
+            continue
+        if _is_improve_run_artifact_dir(entry, improve_run_event_ids):
             continue
         total_runs += 1
         # Check for lesson (any level)
@@ -117,6 +120,32 @@ def _count_run_artifacts(runs_dir: Path) -> dict[str, int]:
 
 def _is_finalized_run_dir(path: Path) -> bool:
     return not path.is_symlink() and path.is_dir() and (path / "finalized.json").is_file()
+
+
+def _load_improve_run_event_ids(db_path: Path | None) -> frozenset[str]:
+    if db_path is None or not db_path.is_file():
+        return frozenset()
+    rows: list[sqlite3.Row] = []
+    try:
+        with connect_review_db(db_path) as conn:
+            rows = conn.execute(
+                "SELECT event_id FROM result_events WHERE event_type = 'improve_run'"
+            ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if _is_missing_table_error(exc):
+            return frozenset()
+        _raise_stats_backend_error("failed to query improve-run stats filter", exc)
+    return frozenset(str(row[0]) for row in rows if row and row[0] is not None)
+
+
+def _is_improve_run_artifact_dir(path: Path, event_ids: frozenset[str]) -> bool:
+    if not event_ids:
+        return False
+    marker = _load_stats_json_object(path / "finalized.json")
+    if marker is None:
+        return False
+    event_id = marker.get("event_id")
+    return isinstance(event_id, str) and event_id in event_ids
 
 
 def _count_concepts_jsonl(state_dir: Path) -> int:
@@ -245,7 +274,7 @@ def _query_review_stats(db_path: Path) -> dict[str, Any]:
 
 
 def _build_stats(state: ServeState) -> dict[str, Any]:
-    artifacts = _count_run_artifacts(state.runs_dir)
+    artifacts = _count_run_artifacts(state.runs_dir, state.review_db_path)
     concepts = _count_concepts(state.state_dir, state.review_db_path)
     review = _query_review_stats(state.review_db_path)
 
@@ -882,6 +911,7 @@ def _load_spec_alignment_events(db_path: Path) -> list[ResultEvent]:
                        verdict, status, weakest_dim, note_json
                 FROM result_events
                 WHERE status IN ({placeholders})
+                  AND event_type != 'improve_run'
                 ORDER BY timestamp ASC, event_id ASC
                 """,
                 statuses,

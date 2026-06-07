@@ -23,6 +23,14 @@ _MACOS_LONG_PATH_WARNING = 180
 _WINDOWS_LONG_PATH_WARNING = 240
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_WINDOWS_RESERVED_DEVICE_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
 
 
 @dataclass(frozen=True)
@@ -152,6 +160,13 @@ def validate_run_id(run_id: str) -> None:
             "run_id must contain only letters, numbers, dot, underscore, or hyphen, "
             "and must not be '.' or '..'"
         )
+    if _is_windows_reserved_device_name(run_id):
+        raise InputError("run_id must not be a Windows reserved device name")
+
+
+def _is_windows_reserved_device_name(value: str) -> bool:
+    stem = value.split(".", 1)[0]
+    return stem.upper() in _WINDOWS_RESERVED_DEVICE_NAMES
 
 
 def find_repo_root(start: Path | None = None) -> Path:

@@ -249,9 +249,36 @@ def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
     return floor is not None and version >= floor
 
 
+def _sqlite_gate_minimum_text() -> str:
+    return ".".join(str(part) for part in _SQLITE_MIN_VERSION)
+
+
+def _sqlite_gate_backports_text() -> str:
+    return ", ".join(
+        f"{'.'.join(str(part) for part in floor)}+"
+        for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
+    )
+
+
+def _sqlite_gate_failure_message() -> str:
+    return (
+        f"SQLite runtime {sqlite3.sqlite_version} is below {_sqlite_gate_minimum_text()}; "
+        f"allowed backports are {_sqlite_gate_backports_text()}. "
+        "Remedy: recreate the environment with a Python build with SQLite >= 3.51.3 "
+        "(or an allowed backport); current python.org or Homebrew Python builds are "
+        "known options. "
+        f"This process is using Python's standard-library sqlite3 module from {sqlite3.__file__}."
+    )
+
+
+def _assert_sqlite_runtime_supported_for_learn() -> None:
+    if not _sqlite_gate_ok(_sqlite_version_tuple()):
+        raise AhaDiffError(_sqlite_gate_failure_message())
+
+
 def _handle_cli_error(error: Exception) -> None:
     if isinstance(error, AhaDiffError):
-        error_console.print(f"[red]Error:[/red] {error}")
+        error_console.print(f"[red]Error:[/red] {error}", soft_wrap=True)
         raise Exit(code=1) from error
     error_console.print(f"[red]Unexpected error:[/red] {error}")
     raise Exit(code=2) from error
@@ -542,7 +569,8 @@ def _resolve_runtime_provider(
         raw_providers_table = snapshot.values.get("providers")
         if not isinstance(raw_providers_table, dict) or not raw_providers_table:
             raise AhaDiffError(
-                f"{operation_label} requires --base-url or a configured [providers.<name>] entry"
+                f"{operation_label} requires --base-url or a configured provider entry "
+                "under providers.<name>"
             )
         providers_table = cast("dict[str, Any]", raw_providers_table)
         resolved_name = provider_name
@@ -855,14 +883,9 @@ def doctor_cmd(
         if sqlite_gate_ok:
             console.print("[green]SQLite gate[/green]: compatible with the frozen contract")
         else:
-            minimum = ".".join(str(part) for part in _SQLITE_MIN_VERSION)
-            backports = ", ".join(
-                f"{'.'.join(str(p) for p in floor)}+"
-                for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
-            )
             console.print(
-                "[red]SQLite gate[/red]: "
-                f"{sqlite3.sqlite_version} is below {minimum}; allowed backports are {backports}"
+                f"[red]SQLite gate[/red]: {_sqlite_gate_failure_message()}",
+                soft_wrap=True,
             )
 
         warnings = inspect_repo_path(root)
@@ -932,7 +955,8 @@ def doctor_cmd(
                 console.print("Deep SQLite checks skipped because review.sqlite does not exist yet")
         if not sqlite_gate_ok:
             raise AhaDiffError(
-                f"SQLite runtime {sqlite3.sqlite_version} does not satisfy the frozen doctor gate"
+                "SQLite runtime does not satisfy the frozen doctor gate. "
+                f"{_sqlite_gate_failure_message()}"
             )
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
@@ -1126,6 +1150,7 @@ def learn_cmd(
             repo_root,
             allow_non_git=allow_non_git,
         )
+        _assert_sqlite_runtime_supported_for_learn()
         from .core import orchestrator as orchestrator_module
 
         request = orchestrator_module.LearnRequest(
@@ -2875,6 +2900,11 @@ def _score_or_verify_run(
     workspace_root = run_path.parent.parent.parent
     _, lock_path = _state_dir_and_lock_path(repo_root)
     if output_path.exists() and not force:
+        if command_name == "verify":
+            raise AhaDiffError(
+                "score.json already exists; verification artifacts are immutable by default. "
+                f"Re-run with --force to overwrite: {output_path}"
+            )
         raise AhaDiffError(f"refusing to overwrite existing file: {output_path}")
     with repo_write_lock(lock_path, command=command_name) as _:
         report = evaluate_run(run_path)
