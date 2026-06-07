@@ -103,7 +103,7 @@ describe('GuidePage command examples', () => {
     expect(commands).toContain('ahadiff learn HEAD~1..HEAD');
     expect(commands).toContain('ahadiff learn --staged --unstaged --include-untracked');
     expect(commands).toContain('ahadiff learn --staged');
-    expect(commands).toContain('ahadiff learn --unstaged');
+    expect(commands).toContain('ahadiff learn --unstaged --include-untracked');
     expect(commands).toContain('ahadiff learn --last');
     expect(commands).toContain('ahadiff learn --since "2 hours ago"');
     expect(commands).toContain('ahadiff learn --patch change.diff');

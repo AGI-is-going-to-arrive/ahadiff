@@ -208,6 +208,26 @@ keyring. **Never commit a token or paste it into a file under version control.**
 
 ---
 
+## 4.5 Create the GitHub Release
+
+After PyPI publish and the tag push are done, create the matching GitHub Release so the
+Releases tab shows the version. Attach only the local `dist/` artifacts that already passed the
+Section 2 gates and whose `sha256` matches the files on PyPI — **never rebuild for the Release**.
+
+```bash
+gh release create v<ver> \
+  --repo AGI-is-going-to-arrive/ahadiff \
+  --title "AhaDiff v<ver>" \
+  --notes-file notes.md \
+  dist/ahadiff-<ver>-py3-none-any.whl \
+  dist/ahadiff-<ver>.tar.gz
+```
+
+Write user-facing release notes based on the real changes in the tagged commits (highlights,
+install steps, links); do not paste raw commit logs or invent metrics.
+
+---
+
 ## 5. TestPyPI rehearsal (optional)
 
 For a major packaging change, rehearse on TestPyPI first. Build and gate exactly as in

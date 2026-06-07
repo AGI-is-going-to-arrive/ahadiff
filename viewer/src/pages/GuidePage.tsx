@@ -74,7 +74,7 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
     labelKey: 'Guide.commands_learn_staged',
   },
   {
-    command: 'ahadiff learn --unstaged',
+    command: 'ahadiff learn --unstaged --include-untracked',
     labelKey: 'Guide.commands_learn_unstaged',
   },
   { command: 'ahadiff learn --last', labelKey: 'Guide.commands_learn_last' },
@@ -149,6 +149,10 @@ const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
   {
     command: 'ahadiff regenerate RUN_ID --only quiz',
     labelKey: 'Guide.advanced_regenerate',
+  },
+  {
+    command: 'ahadiff improve-run RUN_ID --candidates 3',
+    labelKey: 'Guide.commands_improve_run',
   },
   { command: 'ahadiff mcp-server', labelKey: 'Guide.commands_mcp_server' },
   {

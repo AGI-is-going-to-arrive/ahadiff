@@ -907,7 +907,10 @@ img { max-width: 100%; display: block; }
       <a href="#learn" data-nav>生成课程</a>
       <a href="#webui" data-nav>WebUI</a>
       <a href="#commands" data-nav>命令</a>
+      <a href="#export" data-nav>导出</a>
+      <a href="#features" data-nav>能力说明</a>
       <a href="#faq" data-nav>常见问题</a>
+      <a href="#about" data-nav>关于本文档</a>
       <a href="./index.html">首页</a>
       <a class="lang-toggle" href="./USER_GUIDE.en.html" hreflang="en">EN / 中</a>
     </div>
@@ -983,7 +986,7 @@ ahadiff config show --resolved</span></div>
         <span class="badge"><span class="badge-dot sqlite"></span>3.44.6+（backport）</span>
       </div>
       <p class="g-lead"><code>uv tool</code> 在 Python 3.11.14 上自带 SQLite 3.50.4。已被接受。</p>
-      <p class="g-lead">版本号更高不代表自动被接受。门禁要求 SQLite 3.51.3 及以上，或回填补丁的 3.50.4+ / 3.44.6+ 版本，所以 3.51.0-3.51.2 低于门槛、不会被接受。如果 <code>ahadiff doctor</code> 提示你的版本不行，换一个自带 SQLite 满足门槛的 Python，例如 <code>uv tool</code>、python.org 安装包、Homebrew 或 conda。</p>
+      <p class="g-lead">第一次生成课程前，先跑 <code>ahadiff doctor</code> 确认你的 SQLite 版本达标；它会报告检测到的版本和所需门槛，版本过低时 fail-closed 报错。版本号更高不代表自动被接受。门禁要求 SQLite 3.51.3 及以上，或回填补丁的 3.50.4+ / 3.44.6+ 版本，所以 3.51.0-3.51.2 低于门槛、不会被接受。如果 <code>ahadiff doctor</code> 提示你的版本不行，换一个自带 SQLite 满足门槛的 Python，例如 <code>uv tool</code>、python.org 安装包、Homebrew 或 conda。</p>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/zh/zh-welcome.png" alt="欢迎页：主标语、简介段落和首次运行的快速上手。" />
@@ -1420,7 +1423,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
         </div>
       </div>
 
-      <p><code>improve-run RUN_ID</code> 会重新生成一篇课程，只有确定性评分确实更高时才保留新副本，并作为独立的运行写入、原来那次保持不变。任何安装方式都能用，包括 <code>pip</code>。另一个 <code>improve</code> 命令调整的是 AhaDiff 自身的生成 prompt，只能在 AhaDiff 源码 checkout 里运行。</p>
+      <p><code>improve-run RUN_ID</code> 会重新生成一篇课程，只有确定性评分确实更高时才保留新副本，并作为独立的运行写入、原来那次保持不变。用 <code>--candidates N</code>（默认 3，范围 1-10）控制尝试多少个重生候选；值越大越可能拿到更高分，但更费 token 和时间。任何安装方式都能用，包括 <code>pip</code>。另一个 <code>improve</code> 命令调整的是 AhaDiff 自身的生成 prompt，只能在 AhaDiff 源码 checkout 里运行。</p>
 
       <h3>维护分组</h3>
       <div class="g-cards">
