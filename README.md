@@ -44,7 +44,7 @@ AI writes code faster, but developers can understand less of what actually chang
 
 ```bash
 pip install ahadiff
-ahadiff --version   # should print ahadiff 1.3.0
+ahadiff --version   # should print ahadiff 1.3.1
 ```
 This ships a working WebUI out of the box, and all default features work with no extras.
 
