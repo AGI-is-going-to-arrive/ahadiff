@@ -26,6 +26,7 @@ _USAGE_WRITE_ATTEMPTS = 5
 _SchemaSignature = tuple[int, int, int]
 _SCHEMA_INITIALIZED: dict[str, _SchemaSignature] = {}
 _SCHEMA_INIT_LOCK = threading.Lock()
+_USAGE_RECOVERY_LOCK = threading.Lock()
 _SQLITE_MIN_VERSION = (3, 51, 3)
 _SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] = {
     (3, 50): (3, 50, 4),
@@ -85,6 +86,11 @@ def connect_usage_db(db_path: Path, *, create_parent: bool = False) -> sqlite3.C
             raise
         return _recover_usage_db(db_path, exc)
     except OSError as exc:
+        if _is_concurrent_usage_path_error(exc):
+            return _ensure_recovered_usage_schema(
+                _open_checked_usage_db_after_concurrent_heal(db_path),
+                db_path,
+            )
         raise StorageError(f"failed to open usage DB safely: {db_path} ({exc})") from exc
 
 
@@ -157,21 +163,29 @@ def _is_sqlite_transient_lock_error(exc: sqlite3.DatabaseError) -> bool:
 
 
 def _recover_usage_db(db_path: Path, cause: StorageError) -> sqlite3.Connection:
-    if _attempt_usage_reindex(db_path):
-        log.warning("repaired global usage DB with REINDEX: %s", db_path)
-        return _open_checked_usage_db(db_path)
     expected_signature = cause.db_signature if isinstance(cause, _UsageDbCorruptionError) else None
-    quarantine_path = _quarantine_usage_db(db_path, expected_signature=expected_signature)
-    connection = (
-        _open_checked_usage_db(db_path)
-        if quarantine_path is not None
-        else _open_checked_usage_db_after_concurrent_heal(db_path)
-    )
-    try:
-        _ensure_usage_schema(connection, db_path)
-    except Exception:
-        connection.close()
-        raise
+    quarantine_path = _usage_quarantine_path(db_path)
+    with _USAGE_RECOVERY_LOCK:
+        adopted_connection = _try_open_concurrently_recovered_usage_db(
+            db_path,
+            expected_signature=expected_signature,
+        )
+        if adopted_connection is not None:
+            return _ensure_recovered_usage_schema(adopted_connection, db_path)
+        if _attempt_usage_reindex(db_path):
+            log.warning("repaired global usage DB with REINDEX: %s", db_path)
+            return _ensure_recovered_usage_schema(_open_checked_usage_db(db_path), db_path)
+        quarantine_path = _quarantine_usage_db(
+            db_path,
+            expected_signature=expected_signature,
+            quarantine_path=quarantine_path,
+        )
+        connection = (
+            _open_checked_usage_db(db_path)
+            if quarantine_path is not None
+            else _open_checked_usage_db_after_concurrent_heal(db_path)
+        )
+        connection = _ensure_recovered_usage_schema(connection, db_path)
     if quarantine_path is not None:
         log.warning(
             "quarantined corrupt global usage DB at %s and recreated %s: %s",
@@ -182,14 +196,66 @@ def _recover_usage_db(db_path: Path, cause: StorageError) -> sqlite3.Connection:
     return connection
 
 
-def _open_checked_usage_db_after_concurrent_heal(db_path: Path) -> sqlite3.Connection:
+def _ensure_recovered_usage_schema(
+    connection: sqlite3.Connection,
+    db_path: Path,
+) -> sqlite3.Connection:
+    try:
+        _ensure_usage_schema(connection, db_path)
+    except Exception:
+        connection.close()
+        raise
+    return connection
+
+
+def _try_open_concurrently_recovered_usage_db(
+    db_path: Path,
+    *,
+    expected_signature: _UsageDbFileSignature | None,
+) -> sqlite3.Connection | None:
+    if _usage_db_signature_matches(db_path, expected_signature):
+        return None
     try:
         return _open_checked_usage_db(db_path)
     except StorageError as exc:
-        if not _is_usage_db_transient_storage_error(exc):
-            raise
-        time.sleep(0.05)
-        return _open_checked_usage_db(db_path)
+        if _is_usage_db_corruption_error(exc) or _is_usage_db_transient_storage_error(exc):
+            return None
+        raise
+    except OSError as exc:
+        if _is_concurrent_usage_path_error(exc):
+            return None
+        raise StorageError(f"failed to open usage DB safely: {db_path} ({exc})") from exc
+
+
+def _open_checked_usage_db_after_concurrent_heal(db_path: Path) -> sqlite3.Connection:
+    last_error: BaseException | None = None
+    for attempt in range(5):
+        try:
+            return _open_checked_usage_db(db_path)
+        except StorageError as exc:
+            if not (
+                _is_usage_db_corruption_error(exc) or _is_usage_db_transient_storage_error(exc)
+            ):
+                raise
+            last_error = exc
+        except OSError as exc:
+            if not _is_concurrent_usage_path_error(exc):
+                raise StorageError(f"failed to open usage DB safely: {db_path} ({exc})") from exc
+            last_error = exc
+        time.sleep(min(0.25, 0.05 * (attempt + 1)))
+    if isinstance(last_error, StorageError):
+        raise last_error
+    if isinstance(last_error, OSError):
+        raise StorageError(
+            f"failed to open usage DB safely after concurrent heal: {db_path}"
+        ) from last_error
+    raise StorageError(f"failed to open usage DB safely after concurrent heal: {db_path}")
+
+
+def _is_concurrent_usage_path_error(exc: OSError) -> bool:
+    return _is_missing_path_error(exc) or (
+        isinstance(exc, PermissionError) and "changed during open" in str(exc).casefold()
+    )
 
 
 def _is_usage_db_transient_storage_error(exc: StorageError) -> bool:
@@ -220,8 +286,8 @@ def _quarantine_usage_db(
     db_path: Path,
     *,
     expected_signature: _UsageDbFileSignature | None,
+    quarantine_path: Path,
 ) -> Path | None:
-    quarantine_path = _usage_quarantine_path(db_path)
     _SCHEMA_INITIALIZED.pop(str(db_path), None)
     if not _usage_db_signature_matches(db_path, expected_signature):
         return None

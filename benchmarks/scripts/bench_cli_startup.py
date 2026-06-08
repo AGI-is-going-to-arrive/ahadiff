@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import statistics
 import subprocess
@@ -12,6 +13,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = REPO_ROOT / "src"
+DEFAULT_CLI_STARTUP_TIMEOUT_SECONDS = 120.0
 
 if SRC_DIR.is_dir():
     sys.path.insert(0, str(SRC_DIR))
@@ -42,11 +44,26 @@ def _pythonpath() -> str:
     return str(SRC_DIR)
 
 
+def _cli_startup_timeout_seconds() -> float:
+    raw_value = os.environ.get("AHADIFF_BENCH_CLI_STARTUP_TIMEOUT_SECONDS")
+    if raw_value is None:
+        return DEFAULT_CLI_STARTUP_TIMEOUT_SECONDS
+    try:
+        timeout_seconds = float(raw_value)
+    except ValueError:
+        return DEFAULT_CLI_STARTUP_TIMEOUT_SECONDS
+    if math.isfinite(timeout_seconds) and timeout_seconds > 0:
+        return timeout_seconds
+    return DEFAULT_CLI_STARTUP_TIMEOUT_SECONDS
+
+
 def main() -> dict[str, Any]:
     python_executable = sys.executable
     command = [python_executable, "-m", "ahadiff", "--version"]
     env = os.environ.copy()
     env["PYTHONPATH"] = _pythonpath()
+    # CI runners can be CPU-starved; keep failures real but avoid a tight startup cap.
+    timeout_seconds = _cli_startup_timeout_seconds()
     samples_ms: list[float] = []
     version_output = ""
 
@@ -59,7 +76,7 @@ def main() -> dict[str, Any]:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=30,
+            timeout=timeout_seconds,
             env=env,
             check=False,
         )
