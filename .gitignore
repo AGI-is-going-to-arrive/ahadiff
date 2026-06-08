@@ -95,6 +95,9 @@ plan/
 *.mov
 docs/video/output/*clean*.mp4
 
+# Log files (hooks/watch/serve and dev scratch all write logs locally; never commit)
+*.log
+
 # Local dev output dirs
 /output/
 artifacts/

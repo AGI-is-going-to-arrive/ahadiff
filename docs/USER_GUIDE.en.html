@@ -940,7 +940,7 @@ img { max-width: 100%; display: block; }
       <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.0</span></div>
       <h1>AhaDiff User Guide</h1>
       <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
-      <div class="start-tip">Video tutorials: <a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">English walkthrough (MP4)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm">Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code>. The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
+      <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> English walkthrough (YouTube)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code>. The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
@@ -1167,7 +1167,7 @@ supports_native_json_schema = false</span></div>
           <span class="cap-group-label">Quick (working tree)</span>
           <div class="cap-tiles">
             <div class="cap-tile"><span class="cap-name">Last commit</span><span class="cap-when">The most recent commit.</span><code class="cap-cli">ahadiff learn --last</code></div>
-            <div class="cap-tile"><span class="cap-name">Staged</span><span class="cap-when">What is staged for the next commit.</span><code class="cap-cli">ahadiff learn --staged</code></div>
+            <div class="cap-tile"><span class="cap-name">Staged</span><span class="cap-when">What is staged for the next commit. Stage with <code>git add</code> first.</span><code class="cap-cli">ahadiff learn --staged</code></div>
             <div class="cap-tile"><span class="cap-name">Unstaged</span><span class="cap-when">Edits not staged yet; add untracked.</span><code class="cap-cli">ahadiff learn --unstaged --include-untracked</code></div>
           </div>
         </div>
@@ -1227,7 +1227,7 @@ supports_native_json_schema = false</span></div>
     <section id="webui">
       <div class="section-eyebrow">Interface</div>
       <h2>4. Use the WebUI</h2>
-      <p>Run one of these to open the local React SPA. <code>serve</code> opens a browser by default; add <code>--no-browser</code> to keep it headless, or <code>--watch</code> to rebuild on file changes.</p>
+      <p>Run one of these to open the local React SPA. <code>serve</code> opens a browser by default; add <code>--no-browser</code> to keep it headless, or <code>--watch</code> to auto-learn when working-tree files change.</p>
       <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # file watcher, included by default</span></div>
@@ -1416,14 +1416,14 @@ ahadiff improve-run RUN_ID</span></div>
         </div>
         <div class="g-card">
           <h3>Serve</h3>
-          <p>Open the local WebUI. <code>--watch</code> rebuilds on file changes.</p>
+          <p>Open the local WebUI. <code>--watch</code> adds auto-learn on working-tree changes.</p>
           <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # file watcher, included by default</span></div>
         </div>
         <div class="g-card">
           <h3>Watch</h3>
-          <p>Auto-learn on working-tree changes. <code>ahadiff serve --watch</code> is a different feature; it rebuilds the WebUI.</p>
+          <p>Auto-learn on working-tree changes. <code>ahadiff serve --watch</code> runs the same watcher with the WebUI attached.</p>
           <div class="code-block"><span class="cmd">ahadiff watch
 ahadiff watch --debounce 2.0 --cooldown 30.0
 ahadiff watch --dry-run</span></div>
@@ -1475,7 +1475,7 @@ codex mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;</span></div
         </div>
         <div class="g-card">
           <h3><span class="cap-group-label">Git hooks</span></h3>
-          <p><code>ahadiff install hooks</code> writes reminder-only git hooks. After each commit the post-commit hook prints one line: run <code>ahadiff learn HEAD~1..HEAD</code> to learn back this commit. Before each push the pre-push hook prints a verify reminder. The hooks never run learn, never block a commit, and swallow their own failures. Add <code>--auto-learn</code> for hands-free mode: the post-commit hook runs <code>ahadiff learn --last</code> in the background and appends output to <code>.ahadiff/hooks.log</code>. The learnability gate still applies, so trivial commits skip before any LLM call. When two commits land in quick succession, the per-repo write lock stops the second learn; check the log or re-run <code>ahadiff learn --last</code> yourself. Re-run <code>ahadiff install hooks</code> with or without the flag to switch modes in place. macOS/Linux only.</p>
+          <p><code>ahadiff install hooks</code> writes reminder-only git hooks. After each commit the post-commit hook prints one line: run <code>ahadiff learn HEAD~1..HEAD</code> to learn back this commit. Before each push the pre-push hook prints a verify reminder. The hooks never run learn, never block a commit, and swallow their own failures. Add <code>--auto-learn</code> for hands-free mode: the post-commit hook runs <code>ahadiff learn --last</code> in the background and appends output to <code>.ahadiff/hooks.log</code>. Commits from GUI clients work too: the hook falls back to the <code>ahadiff</code> path recorded at install time, and appends a skip line to the log instead of blocking the commit if it still cannot find <code>ahadiff</code>. The learnability gate still applies, so trivial commits skip before any LLM call. When two commits land in quick succession, the per-repo write lock stops the second learn; check the log or re-run <code>ahadiff learn --last</code> yourself. Re-run <code>ahadiff install hooks</code> with or without the flag to switch modes in place. macOS/Linux only.</p>
           <div class="code-block"><span class="cmd">ahadiff install hooks
 ahadiff install hooks --auto-learn</span></div>
         </div>
@@ -1642,9 +1642,9 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG export works by default with <code>pip install ahadiff</code> because <code>genanki</code> is bundled. Active review cards export without any extra install.</p></div></details>
         </div>
         <div class="feat-card">
-          <h3>Serve --watch (UI rebuild)</h3>
+          <h3>Serve --watch (serve + auto-learn)</h3>
           <p>Works by default; the file watcher is bundled.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The file watcher is included by default, so <code>ahadiff serve --watch</code> works out of the box. You can also run <code>ahadiff learn</code> manually.</p></div></details>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The file watcher is included by default, so <code>ahadiff serve --watch</code> works out of the box: it serves the WebUI and auto-learns on working-tree changes — the same watcher as <code>ahadiff watch</code>. You can also run <code>ahadiff learn</code> manually.</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Watch (auto-learn)</h3>

@@ -4,7 +4,7 @@
 >
 > Every AI-written git diff becomes a verified Aha lesson, with code-linked evidence, active-recall quizzes, spaced review, and a self-improving quality ratchet.
 
-[中文](./README.zh.md) · [Landing page](https://agi-is-going-to-arrive.github.io/ahadiff/) · [User Guide](./docs/USER_GUIDE.en.html) · [English tutorial video (subtitled)](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [Chinese tutorial video (Bilibili)](https://www.bilibili.com/video/BV1b57k6yEWm)
+[中文](./README.zh.md) · [Landing page](https://agi-is-going-to-arrive.github.io/ahadiff/) · [User Guide](./docs/USER_GUIDE.en.html) · [<img src="./docs/assets/youtube.svg" width="16" height="16" alt="YouTube"> English tutorial video (YouTube)](https://youtu.be/lvL7GMvDPvI) · [<img src="./docs/assets/bilibili.svg" width="16" height="16" alt="Bilibili"> Chinese tutorial video (Bilibili)](https://www.bilibili.com/video/BV1b57k6yEWm)
 
 > Install with `pip install ahadiff`. The English video shows this step; the Chinese Bilibili cut is being refreshed to match.
 
@@ -193,7 +193,7 @@ ahadiff install claude          # also: cursor, copilot, codex, gemini, antigrav
 ```
 15 targets supported. Run `ahadiff install --help` for the full list, or configure in the WebUI under Settings → AI Tool Guidance.
 
-Git hooks stay reminder-only by default. `ahadiff install hooks --auto-learn` switches the post-commit hook to run `ahadiff learn --last` in the background (log: `.ahadiff/hooks.log`). Register the read-only MCP server (7 tools) with your agent:
+Git hooks stay reminder-only by default. `ahadiff install hooks --auto-learn` switches the post-commit hook to run `ahadiff learn --last` in the background (log: `.ahadiff/hooks.log`). GUI-client commits work too: the hook falls back to the install-time path, logs a skip if `ahadiff` is unreachable, and never blocks the commit. Prefer learning from saves instead of commits? `ahadiff watch` auto-learns on working-tree changes (2s debounce, 30s cooldown); `ahadiff serve --watch` runs the same watcher with the WebUI attached. Register the read-only MCP server (7 tools) with your agent:
 ```bash
 claude mcp add ahadiff -- ahadiff mcp-server --repo-root <path>   # Claude Code
 codex mcp add ahadiff -- ahadiff mcp-server --repo-root <path>    # Codex CLI

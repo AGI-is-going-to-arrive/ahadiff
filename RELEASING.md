@@ -98,7 +98,7 @@ source /tmp/ahadiff-smoke/bin/activate    # Windows: .\.tmp\ahadiff-smoke\Script
 python -m pip install --upgrade pip
 python -m pip install dist/*.whl
 
-# version must be 1.2.0
+# version must match the release version
 ahadiff --version
 
 # serve from an EMPTY dir so viewer/dist is not on disk; --no-browser stays in terminal
@@ -130,7 +130,7 @@ Resolution order enforced by `_resolve_viewer_dist` (in `src/ahadiff/serve/stati
 
 ## 3. Version policy
 
-- **`1.2.0` is GA** (a normal, non-prerelease version). Plain `pip install ahadiff` installs it
+- **Releases are GA** (normal, non-prerelease versions). Plain `pip install ahadiff` installs the latest
   — no `--pre` needed. There is no alpha/`aN` suffix anymore.
 - The version is declared in these files that must always agree:
   - `pyproject.toml` → `[project]` `version`
@@ -173,11 +173,11 @@ tag ref with `dry_run=false`:
 ```bash
 # 1) bump all declared versions, commit, open PR, merge to main
 # 2) tag the release commit and push the tag; push does not trigger release.yml
-git tag v1.2.0
-git push origin v1.2.0
+git tag v<ver>
+git push origin v<ver>
 
 # 3) manually dispatch the release workflow on the tag ref
-gh workflow run release.yml --ref v1.2.0 -f dry_run=false
+gh workflow run release.yml --ref v<ver> -f dry_run=false
 ```
 
 To dry-run the gates without publishing (works today), use the Actions UI → *Release* →
@@ -258,7 +258,7 @@ python -m pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
   ahadiff
-ahadiff --version            # expect 1.2.0
+ahadiff --version            # expect the release version
 deactivate
 ```
 
@@ -274,9 +274,9 @@ python -m venv /tmp/ahadiff-verify
 source /tmp/ahadiff-verify/bin/activate
 python -m pip install --upgrade pip
 
-# plain install — no --pre, since 1.2.0 is GA
+# plain install — no --pre; releases are GA
 python -m pip install ahadiff
-ahadiff --version            # expect 1.2.0
+ahadiff --version            # expect the release version
 
 # serve smoke from an empty dir → packaged WebUI must be served
 mkdir -p /tmp/ahadiff-verify-empty

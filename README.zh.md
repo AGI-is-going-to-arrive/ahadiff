@@ -4,7 +4,7 @@
 >
 > 把 AI 写出的每一个 git diff，变成带证据、能出题、会复习、还能推动质量变好的学习课程。
 
-[English](./README.md) · [介绍页](https://agi-is-going-to-arrive.github.io/ahadiff/) · [使用指南](./docs/USER_GUIDE.zh.html) · [英文视频教程（带字幕）](./docs/video/output/ahadiff-tutorial.en.burned-subtitles.mp4) · [中文视频教程（本地，带字幕）](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4) · [中文视频教程（B 站）](https://www.bilibili.com/video/BV1b57k6yEWm)
+[English](./README.md) · [介绍页](https://agi-is-going-to-arrive.github.io/ahadiff/) · [使用指南](./docs/USER_GUIDE.zh.html) · [<img src="./docs/assets/youtube.svg" width="16" height="16" alt="YouTube"> 英文视频教程（YouTube）](https://youtu.be/lvL7GMvDPvI) · [<img src="./docs/assets/bilibili.svg" width="16" height="16" alt="Bilibili"> 中文视频教程（B 站）](https://www.bilibili.com/video/BV1b57k6yEWm) · [中文视频教程（本地最新，带字幕）](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
 
 > 安装以 `pip install ahadiff` 为准；英文视频已是最新，中文 B 站视频正在同步更新。
 
@@ -165,7 +165,7 @@ ahadiff review           # 复习过去生成的卡片
 </details>
 
 <details>
-<summary>概念账本：可排序的已学概念表</summary>
+<summary>概念账本：已学概念表</summary>
 <img src="./docs/video/public/screenshots/zh/zh-concepts.png" alt="概念账本" width="800">
 </details>
 
@@ -193,7 +193,7 @@ ahadiff install claude          # 也支持: cursor, copilot, codex, gemini, ant
 ```
 当前支持 15 个目标。完整列表可运行 `ahadiff install --help`，也可以在 WebUI 的设置 → AI 工具指引中配置。
 
-Git hooks 默认仅提醒。`ahadiff install hooks --auto-learn` 会让 post-commit hook 在后台运行 `ahadiff learn --last`（日志：`.ahadiff/hooks.log`）。把只读 MCP server（7 个工具）注册给你的 agent：
+Git hooks 默认仅提醒。`ahadiff install hooks --auto-learn` 会让 post-commit hook 在后台运行 `ahadiff learn --last`（日志：`.ahadiff/hooks.log`）。GUI 客户端提交也能用：hook 会回退到安装时记录的路径；实在找不到 `ahadiff` 时只在日志里记一条跳过，绝不卡住 commit。想按保存而不是按 commit 触发学习？`ahadiff watch` 会在工作区变更时自动 learn（防抖 2s、冷却 30s）；`ahadiff serve --watch` 用同一个监听并带起 WebUI。把只读 MCP server（7 个工具）注册给你的 agent：
 ```bash
 claude mcp add ahadiff -- ahadiff mcp-server --repo-root <path>   # Claude Code
 codex mcp add ahadiff -- ahadiff mcp-server --repo-root <path>    # Codex CLI

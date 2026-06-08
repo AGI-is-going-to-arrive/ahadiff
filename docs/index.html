@@ -433,6 +433,9 @@ img { max-width: 100%; display: block; }
 .badge-dot.starlette { background: #05998B; }
 .badge-dot.fsrs { background: #DB2777; }
 .badge-dot.vite { background: #646CFF; }
+a.badge { text-decoration: none; }
+.badge img { display: inline-block; flex: none; }
+.video-badges { margin-top: 16px; }
 
 /* ===== Footer ===== */
 .footer {
@@ -1026,6 +1029,10 @@ img { max-width: 100%; display: block; }
           <source src="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" type="video/mp4" />
         </video>
       </div>
+      <div class="badges video-badges reveal">
+        <a class="badge" href="https://youtu.be/lvL7GMvDPvI" target="_blank" rel="noopener"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:-2px"> <span data-i18n="video.en">英文视频（YouTube）</span></a>
+        <a class="badge" href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:-2px"> <span data-i18n="video.zh">中文视频（B 站）</span></a>
+      </div>
       <p class="video-link"><a id="tutorialVideoLink" href="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" target="_blank" rel="noopener" data-i18n="video.open">在新标签页打开视频 ↗</a> &middot; <a href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener" data-i18n="video.bilibili">中文版在 B 站观看 ↗</a></p>
       <p class="video-note" data-i18n="video.note">视频里的安装就是 <code>pip install ahadiff</code>，一行装好。</p>
     </div>
@@ -1173,6 +1180,7 @@ img { max-width: 100%; display: block; }
           <tr><td class="cmd-name"><code>ahadiff serve</code></td><td class="cmd-desc" data-i18n="cmds.serve">打开本地 Web UI</td></tr>
           <tr><td class="cmd-name"><code>ahadiff export preview</code></td><td class="cmd-desc" data-i18n="cmds.export">生成本地静态预览包</td></tr>
           <tr><td class="cmd-name"><code>ahadiff watch</code></td><td class="cmd-desc" data-i18n="cmds.watch">工作区变更自动 learn</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff install hooks --auto-learn</code></td><td class="cmd-desc" data-i18n="cmds.hooksauto">每次 commit 后后台自动 learn</td></tr>
           <tr><td class="cmd-name"><code>ahadiff mcp-server</code></td><td class="cmd-desc" data-i18n="cmds.mcp">面向 AI 工具的只读 MCP server（7 个工具）</td></tr>
         </tbody>
       </table>
@@ -1490,6 +1498,8 @@ const T = {
   "video.open": { zh: "在新标签页打开视频 ↗", en: "Open the video in a new tab ↗" },
   "video.bilibili": { zh: "中文版在 B 站观看 ↗", en: "Watch the Chinese version on Bilibili ↗" },
   "video.note": { zh: "视频里的安装就是 <code>pip install ahadiff</code>，一行装好。", en: "The install shown in the video is <code>pip install ahadiff</code> — one line." },
+  "video.en": { zh: "英文视频（YouTube）", en: "English video (YouTube)" },
+  "video.zh": { zh: "中文视频（B 站）", en: "Chinese video (Bilibili)" },
   "screens.eyebrow": { zh: "界面", en: "WEBUI" },
   "screens.title": { zh: "界面预览", en: "Inside the WebUI" },
   "screens.subtitle": { zh: "Dashboard、Lesson、Diff、Quiz、Review、Concepts、Settings：一个本地 React SPA。", en: "Dashboard, Lesson, Diff, Quiz, Review, Concepts, Settings: one local React SPA." },
@@ -1515,6 +1525,7 @@ const T = {
   "cmds.serve": { zh: "打开本地 Web UI", en: "Open the local Web UI" },
   "cmds.export": { zh: "生成本地静态预览包", en: "Write a local static preview bundle" },
   "cmds.watch": { zh: "工作区变更自动 learn", en: "Auto-learn on working-tree changes" },
+  "cmds.hooksauto": { zh: "每次 commit 后后台自动 learn", en: "Background auto-learn after each commit" },
   "cmds.mcp": { zh: "面向 AI 工具的只读 MCP server（7 个工具）", en: "Read-only MCP server for AI tools (7 tools)" },
   "cmds.footnote": { zh: "完整命令和 10 种捕获来源见使用指南。", en: "See the User Guide for the full command set and all 10 capture sources." },
   "faq.eyebrow": { zh: "常见问题", en: "FAQ" },

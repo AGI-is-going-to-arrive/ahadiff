@@ -940,7 +940,7 @@ img { max-width: 100%; display: block; }
       <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.0</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
       <p class="guide-lead">AhaDiff 把一次 git diff 变成带代码证据的课程、一份可验证的 claim 清单、测验、复习卡、概念图谱和质量棘轮。它默认 local-first：每个仓库自己的 AhaDiff 状态都存在 <code>.ahadiff/</code> 下。</p>
-      <div class="start-tip">视频教程：<a href="video/output/ahadiff-tutorial.en.burned-subtitles.mp4">英文讲解（MP4）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm">中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。安装以 <code>pip install ahadiff</code> 为准；英文讲解已是最新，中文 B 站视频正在同步更新。</div>
+      <div class="start-tip">视频教程：<a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 英文讲解（YouTube）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。安装以 <code>pip install ahadiff</code> 为准；英文讲解已是最新，中文 B 站视频正在同步更新。</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
@@ -1167,7 +1167,7 @@ supports_native_json_schema = false</span></div>
           <span class="cap-group-label">快速（工作树）</span>
           <div class="cap-tiles">
             <div class="cap-tile"><span class="cap-name">Last commit</span><span class="cap-when">最近一次 commit。</span><code class="cap-cli">ahadiff learn --last</code></div>
-            <div class="cap-tile"><span class="cap-name">Staged</span><span class="cap-when">已暂存、准备下次提交的内容。</span><code class="cap-cli">ahadiff learn --staged</code></div>
+            <div class="cap-tile"><span class="cap-name">Staged</span><span class="cap-when">已暂存、准备下次提交的内容。先用 <code>git add</code> 暂存。</span><code class="cap-cli">ahadiff learn --staged</code></div>
             <div class="cap-tile"><span class="cap-name">Unstaged</span><span class="cap-when">尚未暂存的改动；可加未跟踪文件。</span><code class="cap-cli">ahadiff learn --unstaged --include-untracked</code></div>
           </div>
         </div>
@@ -1227,7 +1227,7 @@ supports_native_json_schema = false</span></div>
     <section id="webui">
       <div class="section-eyebrow">界面</div>
       <h2>4. 使用 WebUI</h2>
-      <p>运行下面任意一条打开本地 React SPA。<code>serve</code> 默认会打开浏览器；加 <code>--no-browser</code> 保持无头，或加 <code>--watch</code> 在文件改动时重建。</p>
+      <p>运行下面任意一条打开本地 React SPA。<code>serve</code> 默认会打开浏览器；加 <code>--no-browser</code> 保持无头，或加 <code>--watch</code> 在工作区文件改动时自动 learn。</p>
       <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # 文件监听，默认已包含</span></div>
@@ -1416,14 +1416,14 @@ ahadiff improve-run RUN_ID</span></div>
         </div>
         <div class="g-card">
           <h3>Serve</h3>
-          <p>打开本地 WebUI。<code>--watch</code> 在文件改动时重建。</p>
+          <p>打开本地 WebUI。<code>--watch</code> 会附带工作区改动自动 learn。</p>
           <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # 文件监听，默认已包含</span></div>
         </div>
         <div class="g-card">
           <h3>Watch</h3>
-          <p>工作区变更自动 learn。<code>ahadiff serve --watch</code> 是另一个功能，只负责重建 WebUI。</p>
+          <p>工作区变更自动 learn。<code>ahadiff serve --watch</code> 用的是同一个监听，只是多带一个 WebUI。</p>
           <div class="code-block"><span class="cmd">ahadiff watch
 ahadiff watch --debounce 2.0 --cooldown 30.0
 ahadiff watch --dry-run</span></div>
@@ -1475,7 +1475,7 @@ codex mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;</span></div
         </div>
         <div class="g-card">
           <h3><span class="cap-group-label">Git hooks</span></h3>
-          <p><code>ahadiff install hooks</code> 写入仅提醒的 git hooks：每次 commit 后，post-commit hook 打印一行提示（运行 <code>ahadiff learn HEAD~1..HEAD</code> 学回这次提交）；push 前 pre-push hook 打印 verify 提醒。这些 hooks 不会运行 learn，不会阻塞 commit，自身失败也会被吞掉。加 <code>--auto-learn</code> 进入免操作模式：post-commit hook 在后台运行 <code>ahadiff learn --last</code>，输出追加到 <code>.ahadiff/hooks.log</code>。learnability gate 照常生效，琐碎提交在调用 LLM 前就会跳过。两次 commit 间隔过近时，per-repo 写锁会让第二个 learn 直接失败并写入日志；查看日志或自己重跑 <code>ahadiff learn --last</code>。带或不带该 flag 重跑 <code>ahadiff install hooks</code> 即可原地切换模式。仅支持 macOS/Linux。</p>
+          <p><code>ahadiff install hooks</code> 写入仅提醒的 git hooks：每次 commit 后，post-commit hook 打印一行提示（运行 <code>ahadiff learn HEAD~1..HEAD</code> 学回这次提交）；push 前 pre-push hook 打印 verify 提醒。这些 hooks 不会运行 learn，不会阻塞 commit，自身失败也会被吞掉。加 <code>--auto-learn</code> 进入免操作模式：post-commit hook 在后台运行 <code>ahadiff learn --last</code>，输出追加到 <code>.ahadiff/hooks.log</code>。GUI 客户端提交也能用：hook 会回退到安装时记录的 <code>ahadiff</code> 路径；实在找不到时只在日志里追加一条跳过记录，不会卡住 commit。learnability gate 照常生效，琐碎提交在调用 LLM 前就会跳过。两次 commit 间隔过近时，per-repo 写锁会让第二个 learn 直接失败并写入日志；查看日志或自己重跑 <code>ahadiff learn --last</code>。带或不带该 flag 重跑 <code>ahadiff install hooks</code> 即可原地切换模式。仅支持 macOS/Linux。</p>
           <div class="code-block"><span class="cmd">ahadiff install hooks
 ahadiff install hooks --auto-learn</span></div>
         </div>
@@ -1642,9 +1642,9 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG 导出用 <code>pip install ahadiff</code> 默认即可用，因为已内置 <code>genanki</code>。当前活跃复习卡无需额外安装即可导出。</p></div></details>
         </div>
         <div class="feat-card">
-          <h3>Serve --watch（界面重建）</h3>
+          <h3>Serve --watch（serve + 自动 learn）</h3>
           <p>默认即可用；文件监听已内置。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>文件监听默认已包含，<code>ahadiff serve --watch</code> 开箱即用。你也可以手动运行 <code>ahadiff learn</code>。</p></div></details>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>文件监听默认已包含，<code>ahadiff serve --watch</code> 开箱即用：一边提供 WebUI，一边在工作区改动时自动 learn——和 <code>ahadiff watch</code> 是同一套监听。你也可以手动运行 <code>ahadiff learn</code>。</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Watch（自动 learn）</h3>
