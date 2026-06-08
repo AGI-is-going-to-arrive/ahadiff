@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import pathlib
 import stat
 import subprocess
 from typing import TYPE_CHECKING, Any, cast
@@ -13,7 +14,7 @@ from starlette.testclient import TestClient
 
 from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.run_source import ProviderCapabilities, ProviderConfig
-from ahadiff.core import config as config_module
+from ahadiff.core import atomic_replace as atomic_replace_module
 from ahadiff.core.config import (
     apply_repo_env_file,
     iter_resolved_settings,
@@ -166,6 +167,26 @@ def _successful_probe_report(
     )
 
 
+def _install_successful_probe_spy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    calls: list[dict[str, object]] = []
+
+    def probe_spy(**kwargs: object) -> ProbeReport:
+        calls.append(dict(kwargs))
+        return _successful_probe_report(
+            provider_name=str(kwargs["provider_name"]),
+            provider_class=str(kwargs["provider_class"]),
+            model_name=str(kwargs["model_name"]),
+            model_limits_name=kwargs["model_limits_name"]
+            if isinstance(kwargs["model_limits_name"], str)
+            else None,
+            base_url=str(kwargs["base_url"]),
+            api_key_env=str(kwargs["api_key_env"]),
+        )
+
+    monkeypatch.setattr(routes_provider_module, "probe_provider", probe_spy)
+    return calls
+
+
 def test_repo_env_file_write_upserts_quotes_and_chmods(tmp_path: Path) -> None:
     env_path = tmp_path / ".ahadiff" / ".env"
     env_path.parent.mkdir()
@@ -199,19 +220,22 @@ def test_repo_env_file_write_retries_transient_windows_sharing_violation(
 ) -> None:
     env_path = tmp_path / ".ahadiff" / ".env"
     env_path.parent.mkdir()
-    original_replace = os.replace
+    original_replace = pathlib.Path.replace
     calls = {"count": 0}
 
-    def flaky_replace(src: Any, dst: Any) -> None:
+    def flaky_replace(self: pathlib.Path, target: pathlib.Path | str) -> pathlib.Path:
         calls["count"] += 1
         if calls["count"] == 1:
             error = PermissionError("sharing violation")
             error.winerror = 32  # type: ignore[attr-defined]
             raise error
-        original_replace(src, dst)
+        return original_replace(self, target)
 
-    monkeypatch.setattr(config_module.os, "replace", flaky_replace)
-    monkeypatch.setattr(config_module.time, "sleep", lambda _seconds: None)
+    def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(pathlib.Path, "replace", flaky_replace)
+    monkeypatch.setattr(atomic_replace_module.time, "sleep", no_sleep)
 
     write_repo_env_var(env_path, "AHADIFF_DEMO_KEY", "plain-token")
 
@@ -428,6 +452,114 @@ def test_provider_create_with_plain_api_key_stores_env_reference_and_verifies(
     assert raw_key not in json.dumps(client.get("/api/config", headers=_AUTH).json())
     assert raw_key not in json.dumps(client.get("/api/doctor", headers=_AUTH).json())
     assert raw_key not in (state_dir / "audit.jsonl").read_text(encoding="utf-8")
+
+
+def test_provider_create_identifier_shaped_plain_api_key_is_stored_as_repo_env_value(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    calls = _install_successful_probe_spy(monkeypatch)
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    raw_key = "OPENAI_API_KEY"
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider"]["api_key_env"] == "AHADIFF_DEMO_KEY"
+    assert calls[0]["api_key"] == raw_key
+    assert load_repo_env_file(state_dir / ".env") == {"AHADIFF_DEMO_KEY": raw_key}
+    assert os.environ["AHADIFF_DEMO_KEY"] == raw_key
+    assert load_config(tmp_path).values["providers"]["demo"]["api_key_env"] == "AHADIFF_DEMO_KEY"
+    assert raw_key not in (state_dir / "config.toml").read_text(encoding="utf-8")
+    assert raw_key not in (state_dir / "audit.jsonl").read_text(encoding="utf-8")
+
+
+def test_provider_create_whitespace_api_key_is_noop_and_not_persisted(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key="   "),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider"]["api_key_env"] == "AHADIFF_PROVIDER_API_KEY"
+    assert response.json()["verification"] is None
+    assert not (state_dir / ".env").exists()
+    assert "api_key" not in (state_dir / "audit.jsonl").read_text(encoding="utf-8").lower()
+
+
+def test_provider_create_rejects_overlong_plain_api_key_before_writes(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key="k" * 4097, api_key_env=None),
+    )
+
+    assert response.status_code == 422
+    assert "api_key" in json.dumps(response.json(), sort_keys=True)
+    assert not (state_dir / ".env").exists()
+    assert not (state_dir / "config.toml").exists()
+    assert not (state_dir / "audit.jsonl").exists()
+
+
+def test_provider_create_plain_api_key_with_equals_round_trips_from_repo_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    _install_successful_probe_spy(monkeypatch)
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    raw_key = "a=b=c"
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None),
+    )
+
+    assert response.status_code == 201
+    assert (state_dir / ".env").read_text(encoding="utf-8") == "AHADIFF_DEMO_KEY=a=b=c\n"
+    assert load_repo_env_file(state_dir / ".env") == {"AHADIFF_DEMO_KEY": raw_key}
+    assert os.environ["AHADIFF_DEMO_KEY"] == raw_key
+
+
+def test_provider_create_unicode_plain_api_key_round_trips_from_repo_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+    _install_successful_probe_spy(monkeypatch)
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    raw_key = "\u5bc6\u94a5-\u00df-\u043a\u043b\u044e\u0447"
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None),
+    )
+
+    assert response.status_code == 201
+    assert load_repo_env_file(state_dir / ".env") == {"AHADIFF_DEMO_KEY": raw_key}
+    assert os.environ["AHADIFF_DEMO_KEY"] == raw_key
 
 
 def test_provider_create_plain_api_key_extends_existing_state_gitignore(
@@ -823,6 +955,78 @@ def test_provider_update_plain_api_key_mask_round_trip_and_overwrite(
     assert (state_dir / ".env").read_text(encoding="utf-8") == (
         "AHADIFF_DEMO_KEY=sk-new-secret-1234567890\n"
     )
+
+
+def test_provider_update_plain_api_key_removes_old_owned_env_without_clobbering_user_export(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_DEMO_KEY"\n',
+        encoding="utf-8",
+    )
+    write_repo_env_var(state_dir / ".env", "AHADIFF_DEMO_KEY", "sk-old-secret-1234567890")
+    monkeypatch.setenv("AHADIFF_DEMO_KEY", "user-exported-secret")
+    monkeypatch.delenv("AHADIFF_DEMO_2_KEY", raising=False)
+    _install_successful_probe_spy(monkeypatch)
+    client = _client(state_dir)
+
+    updated = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"api_key": "sk-new-secret-1234567890"},
+    )
+
+    provider = load_config(tmp_path).values["providers"]["demo"]
+    assert updated.status_code == 200
+    assert provider["api_key_env"] == "AHADIFF_DEMO_2_KEY"
+    assert load_repo_env_file(state_dir / ".env") == {
+        "AHADIFF_DEMO_2_KEY": "sk-new-secret-1234567890"
+    }
+    assert "sk-old-secret-1234567890" not in (state_dir / ".env").read_text(encoding="utf-8")
+    assert os.environ["AHADIFF_DEMO_KEY"] == "user-exported-secret"
+
+
+def test_provider_update_api_key_env_removes_old_owned_repo_env_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_DEMO_KEY"\n',
+        encoding="utf-8",
+    )
+    write_repo_env_var(state_dir / ".env", "AHADIFF_DEMO_KEY", "sk-old-secret-1234567890")
+    monkeypatch.setenv("OPENAI_API_KEY", "user-managed-secret")
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    client = _client(state_dir)
+
+    updated = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"api_key_env": "OPENAI_API_KEY"},
+    )
+
+    provider = load_config(tmp_path).values["providers"]["demo"]
+    assert updated.status_code == 200
+    assert updated.json()["verification"] is None
+    assert provider["api_key_env"] == "OPENAI_API_KEY"
+    assert load_repo_env_file(state_dir / ".env") == {}
+    assert os.environ["OPENAI_API_KEY"] == "user-managed-secret"
+    assert "AHADIFF_DEMO_KEY" not in os.environ
 
 
 def test_provider_update_plain_api_key_rolls_back_env_when_config_write_fails(

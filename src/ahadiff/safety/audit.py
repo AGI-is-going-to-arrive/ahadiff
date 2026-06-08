@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import portalocker
 
+from ahadiff.core.atomic_replace import replace_with_retry
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import (
@@ -137,7 +138,7 @@ def _rotate_if_needed(path: Path, *, rotate_bytes: int, max_backups: int) -> Non
     if snapshot_path.exists():
         source_path = snapshot_path
     elif path.exists() and _lstat_size_no_follow(path) >= rotate_bytes:
-        path.replace(snapshot_path)
+        replace_with_retry(path, snapshot_path)
         source_path = snapshot_path
     else:
         return
@@ -151,7 +152,7 @@ def _rotate_if_needed(path: Path, *, rotate_bytes: int, max_backups: int) -> Non
             if index == max_backups:
                 source.unlink()
             else:
-                source.replace(destination)
+                replace_with_retry(source, destination)
 
     rotated_path = _rotated_path(path, 1)
     tmp_path = rotated_path.with_suffix(rotated_path.suffix + ".tmp")
@@ -161,7 +162,7 @@ def _rotate_if_needed(path: Path, *, rotate_bytes: int, max_backups: int) -> Non
     _gzip_copy_no_follow(source_path, tmp_path)
     validate_state_path_no_symlinks(tmp_path, allow_missing_leaf=False)
     validate_state_path_no_symlinks(rotated_path, allow_missing_leaf=True)
-    tmp_path.replace(rotated_path)
+    replace_with_retry(tmp_path, rotated_path)
     validate_state_path_no_symlinks(source_path, allow_missing_leaf=False)
     source_path.unlink(missing_ok=True)
     _touch_no_follow(path)

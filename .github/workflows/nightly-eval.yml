@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHON_VERSION: "3.12"
+      NODE_VERSION: "22"
+      PNPM_VERSION: "10.33.0"
       SQLITE_AUTOCONF_VERSION: "3510300"
       SQLITE_DOWNLOAD_YEAR: "2026"
       AHADIFF_LIVE_LLM_API_KEY: ${{ secrets.AHADIFF_LIVE_LLM_API_KEY }}
@@ -49,6 +51,25 @@ jobs:
 
       - name: Verify Python SQLite runtime
         run: python -c "import sqlite3; print(sqlite3.sqlite_version, sqlite3.__file__); c=sqlite3.connect(':memory:'); c.execute('CREATE VIRTUAL TABLE t USING fts5(x)'); print('fts5 ok')"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: viewer/pnpm-lock.yaml
+
+      - name: Build viewer
+        working-directory: viewer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
 
       - run: uv sync --locked --dev --python python3.12
 

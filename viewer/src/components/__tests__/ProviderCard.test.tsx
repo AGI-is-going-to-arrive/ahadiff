@@ -10,6 +10,7 @@ import ProviderCard, {
   shouldShowRecommendedLimitAction,
   buildProviderUpdatePayload,
   ProviderEditForm,
+  PROVIDER_ERROR_KEY_BY_CODE,
 } from '../ProviderCard';
 import type { ProviderSummary } from '../../api/config';
 import type { TaskInfoResponse } from '../../api/types';
@@ -508,6 +509,17 @@ describe('ProviderCard', () => {
       expect(payload.model_name).toBe('claude-3-opus');
       expect(payload.base_url).toBe('https://api.anthropic.com/v1');
       expect(payload.api_key).toBe('new-key');
+    });
+  });
+
+  describe('PROVIDER_ERROR_KEY_BY_CODE mapping', () => {
+    it('correctly maps expected backend error codes to correct translation keys', () => {
+      expect(PROVIDER_ERROR_KEY_BY_CODE.INPUT_VALIDATION).toBe('Settings_page.provider_error_validation_error');
+      expect(PROVIDER_ERROR_KEY_BY_CODE.INPUT_BAD_FIELD).toBe('Settings_page.provider_error_bad_field');
+      expect(PROVIDER_ERROR_KEY_BY_CODE.PROVIDER_NOT_FOUND).toBe('Settings_page.provider_error_provider_not_found');
+      expect(PROVIDER_ERROR_KEY_BY_CODE.AUTH_REQUIRED).toBe('Settings_page.provider_error_auth_required');
+      expect(PROVIDER_ERROR_KEY_BY_CODE.LOCK_CONFLICT).toBe('Settings_page.provider_error_lock_conflict');
+      expect(PROVIDER_ERROR_KEY_BY_CODE.INTERNAL_ERROR).toBe('Settings_page.provider_error_internal_error');
     });
   });
 });

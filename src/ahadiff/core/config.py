@@ -7,7 +7,6 @@ import os
 import re
 import stat
 import tempfile
-import time
 import tomllib
 from collections.abc import Mapping
 from contextlib import suppress
@@ -20,6 +19,7 @@ from urllib.parse import unquote_plus, urlencode, urlsplit, urlunsplit
 from ahadiff.contracts import ProviderCapabilityOverride, ProviderClass, ThinkingLevel
 from ahadiff.i18n import normalize_locale_preference
 
+from .atomic_replace import replace_with_retry
 from .errors import ConfigError, InputError, StorageError
 from .paths import (
     ensure_state_parent_dir,
@@ -66,8 +66,6 @@ _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
 _AHADIFF_PROVIDER_API_KEY_ENV_PATTERN = re.compile(r"^AHADIFF_[A-Z0-9_]*$")
 _ENV_VAR_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _ENV_VAR_REFERENCE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_REPO_ENV_REPLACE_ATTEMPTS = 5
-_REPO_ENV_REPLACE_RETRY_SECONDS = 0.02
 _SUPPORTED_PROVIDER_CLASSES = frozenset(cast("tuple[str, ...]", get_args(ProviderClass)))
 _THINKING_LEVELS = frozenset(cast("tuple[str, ...]", get_args(ThinkingLevel)))
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -787,7 +785,7 @@ def write_config_data(config_path: Path, data: Mapping[str, Any]) -> Path:
     ) as handle:
         handle.write(rendered)
         temp_path = handle.name
-    Path(temp_path).replace(config_path)
+    replace_with_retry(Path(temp_path), config_path)
     return config_path
 
 
@@ -829,23 +827,6 @@ def _repo_env_config_error(exc: BaseException) -> ConfigError:
     if isinstance(exc, InputError | StorageError):
         return ConfigError(str(exc))
     return ConfigError(str(exc))
-
-
-def _is_windows_sharing_violation(exc: OSError) -> bool:
-    return getattr(exc, "winerror", None) in {32, 33}
-
-
-def _replace_repo_env_file_with_retry(source_path: Path, env_path: Path) -> None:
-    for attempt in range(_REPO_ENV_REPLACE_ATTEMPTS):
-        try:
-            source_path.replace(env_path)
-            return
-        except OSError as exc:
-            if not _is_windows_sharing_violation(exc):
-                raise
-            if attempt == _REPO_ENV_REPLACE_ATTEMPTS - 1:
-                raise
-            time.sleep(_REPO_ENV_REPLACE_RETRY_SECONDS)
 
 
 def _validate_existing_repo_env_file(env_path: Path) -> os.stat_result | None:
@@ -938,7 +919,7 @@ def _write_repo_env_lines_atomic(env_path: Path, lines: list[str]) -> None:
             _validate_existing_repo_env_file(env_path)
         except (InputError, StorageError) as exc:
             raise _repo_env_config_error(exc) from exc
-        _replace_repo_env_file_with_retry(temp_path, env_path)
+        replace_with_retry(temp_path, env_path)
         _validate_existing_repo_env_file(env_path)
     except Exception:
         if temp_path is not None:

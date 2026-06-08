@@ -11,10 +11,11 @@ import threading
 import time
 import webbrowser
 from contextlib import ExitStack, suppress
+from enum import Enum
 from functools import cache
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 from urllib.parse import quote
 
 import typer
@@ -63,12 +64,17 @@ from .serve.static import _resolve_viewer_dist  # pyright: ignore[reportPrivateU
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
+    from typing import Literal as _Literal
 
     from rich.status import Status
 
     from .contracts import PrivacyMode
     from .review.schemas import ReviewAnswer
     from .safety.gates import TransportTarget
+
+    QuizCountModeValue = _Literal["fixed", "auto"]
+else:
+    QuizCountModeValue = str
 
 console = Console()
 _REPLAY_REPO_ENV_FILE_ENV = "AHADIFF_REPLAY_REPO_ENV_FILE"
@@ -108,6 +114,11 @@ _SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] =
     (3, 50): (3, 50, 4),
     (3, 44): (3, 44, 6),
 }
+
+
+class QuizCountMode(str, Enum):
+    fixed = "fixed"
+    auto = "auto"
 
 
 @cache
@@ -219,7 +230,7 @@ def _cli_overrides(
     judge_model: str | None = None,
     serve_port: int | None = None,
     no_browser: bool | None = None,
-    quiz_mode: Literal["fixed", "auto"] | None = None,
+    quiz_mode: str | None = None,
 ) -> dict[str, Any]:
     return {
         "lang": lang,
@@ -230,6 +241,12 @@ def _cli_overrides(
         "serve.no_browser": no_browser,
         "quiz.quiz_question_count_mode": quiz_mode,
     }
+
+
+def _quiz_mode_value(quiz_mode: QuizCountMode | None) -> QuizCountModeValue | None:
+    if quiz_mode is None:
+        return None
+    return quiz_mode.value
 
 
 def _format_scalar(value: Any) -> str:
@@ -1193,7 +1210,7 @@ def learn_cmd(
         ),
     ] = False,
     quiz_mode: Annotated[
-        Literal["fixed", "auto"] | None,
+        QuizCountMode | None,
         typer.Option(
             "--quiz-mode",
             help="Override quiz question count mode for this run.",
@@ -1224,6 +1241,7 @@ def learn_cmd(
     ] = "AHADIFF_PROVIDER_API_KEY",
 ) -> None:
     try:
+        quiz_mode_value = _quiz_mode_value(quiz_mode)
         if spec_semantic_review and against_spec is None:
             raise InputError("--spec-semantic-review requires --against-spec")
         allow_non_git = (
@@ -1276,7 +1294,7 @@ def learn_cmd(
             use_graphify=use_graphify,
             lang=lang,
             privacy_mode=privacy_mode,
-            quiz_mode=quiz_mode,
+            quiz_mode=quiz_mode_value,
         )
         with console.status("[bold]Starting learn pipeline...[/bold]", spinner="dots") as status:
             result = orchestrator_module.run_learn_pipeline(
@@ -1291,7 +1309,7 @@ def learn_cmd(
                     cli_overrides=_cli_overrides(
                         privacy_mode=privacy_mode,
                         lang=lang,
-                        quiz_mode=quiz_mode,
+                        quiz_mode=quiz_mode_value,
                     ),
                 )
                 if has_git_repo
@@ -1300,7 +1318,7 @@ def learn_cmd(
                     cli_overrides=_cli_overrides(
                         privacy_mode=privacy_mode,
                         lang=lang,
-                        quiz_mode=quiz_mode,
+                        quiz_mode=quiz_mode_value,
                     ),
                 )
             )
@@ -1667,7 +1685,7 @@ def regenerate_cmd(
         typer.Option("--api-key-env", help="Env var name used to resolve the provider API key."),
     ] = "AHADIFF_PROVIDER_API_KEY",
     quiz_mode: Annotated[
-        Literal["fixed", "auto"] | None,
+        QuizCountMode | None,
         typer.Option(
             "--quiz-mode",
             help="Override quiz question count mode for regeneration.",
@@ -1675,6 +1693,7 @@ def regenerate_cmd(
     ] = None,
 ) -> None:
     try:
+        quiz_mode_value = _quiz_mode_value(quiz_mode)
         if only != "quiz":
             raise AhaDiffError("regenerate currently supports only: --only quiz")
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
@@ -1683,9 +1702,12 @@ def regenerate_cmd(
         if not run_path.exists():
             raise AhaDiffError(f"run artifacts do not exist: {run_path}")
         snapshot = (
-            load_config(root, cli_overrides=_cli_overrides(quiz_mode=quiz_mode))
+            load_config(root, cli_overrides=_cli_overrides(quiz_mode=quiz_mode_value))
             if has_git_repo
-            else load_workspace_config(root, cli_overrides=_cli_overrides(quiz_mode=quiz_mode))
+            else load_workspace_config(
+                root,
+                cli_overrides=_cli_overrides(quiz_mode=quiz_mode_value),
+            )
         )
         llm_config = cast("dict[str, Any]", snapshot.values["llm"])
         learn_config = cast("dict[str, Any]", snapshot.values["learn"])

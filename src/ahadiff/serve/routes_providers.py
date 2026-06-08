@@ -239,14 +239,40 @@ def _owned_repo_env_names(repo_env: Mapping[str, str]) -> set[str]:
     return names
 
 
-def _legacy_repo_env_name_for_cleanup(name: object) -> str | None:
-    if not isinstance(name, str) or name.startswith("AHADIFF_"):
+def _repo_env_name_for_cleanup(name: object) -> str | None:
+    if not isinstance(name, str):
         return None
     try:
         validate_repo_api_key_env_name(name)
     except ConfigError:
         return None
     return name
+
+
+def _remove_previous_provider_repo_env_value(
+    env_path: Path,
+    *,
+    previous_name: object,
+    current_name: str,
+    repo_env: Mapping[str, str],
+    providers: Mapping[str, object],
+    alias: str,
+) -> str | None:
+    previous_env_name = _repo_env_name_for_cleanup(previous_name)
+    if (
+        previous_env_name is None
+        or previous_env_name == current_name
+        or previous_env_name not in repo_env
+        or previous_env_name in _provider_key_env_names_in_use(providers, exclude_alias=alias)
+    ):
+        return None
+    if not previous_env_name.startswith("AHADIFF_") and (
+        previous_env_name not in _owned_repo_env_names(repo_env)
+    ):
+        return None
+    if not _remove_owned_repo_env_value(env_path, previous_env_name, repo_env=repo_env):
+        return None
+    return previous_env_name
 
 
 def _apply_saved_repo_env_value(
@@ -1135,6 +1161,7 @@ async def update_provider(request: Request) -> JSONResponse:
             updated_provider: dict[str, Any] = dict(existing_typed)
             env_path = state.state_dir / ".env"
             repo_env: Mapping[str, str] = {}
+            repo_env_loaded = False
             api_key_env_for_rollback: str | None = None
             attempted_repo_env_value: str | None = None
             legacy_env_name_for_restore: str | None = None
@@ -1143,6 +1170,7 @@ async def update_provider(request: Request) -> JSONResponse:
             config_committed = False
             if isinstance(plain_api_key, str):
                 repo_env = load_repo_env_file(env_path)
+                repo_env_loaded = True
                 api_key_env = _provider_key_env_name(
                     alias,
                     providers,
@@ -1159,24 +1187,20 @@ async def update_provider(request: Request) -> JSONResponse:
                     plain_api_key,
                     previous_repo_env=repo_env,
                 )
-                existing_api_key_env = _legacy_repo_env_name_for_cleanup(
-                    existing_typed.get("api_key_env")
-                )
-                if (
-                    existing_api_key_env is not None
-                    and existing_api_key_env != api_key_env
-                    and existing_api_key_env in _owned_repo_env_names(repo_env)
-                    and existing_api_key_env
-                    not in _provider_key_env_names_in_use(providers, exclude_alias=alias)
-                ):
-                    _remove_owned_repo_env_value(
-                        env_path,
-                        existing_api_key_env,
-                        repo_env=repo_env,
-                    )
-                    legacy_env_name_for_restore = existing_api_key_env
                 api_key_env_for_rollback = api_key_env
                 attempted_repo_env_value = plain_api_key
+            requested_api_key_env = update_payload.get("api_key_env")
+            if isinstance(requested_api_key_env, str):
+                if not repo_env_loaded:
+                    repo_env = load_repo_env_file(env_path)
+                legacy_env_name_for_restore = _remove_previous_provider_repo_env_value(
+                    env_path,
+                    previous_name=existing_typed.get("api_key_env"),
+                    current_name=requested_api_key_env,
+                    repo_env=repo_env,
+                    providers=providers,
+                    alias=alias,
+                )
             try:
                 safe_update = {
                     k: v

@@ -40,6 +40,22 @@ const PROVIDER_WARNING_KEY_BY_CODE: Record<string, MessageKey> = {
 const THINKING_WARNING_KEY_BY_CODE: Record<string, MessageKey> = {
   ollama_thinking_unverified: 'Settings_page.provider_thinking_warning_ollama_unverified',
 };
+export const PROVIDER_ERROR_KEY_BY_CODE: Record<string, MessageKey> = {
+  INPUT_VALIDATION: 'Settings_page.provider_error_validation_error',
+  INPUT_BAD_FIELD: 'Settings_page.provider_error_bad_field',
+  PROVIDER_NOT_FOUND: 'Settings_page.provider_error_provider_not_found',
+  AUTH_REQUIRED: 'Settings_page.provider_error_auth_required',
+  LOCK_CONFLICT: 'Settings_page.provider_error_lock_conflict',
+  INTERNAL_ERROR: 'Settings_page.provider_error_internal_error',
+  STORAGE_FS: 'Settings_page.provider_error_storage_fs',
+  STORAGE_REVIEW_DB: 'Settings_page.provider_error_storage_db',
+  STORAGE_USAGE_DB: 'Settings_page.provider_error_storage_db',
+  LOOPBACK_DENIED: 'Settings_page.provider_error_loopback_denied',
+  RATE_LIMITED: 'Settings_page.provider_error_rate_limited',
+  REQUEST_TIMEOUT: 'Settings_page.provider_error_timeout',
+  NOT_FOUND: 'Settings_page.provider_error_not_found',
+  FEATURE_UNAVAILABLE: 'Settings_page.provider_error_feature_unavailable',
+};
 
 const PROVIDER_CLASSES = [
   'openai',
@@ -455,8 +471,22 @@ export default function ProviderCard({
     } catch (err) {
       // Surface the backend's specific reason (e.g. base_url/alias error) instead of
       // collapsing every failure into the generic message.
-      const detail = err instanceof ApiError ? err.message : null;
-      setSaveError(detail ?? providerActionError(t, 'Settings_page.provider_save_failed'));
+      let errorMessage = '';
+      if (err instanceof ApiError) {
+        const errorCode = err.errorCode;
+        const mappedKey = errorCode ? PROVIDER_ERROR_KEY_BY_CODE[errorCode] : undefined;
+        if (mappedKey) {
+          errorMessage = t(mappedKey);
+        } else if (err.message) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = t('Settings_page.provider_save_failed');
+        }
+      } else {
+        const detail = err instanceof Error ? err.message : String(err);
+        errorMessage = t('Settings_page.provider_save_unexpected', { detail });
+      }
+      setSaveError(errorMessage);
     } finally {
       setSaving(false);
     }

@@ -57,22 +57,6 @@ jobs:
       - name: Verify Python SQLite runtime
         run: python -c "import sqlite3; print(sqlite3.sqlite_version, sqlite3.__file__); c=sqlite3.connect(':memory:'); c.execute('CREATE VIRTUAL TABLE t USING fts5(x)'); print('fts5 ok')"
 
-      - run: uv sync --locked --dev --python python3.12
-
-      - name: Gate - tests + coverage
-        run: uv run pytest --cov=src/ahadiff --cov-report=term-missing --cov-fail-under=85 tests -q --tb=long
-
-      - name: Gate - Graphify performance
-        run: uv run python benchmarks/graphify/bench_graphify.py
-
-      - name: Gate - lint
-        run: |
-          uv run ruff check src tests
-          uv run ruff format --check src tests
-
-      - name: Gate - type check
-        run: uv run pyright
-
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -91,6 +75,22 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
+
+      - run: uv sync --locked --dev --python python3.12
+
+      - name: Gate - tests + coverage
+        run: uv run pytest --cov=src/ahadiff --cov-report=term-missing --cov-fail-under=85 tests -q --tb=long
+
+      - name: Gate - Graphify performance
+        run: uv run python benchmarks/graphify/bench_graphify.py
+
+      - name: Gate - lint
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
+      - name: Gate - type check
+        run: uv run pyright
 
       - name: Gate - distribution build
         run: uv build
@@ -124,6 +124,8 @@ jobs:
     runs-on: windows-latest
     env:
       PYTHON_VERSION: "3.11"
+      NODE_VERSION: "22"
+      PNPM_VERSION: "10.33.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -137,6 +139,22 @@ jobs:
 
       - shell: bash
         run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: viewer/pnpm-lock.yaml
+      - name: Build viewer
+        working-directory: viewer
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
       - shell: bash
         run: uv sync --locked --dev --python ${{ env.PYTHON_VERSION }}
       - shell: bash
