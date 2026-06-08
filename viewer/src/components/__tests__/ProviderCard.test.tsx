@@ -2,11 +2,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ProviderCard, {
   ProviderDetailView,
+  ProviderVerificationNotice,
   createProviderProbePoller,
   providerLimitsSourceLabel,
   providerLimitsWarningMessage,
   providerThinkingHintKey,
   shouldShowRecommendedLimitAction,
+  buildProviderUpdatePayload,
+  ProviderEditForm,
 } from '../ProviderCard';
 import type { ProviderSummary } from '../../api/config';
 import type { TaskInfoResponse } from '../../api/types';
@@ -31,6 +34,10 @@ vi.mock('../../i18n/useTranslation', () => ({
         'Settings_page.provider_limits_warning_route_specific': 'Route-specific limits can vary.',
         'Settings_page.provider_limits_warning_unknown': 'Limits could not be verified.',
         'Settings_page.provider_thinking_hint_gemini': 'Gemini hint',
+        'Settings_page.provider_api_key_hint': 'stored in local .env',
+        'Settings_page.provider_api_key_keep_ph': 'leave blank to keep',
+        'Settings_page.provider_verify_ok': 'verified ok',
+        'Settings_page.provider_verify_failed': 'verify failed',
       };
       return messages[key] ?? key;
     },
@@ -241,5 +248,266 @@ describe('ProviderCard', () => {
     expect(html).toContain('Fallback probe');
     expect(html).toContain('Limits profile');
     expect(html).toContain('openai/gpt-5');
+  });
+
+  it('renders a password-type API key field with a local-storage hint when adding a provider', () => {
+    const html = renderToStaticMarkup(
+      <ProviderCard
+        provider={makeProvider({ alias: '' })}
+        isNew
+        onSave={async () => undefined}
+        onDelete={async () => undefined}
+        onProbe={async () => 'task-1'}
+      />,
+    );
+
+    expect(html).toContain('type="password"');
+    expect(html).toContain('id="provider-apikey-new"');
+    expect(html).toContain('stored in local .env');
+    // The security/storage hint must be announced to screen readers on focus:
+    // the API-key input is aria-describedby the hint paragraph's stable id.
+    expect(html).toContain('aria-describedby="provider-apikey-hint-new"');
+    expect(html).toContain('id="provider-apikey-hint-new"');
+  });
+
+  it('shows a save-time verification success notice', () => {
+    const t = (key: string) =>
+      (({ 'Settings_page.provider_verify_ok': 'verified ok' }) as Record<string, string>)[key] ?? key;
+    const html = renderToStaticMarkup(
+      <ProviderVerificationNotice verification={{ ok: true, error: null, detail: 'ok' }} t={t} />,
+    );
+
+    expect(html).toContain('verified ok');
+  });
+
+  it('shows a verification failure notice carrying the backend reason (no plaintext)', () => {
+    const t = (key: string) =>
+      (({ 'Settings_page.provider_verify_failed': 'verify failed' }) as Record<string, string>)[key] ?? key;
+    const html = renderToStaticMarkup(
+      <ProviderVerificationNotice
+        verification={{ ok: false, error: 'provider_probe_failed', detail: 'ProviderError' }}
+        t={t}
+      />,
+    );
+
+    expect(html).toContain('verify failed');
+    expect(html).toContain('provider_probe_failed');
+  });
+
+  describe('M1: max_output_tokens validation', () => {
+    const defaultDraft = {
+      alias: 'local',
+      provider_class: 'openai',
+      model_name: 'gpt-test',
+      base_url: 'https://api.example.test/v1',
+      api_key: '',
+      max_output_tokens: '',
+      thinking_level: 'none',
+      model_limits_name: '',
+    };
+
+    it('blocks saving and shows validation message for non-integer "12.5"', () => {
+      const draft = { ...defaultDraft, max_output_tokens: '12.5' };
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={draft}
+          setDraft={() => {}}
+          isNew={false}
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+
+      // Verify that the submit button is disabled
+      const submitBtnHtml = html.match(/<button type="submit"[^>]+>/)?.[0] || '';
+      expect(submitBtnHtml).toContain('disabled');
+      // Verify validation error is displayed
+      expect(html).toContain('Settings_page.provider_max_output_invalid');
+    });
+
+    it('blocks saving and shows validation message for scientific notation "1e6"', () => {
+      const draft = { ...defaultDraft, max_output_tokens: '1e6' };
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={draft}
+          setDraft={() => {}}
+          isNew={false}
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+
+      const submitBtnHtml = html.match(/<button type="submit"[^>]+>/)?.[0] || '';
+      expect(submitBtnHtml).toContain('disabled');
+      expect(html).toContain('Settings_page.provider_max_output_invalid');
+    });
+
+    it('allows valid integer "4096"', () => {
+      const draft = { ...defaultDraft, max_output_tokens: '4096' };
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={draft}
+          setDraft={() => {}}
+          isNew={false}
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+
+      // Verify that the submit button is NOT disabled
+      const submitBtnHtml = html.match(/<button type="submit"[^>]+>/)?.[0] || '';
+      expect(submitBtnHtml).not.toContain('disabled');
+      // Verify validation error is NOT displayed
+      expect(html).not.toContain('Settings_page.provider_max_output_invalid');
+    });
+
+    it('allows empty value (clear/unset)', () => {
+      const draft = { ...defaultDraft, max_output_tokens: '' };
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={draft}
+          setDraft={() => {}}
+          isNew={false}
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+
+      const submitBtnHtml = html.match(/<button type="submit"[^>]+>/)?.[0] || '';
+      expect(submitBtnHtml).not.toContain('disabled');
+      expect(html).not.toContain('Settings_page.provider_max_output_invalid');
+    });
+
+    it('blocks saving and shows validation message for "0"', () => {
+      const draft = { ...defaultDraft, max_output_tokens: '0' };
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={draft}
+          setDraft={() => {}}
+          isNew={false}
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+
+      const submitBtnHtml = html.match(/<button type="submit"[^>]+>/)?.[0] || '';
+      expect(submitBtnHtml).toContain('disabled');
+      expect(html).toContain('Settings_page.provider_max_output_invalid');
+    });
+
+    it('renders max output tokens hint describing blank behavior', () => {
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={defaultDraft}
+          setDraft={() => {}}
+          isNew={false}
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+
+      expect(html).toContain('id="provider-maxout-hint-local"');
+      expect(html).toContain('Settings_page.provider_max_output_hint');
+    });
+
+    it('buildProviderUpdatePayload clears max_output_tokens to null when blank', () => {
+      const provider = makeProvider({
+        max_output_tokens: 4096,
+      });
+      const draft = {
+        alias: 'local',
+        provider_class: 'openai',
+        model_name: 'gpt-test',
+        base_url: 'https://api.example.test/v1',
+        api_key: '',
+        max_output_tokens: '',
+        thinking_level: 'none',
+        model_limits_name: '',
+      };
+
+      const payload = buildProviderUpdatePayload(draft, provider);
+      expect(payload.max_output_tokens).toBeNull();
+    });
+  });
+
+  describe('M2: buildProviderUpdatePayload identity fields diffing', () => {
+    it('does not send unchanged identity fields on update', () => {
+      const provider = makeProvider({
+        provider_class: 'openai',
+        model_name: 'gpt-test',
+        base_url: 'https://api.example.test/v1',
+        max_output_tokens: 4096,
+      });
+      const draft = {
+        alias: 'local',
+        provider_class: 'openai',
+        model_name: 'gpt-test',
+        base_url: 'https://api.example.test/v1',
+        api_key: '',
+        max_output_tokens: '8192',
+        thinking_level: 'none',
+        model_limits_name: '',
+      };
+
+      const payload = buildProviderUpdatePayload(draft, provider);
+
+      // Identity fields are not included because they did not change
+      expect(payload.provider_class).toBeUndefined();
+      expect(payload.model_name).toBeUndefined();
+      expect(payload.base_url).toBeUndefined();
+
+      // Non-identity fields / changed fields are included
+      expect(payload.max_output_tokens).toBe(8192);
+    });
+
+    it('sends changed identity fields on update', () => {
+      const provider = makeProvider({
+        provider_class: 'openai',
+        model_name: 'gpt-test',
+        base_url: 'https://api.example.test/v1',
+      });
+      const draft = {
+        alias: 'local',
+        provider_class: 'anthropic',
+        model_name: 'claude-3-opus',
+        base_url: 'https://api.anthropic.com/v1',
+        api_key: 'new-key',
+        max_output_tokens: '',
+        thinking_level: 'none',
+        model_limits_name: '',
+      };
+
+      const payload = buildProviderUpdatePayload(draft, provider);
+
+      // Identity fields are included because they changed
+      expect(payload.provider_class).toBe('anthropic');
+      expect(payload.model_name).toBe('claude-3-opus');
+      expect(payload.base_url).toBe('https://api.anthropic.com/v1');
+      expect(payload.api_key).toBe('new-key');
+    });
   });
 });

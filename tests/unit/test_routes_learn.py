@@ -1013,7 +1013,7 @@ def test_post_learn_passes_changed_paths_to_request(
         info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
 
     assert info["status"] == "completed"
-    assert constructed_kwargs["workspace_root"] == tmp_path.parent
+    assert constructed_kwargs["workspace_root"] == tmp_path
     assert constructed_kwargs["changed_paths"] == ("src/app.py", "tests/test_app.py")
 
 
@@ -1027,7 +1027,7 @@ def test_post_learn_passes_against_spec_to_request(
 
     def recording_learn_request(**kwargs: Any) -> LearnRequest:
         constructed_kwargs.update(kwargs)
-        assert kwargs["against_spec"] == (tmp_path.parent / "SPEC.md").resolve()
+        assert kwargs["against_spec"] == (tmp_path / "SPEC.md").resolve()
         assert kwargs["spec_semantic_review"] is True
         return LearnRequest(**kwargs)
 
@@ -1047,7 +1047,7 @@ def test_post_learn_passes_against_spec_to_request(
         info = _wait_for_task(client, _task_id_from(resp), expected_status="completed")
 
     assert info["status"] == "completed"
-    assert constructed_kwargs["against_spec"] == (tmp_path.parent / "SPEC.md").resolve()
+    assert constructed_kwargs["against_spec"] == (tmp_path / "SPEC.md").resolve()
     assert constructed_kwargs["spec_semantic_review"] is True
 
 

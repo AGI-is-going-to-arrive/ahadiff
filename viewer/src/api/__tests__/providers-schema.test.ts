@@ -67,9 +67,19 @@ describe('provider API schemas', () => {
 
     expect(providerCreateRequestSchema.parse(createInput)).toEqual(createInput);
     expect(providerUpdateRequestSchema.parse(updateInput)).toEqual(updateInput);
+    // Plaintext `api_key` is now an accepted field (reference-style storage).
     expect(providerCreateRequestSchema.safeParse({
       ...createInput,
       api_key: 'sk-test',
+    }).success).toBe(true);
+    expect(providerUpdateRequestSchema.safeParse({
+      provider_class: 'openai',
+      api_key: 'sk-new-secret',
+    }).success).toBe(true);
+    // Genuinely unknown keys are still rejected by the strict schema.
+    expect(providerCreateRequestSchema.safeParse({
+      ...createInput,
+      totally_unknown: 'x',
     }).success).toBe(false);
     expect(providerUpdateRequestSchema.safeParse({
       ...updateInput,

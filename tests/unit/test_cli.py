@@ -123,6 +123,30 @@ def _provider_config() -> ProviderConfig:
     )
 
 
+def test_init_creates_state_gitignore_without_root_gitignore(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    assert not (repo_root / ".gitignore").exists()
+
+    result = _RUNNER.invoke(
+        app(),
+        ["init", "--repo-root", str(repo_root)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    gitignore_text = (repo_root / ".ahadiff" / ".gitignore").read_text(encoding="utf-8")
+    assert ".env" in gitignore_text.splitlines()
+    assert ".env.*" in gitignore_text.splitlines()
+    assert "audit.private.jsonl" in gitignore_text.splitlines()
+    assert "config.toml" not in gitignore_text
+
+
 def _write_source_checkout_prompts(repo_root: Path) -> None:
     prompt_files = {
         "lesson_generate.md": "lesson generate v1\n",

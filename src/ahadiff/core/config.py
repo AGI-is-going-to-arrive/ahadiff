@@ -5,9 +5,12 @@ import json
 import math
 import os
 import re
+import stat
 import tempfile
+import time
 import tomllib
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
@@ -17,8 +20,14 @@ from urllib.parse import unquote_plus, urlencode, urlsplit, urlunsplit
 from ahadiff.contracts import ProviderCapabilityOverride, ProviderClass, ThinkingLevel
 from ahadiff.i18n import normalize_locale_preference
 
-from .errors import ConfigError
-from .paths import find_repo_root, find_workspace_root, global_config_dir
+from .errors import ConfigError, InputError, StorageError
+from .paths import (
+    ensure_state_parent_dir,
+    find_repo_root,
+    find_workspace_root,
+    global_config_dir,
+    validate_state_path_no_symlinks,
+)
 
 Scalar = str | int | float | bool | tuple[str, ...]
 NestedConfig = dict[str, "Scalar | NestedConfig"]
@@ -57,6 +66,8 @@ _SAFE_PROVIDER_API_KEY_ENVS = frozenset(
 _AHADIFF_PROVIDER_API_KEY_ENV_PATTERN = re.compile(r"^AHADIFF_[A-Z0-9_]*$")
 _ENV_VAR_NAME_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _ENV_VAR_REFERENCE_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_REPO_ENV_REPLACE_ATTEMPTS = 5
+_REPO_ENV_REPLACE_RETRY_SECONDS = 0.02
 _SUPPORTED_PROVIDER_CLASSES = frozenset(cast("tuple[str, ...]", get_args(ProviderClass)))
 _THINKING_LEVELS = frozenset(cast("tuple[str, ...]", get_args(ThinkingLevel)))
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -136,6 +147,7 @@ _SECRET_VALUE_PATTERNS = (
     re.compile(r"gh[pousr]_[A-Za-z0-9]{12,}"),
     re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
 )
+_CONFIG_SECRET_MASK = "********"
 _TOML_BARE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -396,6 +408,17 @@ _ENV_KEY_MAP = {
     for key in _KNOWN_KEYS
     if key != "lang" and not isinstance(_FLAT_DEFAULTS[key], tuple)
 }
+_REPO_ENV_BLOCKED_NAMES = frozenset(
+    {
+        *_ENV_KEY_MAP.values(),
+        "AHADIFF_LANG",
+        "AHADIFF_REPLAY_REPO_ENV_FILE",
+        "AHADIFF_VIEWER_DIST",
+        "AHADIFF_PIPELINE_MAX_STEP_RETRIES",
+        "AHADIFF_PIPELINE_ERROR_BUDGET",
+        "AHADIFF_DEFAULT_TASK_TIMEOUT_SECONDS",
+    }
+)
 _PROVIDER_DYNAMIC_FIELDS = frozenset(
     {
         "provider_class",
@@ -768,6 +791,288 @@ def write_config_data(config_path: Path, data: Mapping[str, Any]) -> Path:
     return config_path
 
 
+def _render_repo_env_value(value: str) -> str:
+    if "\n" in value or "\r" in value:
+        raise ConfigError("repo env values must not contain newlines")
+    if any(ord(char) < 32 for char in value):
+        raise ConfigError("repo env values must not contain control characters")
+    needs_quotes = (
+        value == "" or value != value.strip() or any(char in value for char in ('"', "#", "\t"))
+    )
+    if not needs_quotes:
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _repo_env_assignment_name(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[7:].lstrip()
+    if "=" not in stripped:
+        return None
+    name = stripped.split("=", 1)[0].strip()
+    if not _ENV_VAR_REFERENCE_PATTERN.fullmatch(name):
+        return None
+    return name
+
+
+def _repo_env_stat_has_windows_reparse_point(path_stat: object) -> bool:
+    return bool(getattr(path_stat, "st_file_attributes", 0) & 0x400)
+
+
+def _repo_env_config_error(exc: BaseException) -> ConfigError:
+    if isinstance(exc, ConfigError):
+        return exc
+    if isinstance(exc, InputError | StorageError):
+        return ConfigError(str(exc))
+    return ConfigError(str(exc))
+
+
+def _is_windows_sharing_violation(exc: OSError) -> bool:
+    return getattr(exc, "winerror", None) in {32, 33}
+
+
+def _replace_repo_env_file_with_retry(source_path: Path, env_path: Path) -> None:
+    for attempt in range(_REPO_ENV_REPLACE_ATTEMPTS):
+        try:
+            source_path.replace(env_path)
+            return
+        except OSError as exc:
+            if not _is_windows_sharing_violation(exc):
+                raise
+            if attempt == _REPO_ENV_REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPO_ENV_REPLACE_RETRY_SECONDS)
+
+
+def _validate_existing_repo_env_file(env_path: Path) -> os.stat_result | None:
+    try:
+        path_stat = env_path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ConfigError(f"repo env file is unreadable: {env_path}") from exc
+    if _repo_env_stat_has_windows_reparse_point(path_stat):
+        raise ConfigError("repo env file must not be a Windows reparse point or junction")
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise ConfigError("repo env file must not be a symlink")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise ConfigError("repo env file must be a regular file")
+    if getattr(path_stat, "st_nlink", 1) > 1:
+        raise ConfigError("repo env file must not be a hardlink")
+    return path_stat
+
+
+def _read_repo_env_text_no_follow(env_path: Path) -> str | None:
+    path_stat = _validate_existing_repo_env_file(env_path)
+    if path_stat is None:
+        return None
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(env_path), flags)
+    except OSError as exc:
+        raise ConfigError(f"repo env file is unreadable: {env_path}") from exc
+    try:
+        opened_stat = os.fstat(fd)
+        try:
+            current_stat = env_path.lstat()
+        except FileNotFoundError as exc:
+            raise ConfigError("repo env file changed during read") from exc
+        except OSError as exc:
+            raise ConfigError(f"repo env file is unreadable: {env_path}") from exc
+        if not stat.S_ISREG(opened_stat.st_mode) or not stat.S_ISREG(current_stat.st_mode):
+            raise ConfigError("repo env file must be a regular file")
+        opened_reparse = _repo_env_stat_has_windows_reparse_point(opened_stat)
+        current_reparse = _repo_env_stat_has_windows_reparse_point(current_stat)
+        if opened_reparse or current_reparse:
+            raise ConfigError("repo env file must not be a Windows reparse point or junction")
+        if getattr(opened_stat, "st_nlink", 1) > 1 or getattr(current_stat, "st_nlink", 1) > 1:
+            raise ConfigError("repo env file must not be a hardlink")
+        if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise ConfigError("repo env file changed during read")
+        if (current_stat.st_dev, current_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
+            raise ConfigError("repo env file changed during read")
+        with os.fdopen(fd, "r", encoding="utf-8-sig") as handle:
+            fd = -1
+            return handle.read()
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def _render_repo_env_lines(lines: list[str]) -> str:
+    rendered = "\n".join(lines)
+    if rendered:
+        rendered += "\n"
+    return rendered
+
+
+def _write_repo_env_lines_atomic(env_path: Path, lines: list[str]) -> None:
+    try:
+        ensure_state_parent_dir(env_path)
+        _validate_existing_repo_env_file(env_path)
+    except (InputError, StorageError) as exc:
+        raise _repo_env_config_error(exc) from exc
+    rendered = _render_repo_env_lines(lines)
+    temp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=env_path.parent,
+            prefix=f"{env_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(rendered)
+            try:
+                os.fchmod(handle.fileno(), 0o600)
+            except (AttributeError, OSError, NotImplementedError):
+                temp_path.chmod(0o600)
+        try:
+            validate_state_path_no_symlinks(temp_path, allow_missing_leaf=False)
+            _validate_existing_repo_env_file(env_path)
+        except (InputError, StorageError) as exc:
+            raise _repo_env_config_error(exc) from exc
+        _replace_repo_env_file_with_retry(temp_path, env_path)
+        _validate_existing_repo_env_file(env_path)
+    except Exception:
+        if temp_path is not None:
+            with suppress(OSError):
+                temp_path.unlink(missing_ok=True)
+        raise
+
+
+def write_repo_env_var(env_path: Path, name: str, value: str) -> None:
+    if not _ENV_VAR_REFERENCE_PATTERN.fullmatch(name):
+        raise ConfigError("repo env var name must be a valid environment variable identifier")
+    rendered_assignment = f"{name}={_render_repo_env_value(value)}"
+    text = _read_repo_env_text_no_follow(env_path)
+    lines = text.splitlines() if text is not None else []
+    replaced = False
+    retained_lines: list[str] = []
+    for line in lines:
+        if _repo_env_assignment_name(line) == name:
+            if not replaced:
+                retained_lines.append(rendered_assignment)
+                replaced = True
+            continue
+        retained_lines.append(line)
+    if not replaced:
+        retained_lines.append(rendered_assignment)
+    _write_repo_env_lines_atomic(env_path, retained_lines)
+
+
+def remove_repo_env_var(env_path: Path, name: str) -> bool:
+    if not _ENV_VAR_REFERENCE_PATTERN.fullmatch(name):
+        raise ConfigError("repo env var name must be a valid environment variable identifier")
+    text = _read_repo_env_text_no_follow(env_path)
+    if text is None:
+        return False
+    lines = text.splitlines()
+    removed = False
+    retained_lines: list[str] = []
+    for line in lines:
+        if _repo_env_assignment_name(line) == name:
+            removed = True
+            continue
+        retained_lines.append(line)
+    if not removed:
+        return False
+    _write_repo_env_lines_atomic(env_path, retained_lines)
+    return True
+
+
+def _strip_repo_env_comment(value: str) -> str:
+    for index, char in enumerate(value):
+        if char == "#" and (index == 0 or value[index - 1].isspace()):
+            return value[:index]
+    return value
+
+
+def _decode_repo_env_quoted_value(value: str) -> str | None:
+    chars: list[str] = []
+    escaped = False
+    for index, char in enumerate(value[1:], start=1):
+        if escaped:
+            if char == "n":
+                chars.append("\n")
+            elif char == "r":
+                chars.append("\r")
+            elif char == "t":
+                chars.append("\t")
+            else:
+                chars.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == '"':
+            remainder = value[index + 1 :].strip()
+            if remainder and not remainder.startswith("#"):
+                return None
+            return "".join(chars)
+        chars.append(char)
+    return None
+
+
+def _parse_repo_env_assignment(line: str) -> tuple[str, str] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[7:].lstrip()
+    if "=" not in stripped:
+        return None
+    raw_name, raw_value = stripped.split("=", 1)
+    name = raw_name.strip()
+    if not _ENV_VAR_REFERENCE_PATTERN.fullmatch(name):
+        return None
+    value = raw_value.lstrip()
+    if value.startswith('"'):
+        decoded = _decode_repo_env_quoted_value(value)
+        if decoded is None:
+            return None
+        return name, decoded
+    return name, _strip_repo_env_comment(value).strip()
+
+
+def load_repo_env_file(env_path: Path) -> dict[str, str]:
+    loaded: dict[str, str] = {}
+    text = _read_repo_env_text_no_follow(env_path)
+    if text is None:
+        return {}
+    lines = text.splitlines()
+    for line in lines:
+        parsed = _parse_repo_env_assignment(line)
+        if parsed is None:
+            continue
+        name, value = parsed
+        loaded[name] = value
+    return loaded
+
+
+def _is_repo_env_provider_api_key_name(name: str) -> bool:
+    try:
+        validate_repo_api_key_env_name(name)
+    except ConfigError:
+        return False
+    return name not in _REPO_ENV_BLOCKED_NAMES
+
+
+def apply_repo_env_file(env_path: Path) -> None:
+    for name, value in load_repo_env_file(env_path).items():
+        if not _is_repo_env_provider_api_key_name(name):
+            continue
+        if name not in os.environ:
+            os.environ[name] = value
+
+
 def _collect_env_overrides(env: Mapping[str, str]) -> dict[str, Scalar]:
     overrides: dict[str, Scalar] = {}
     for key, env_name in _ENV_KEY_MAP.items():
@@ -976,7 +1281,19 @@ _SENSITIVE_KEY_FALSE_POSITIVES = re.compile(
 )
 
 
+def _is_provider_api_key_env_key(key: str) -> bool:
+    return key.startswith("providers.") and key.endswith(".api_key_env")
+
+
+def _is_literal_provider_api_key_env_value(value: Scalar) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    return _ENV_VAR_REFERENCE_PATTERN.fullmatch(value) is None
+
+
 def _is_sensitive_key(key: str, value: Scalar) -> bool:
+    if _is_provider_api_key_env_key(key) and _is_literal_provider_api_key_env_value(value):
+        return True
     lowered = key.lower()
     if lowered.endswith("_env") or lowered.endswith("_env_var"):
         return False
@@ -1154,8 +1471,23 @@ def resolve_effective(
         raise ConfigError(f"unknown config key: {key}") from exc
 
 
+def _mask_resolved_setting_for_display(setting: ResolvedSetting) -> ResolvedSetting:
+    if _is_provider_api_key_env_key(setting.key) and _is_literal_provider_api_key_env_value(
+        setting.value
+    ):
+        return ResolvedSetting(
+            key=setting.key,
+            value=_CONFIG_SECRET_MASK,
+            source=setting.source,
+        )
+    return setting
+
+
 def iter_resolved_settings(snapshot: ConfigSnapshot) -> list[ResolvedSetting]:
-    return [snapshot.resolved[key] for key in sorted(snapshot.resolved)]
+    return [
+        _mask_resolved_setting_for_display(snapshot.resolved[key])
+        for key in sorted(snapshot.resolved)
+    ]
 
 
 def load_security_config(repo_root: Path | None = None) -> SecurityConfig:
@@ -1369,9 +1701,11 @@ __all__ = [
     "PricingSettings",
     "ResolvedSetting",
     "SecurityConfig",
+    "apply_repo_env_file",
     "clear_provider_probe_fields",
     "iter_resolved_settings",
     "load_config",
+    "load_repo_env_file",
     "read_config_data",
     "load_workspace_pricing_settings",
     "load_workspace_config",
@@ -1382,6 +1716,7 @@ __all__ = [
     "normalize_provider_base_url",
     "parse_provider_query_pairs",
     "provider_core_fingerprint",
+    "remove_repo_env_var",
     "resolve_effective",
     "resolve_provider_api_key",
     "validate_provider_alias",
@@ -1389,4 +1724,5 @@ __all__ = [
     "validate_repo_api_key_env_name",
     "write_config_data",
     "write_default_config",
+    "write_repo_env_var",
 ]

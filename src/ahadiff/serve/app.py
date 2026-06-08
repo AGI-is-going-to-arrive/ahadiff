@@ -12,6 +12,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from ahadiff.contracts import AuthTokenResponse, ErrorCode
+from ahadiff.core.config import apply_repo_env_file
 from ahadiff.core.errors import AhaDiffError, InputError
 
 from ._errors import error_response
@@ -134,6 +135,7 @@ _GENERIC_MESSAGES: dict[ErrorCode, str] = {
 
 def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlette:
     runtime_state = state.with_runtime_lock()
+    apply_repo_env_file(runtime_state.state_dir / ".env")
 
     @contextlib.asynccontextmanager
     async def _lifespan(_app: Starlette) -> AsyncGenerator[None]:

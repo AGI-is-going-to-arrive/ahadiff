@@ -593,6 +593,7 @@ def test_provider_cli_allows_local_provider_without_api_key_env(
     repo_root.mkdir()
     _init_git_repo(repo_root)
     (repo_root / ".ahadiff").mkdir()
+    monkeypatch.delenv("AHADIFF_PROVIDER_API_KEY", raising=False)
 
     def cli_probe_provider(**kwargs: Any):
         assert kwargs["api_key"] is None

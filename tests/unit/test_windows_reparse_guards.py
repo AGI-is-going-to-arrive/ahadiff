@@ -147,3 +147,41 @@ def test_validate_state_path_no_symlinks_rejects_reparse_ancestor_on_windows(
         pytest.raises(InputError, match="Windows reparse points"),
     ):
         paths_module.validate_state_path_no_symlinks(target_path)
+
+
+def test_ensure_state_gitignore_does_not_follow_symlink_without_nofollow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not _supports_symlinks(tmp_path):
+        pytest.skip("symlink creation unavailable")
+
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    outside = tmp_path / "outside-gitignore"
+    outside.write_text("outside\n", encoding="utf-8")
+    link = state_dir / ".gitignore"
+    link.symlink_to(outside)
+    monkeypatch.setattr(paths_module.os, "O_NOFOLLOW", 0, raising=False)
+
+    assert paths_module.ensure_state_gitignore(state_dir) == link
+
+    assert outside.read_text(encoding="utf-8") == "outside\n"
+
+
+def test_ensure_state_gitignore_appends_missing_patterns_to_regular_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    gitignore_path = state_dir / ".gitignore"
+    gitignore_path.write_text("# user-owned\n.env\n", encoding="utf-8")
+    monkeypatch.setattr(paths_module.os, "O_NOFOLLOW", 0, raising=False)
+
+    assert paths_module.ensure_state_gitignore(state_dir) == gitignore_path
+
+    gitignore_text = gitignore_path.read_text(encoding="utf-8")
+    assert gitignore_text.startswith("# user-owned\n.env\n")
+    for pattern in (".env.*", "audit.private.jsonl", "*.lock", "*.log"):
+        assert pattern in gitignore_text.splitlines()

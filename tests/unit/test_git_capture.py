@@ -2221,6 +2221,57 @@ def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     assert "new_path" not in compare_detail
 
 
+@pytest.mark.parametrize("component", [".ahadiff", ".git"])
+@pytest.mark.parametrize("mode", ["patch", "compare", "compare_dir"])
+def test_file_capture_modes_reject_internal_state_paths(
+    tmp_path: Path,
+    component: str,
+    mode: str,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    state_root = workspace_root / component
+    state_root.mkdir()
+    (state_root / "secret.patch").write_text(
+        "--- a/sample.py\n+++ b/sample.py\n@@ -0,0 +1,1 @@\n+secret = 1\n",
+        encoding="utf-8",
+    )
+    (state_root / "old.py").write_text("secret = 1\n", encoding="utf-8")
+    (state_root / "new.py").write_text("secret = 2\n", encoding="utf-8")
+    old_dir = state_root / "old"
+    new_dir = state_root / "new"
+    old_dir.mkdir()
+    new_dir.mkdir()
+    (old_dir / "sample.py").write_text("secret = 1\n", encoding="utf-8")
+    (new_dir / "sample.py").write_text("secret = 2\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="capture input may not read"):
+        if mode == "patch":
+            capture_module.capture_patch(
+                workspace_root=workspace_root,
+                patch=f"{component}/secret.patch",
+                max_files=50,
+                hard_limit=5000,
+                max_patch_bytes=10_000,
+            )
+        elif mode == "compare":
+            capture_module.capture_patch(
+                workspace_root=workspace_root,
+                compare=(Path(component) / "old.py", Path(component) / "new.py"),
+                max_files=50,
+                hard_limit=5000,
+                max_patch_bytes=10_000,
+            )
+        else:
+            capture_module.capture_patch(
+                workspace_root=workspace_root,
+                compare_dir=(Path(component) / "old", Path(component) / "new"),
+                max_files=50,
+                hard_limit=5000,
+                max_patch_bytes=10_000,
+            )
+
+
 @pytest.mark.parametrize("mode", ["patch", "compare", "compare_dir"])
 def test_patch_compare_and_compare_dir_reject_external_inputs_as_outside_repo(
     tmp_path: Path,
@@ -2274,7 +2325,9 @@ def test_patch_compare_and_compare_dir_reject_external_inputs_as_outside_repo(
             )
 
 
-def test_non_git_subdir_repo_root_resolves_parent_workspace(tmp_path: Path) -> None:
+def test_explicit_non_git_subdir_repo_root_does_not_resolve_parent_workspace(
+    tmp_path: Path,
+) -> None:
     workspace_root = tmp_path / "workspace"
     subdir = workspace_root / "nested" / "child"
     subdir.mkdir(parents=True)
@@ -2283,8 +2336,10 @@ def test_non_git_subdir_repo_root_resolves_parent_workspace(tmp_path: Path) -> N
         'privacy_mode = "explicit_remote"\n',
         encoding="utf-8",
     )
-    (workspace_root / "old.py").write_text("", encoding="utf-8")
-    (workspace_root / "new.py").write_text("value = 1\n", encoding="utf-8")
+    (workspace_root / "old.py").write_text("parent = 1\n", encoding="utf-8")
+    (workspace_root / "new.py").write_text("parent = 2\n", encoding="utf-8")
+    (subdir / "old.py").write_text("", encoding="utf-8")
+    (subdir / "new.py").write_text("value = 1\n", encoding="utf-8")
 
     runner = CliRunner()
     result = _invoke_repo_cli(
@@ -2300,10 +2355,60 @@ def test_non_git_subdir_repo_root_resolves_parent_workspace(tmp_path: Path) -> N
     )
 
     assert result.exit_code == 0
-    run_dir = _latest_run_dir(workspace_root)
+    run_dir = _latest_run_dir(subdir)
     metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
-    assert metadata["privacy_mode"] == "explicit_remote"
-    assert not (subdir / ".ahadiff").exists()
+    assert metadata["source_kind"] == "file_compare"
+    assert not (workspace_root / ".ahadiff" / "runs").exists()
+
+
+def test_learn_against_spec_rejects_internal_state_path(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "main.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "main.py").write_text("value = 2\n", encoding="utf-8")
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "SPEC.md").write_text("internal spec\n", encoding="utf-8")
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        repo_root,
+        ["learn", "--last", "--against-spec", ".ahadiff/SPEC.md", "--dry-run"],
+    )
+
+    assert result.exit_code == 1
+    assert "capture input may not read .ahadiff/.git internal state" in result.output
+
+
+def test_repo_relative_patch_and_against_spec_files_still_work(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root / ".ahadiff").mkdir()
+    (workspace_root / ".ahadiff" / "config.toml").write_text(
+        'privacy_mode = "explicit_remote"\n\n'
+        "[capture]\n"
+        "hard_limit = 10\n"
+        "max_files = 50\n"
+        "max_patch_bytes = 10000000\n",
+        encoding="utf-8",
+    )
+    (workspace_root / "change.diff").write_text(
+        "--- a/sample.py\n+++ b/sample.py\n@@ -0,0 +1,1 @@\n+value = 1\n",
+        encoding="utf-8",
+    )
+    (workspace_root / "SPEC.md").write_text("spec\n", encoding="utf-8")
+
+    result = _invoke_repo_cli(
+        CliRunner(),
+        workspace_root,
+        ["learn", "--patch", "change.diff", "--against-spec", "SPEC.md", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    metadata = json.loads((_latest_run_dir(workspace_root) / "metadata.json").read_text("utf-8"))
+    assert metadata["source_kind"] == "patch_file"
 
 
 def test_learn_without_dry_run_requires_lesson_provider_after_capture(tmp_path: Path) -> None:

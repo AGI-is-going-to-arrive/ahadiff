@@ -26,6 +26,7 @@ from . import __version__
 from .contracts import ProviderConfig
 from .core.config import (
     SecurityConfig,
+    apply_repo_env_file,
     iter_resolved_settings,
     load_config,
     load_security_config,
@@ -41,6 +42,7 @@ from .core.errors import AhaDiffError, ConfigError, InputError, StorageError
 from .core.json_util import safe_json_loads
 from .core.paths import (
     assert_local_repo_path,
+    ensure_state_gitignore,
     find_repo_root,
     find_workspace_root,
     global_config_dir,
@@ -56,6 +58,7 @@ from .core.paths import (
 from .core.sqlite_util import safe_sqlite_connect
 from .i18n import normalize_locale, resolve_locale
 from .install.usage_hints import get_usage_hint
+from .safety.ignore import resolve_safe_path_from_root
 from .serve.static import _resolve_viewer_dist  # pyright: ignore[reportPrivateUsage]
 
 if TYPE_CHECKING:
@@ -68,6 +71,7 @@ if TYPE_CHECKING:
     from .safety.gates import TransportTarget
 
 console = Console()
+_REPLAY_REPO_ENV_FILE_ENV = "AHADIFF_REPLAY_REPO_ENV_FILE"
 error_console = Console(stderr=True)
 _APP = typer.Typer(
     help="AhaDiff local-first verified diff learning CLI.",
@@ -235,6 +239,16 @@ def _format_scalar(value: Any) -> str:
         rendered = ", ".join(str(item) for item in cast("tuple[Any, ...]", value))
         return f"[{rendered}]"
     return str(value)
+
+
+def _apply_replay_repo_env_file_from_env() -> None:
+    raw_path = os.environ.get(_REPLAY_REPO_ENV_FILE_ENV)
+    if not raw_path:
+        return
+    env_path = Path(raw_path)
+    if env_path.name != ".env" or env_path.parent.name != ".ahadiff":
+        return
+    apply_repo_env_file(env_path)
 
 
 def _sqlite_version_tuple() -> tuple[int, int, int]:
@@ -479,6 +493,24 @@ def _empty_captured_diff_hint(metadata: dict[str, Any]) -> str | None:
     return f"Captured diff is empty for mode {mode}."
 
 
+def _resolve_cli_path_from_workspace(root: Path, value: Path | None) -> Path | None:
+    if value is None:
+        return None
+    return resolve_safe_path_from_root(root, value)
+
+
+def _resolve_cli_path_pair_from_workspace(
+    root: Path,
+    value: tuple[Path, Path] | None,
+) -> tuple[Path, Path] | None:
+    if value is None:
+        return None
+    return (
+        resolve_safe_path_from_root(root, value[0]),
+        resolve_safe_path_from_root(root, value[1]),
+    )
+
+
 def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
     return project_state_dir(root) if has_git_repo else validate_state_dir_path(root / ".ahadiff")
 
@@ -675,7 +707,9 @@ def _resolve_runtime_provider(
             effective_api_key = typer.prompt("Provider API key", hide_input=True)
         else:
             raise AhaDiffError(
-                "--api-key-env must point to a set env var when stdin is non-interactive"
+                "--api-key-env must point to a set env var or a loaded .ahadiff/.env entry "
+                "when stdin is non-interactive; re-enter the key in WebUI Settings or check "
+                ".ahadiff/.env"
             )
     return provider_config, effective_api_key, transport_target, provider_selection_explicit
 
@@ -784,15 +818,34 @@ def _resolve_learn_workspace_root(
     repo_root: Path,
     *,
     allow_non_git: bool,
+    paths: tuple[Path, ...] = (),
 ) -> tuple[Path, bool]:
     try:
         return find_repo_root(repo_root), True
     except AhaDiffError:
         if not allow_non_git:
             raise
-        workspace_root = find_workspace_root(repo_root)
+        workspace_root = _resolve_non_git_workspace_root(repo_root, paths=paths)
         assert_local_repo_path(workspace_root)
         return workspace_root, False
+
+
+def _repo_root_option_is_default(repo_root: Path) -> bool:
+    return str(repo_root) in {"", "."}
+
+
+def _normalize_workspace_root_argument(repo_root: Path) -> Path:
+    cursor = repo_root.expanduser()
+    if cursor.is_file():
+        cursor = cursor.parent
+    return cursor.resolve()
+
+
+def _resolve_non_git_workspace_root(repo_root: Path, *, paths: tuple[Path, ...] = ()) -> Path:
+    _ = paths
+    if _repo_root_option_is_default(repo_root):
+        return find_workspace_root(repo_root)
+    return _normalize_workspace_root_argument(repo_root)
 
 
 def _normalize_quiz_answer(value: str) -> str:
@@ -864,6 +917,15 @@ def init_cmd(
             if not target.exists():
                 target.mkdir(parents=True, exist_ok=True)
                 created_paths.append(target)
+        gitignore_path = state_dir / ".gitignore"
+        try:
+            gitignore_path.lstat()
+            gitignore_existed = True
+        except FileNotFoundError:
+            gitignore_existed = False
+        ensure_state_gitignore(state_dir)
+        if not gitignore_existed:
+            created_paths.append(gitignore_path)
 
         config_path = repo_config_path(root)
         existed = config_path.exists()
@@ -1170,10 +1232,19 @@ def learn_cmd(
             or compare_dir is not None
             or patch_url is not None
         )
+        workspace_hint_paths = (
+            *((Path(patch),) if patch is not None and patch != "-" else ()),
+            *(compare or ()),
+            *(compare_dir or ()),
+            *((against_spec,) if against_spec is not None else ()),
+        )
         root, has_git_repo = _resolve_learn_workspace_root(
             repo_root,
             allow_non_git=allow_non_git,
+            paths=workspace_hint_paths,
         )
+        _apply_replay_repo_env_file_from_env()
+        apply_repo_env_file(_state_dir_for_root(root, has_git_repo=has_git_repo) / ".env")
         _assert_sqlite_runtime_supported_for_learn()
         from .core import orchestrator as orchestrator_module
 
@@ -1187,10 +1258,12 @@ def learn_cmd(
             unstaged=unstaged,
             include_untracked=include_untracked,
             changed_paths=changed_paths,
-            patch=patch,
-            compare=compare,
-            compare_dir=compare_dir,
-            against_spec=against_spec,
+            patch=str(_resolve_cli_path_from_workspace(root, Path(patch)))
+            if patch is not None and patch != "-"
+            else patch,
+            compare=_resolve_cli_path_pair_from_workspace(root, compare),
+            compare_dir=_resolve_cli_path_pair_from_workspace(root, compare_dir),
+            against_spec=_resolve_cli_path_from_workspace(root, against_spec),
             spec_semantic_review=spec_semantic_review,
             patch_url=patch_url,
             provider_name=provider,
@@ -1937,6 +2010,7 @@ def improve_cmd(
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=False)
         if not has_git_repo:
             raise AhaDiffError("improve requires a git repository")
+        apply_repo_env_file(project_state_dir(root) / ".env")
         snapshot = load_config(
             root,
             cli_overrides=_cli_overrides(privacy_mode=privacy_mode, lang=lang),
@@ -2078,6 +2152,8 @@ def improve_run_cmd(
 ) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        apply_repo_env_file(state_dir / ".env")
         config_overrides = _cli_overrides(privacy_mode=privacy_mode, lang=lang)
         snapshot = (
             load_config(root, cli_overrides=config_overrides)
@@ -2091,7 +2167,6 @@ def improve_run_cmd(
         security_config = (
             load_security_config(root) if has_git_repo else load_workspace_security_config(root)
         )
-        state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
         lock_path = lock_file_path(root) if has_git_repo else state_dir / "ahadiff.lock"
         (
             provider_config,
@@ -3016,7 +3091,11 @@ def _score_or_verify_run(
 
 
 def _verify_ci_artifacts(repo_root: Path) -> None:
-    root = find_workspace_root(repo_root)
+    root = (
+        find_workspace_root(repo_root)
+        if _repo_root_option_is_default(repo_root)
+        else _normalize_workspace_root_argument(repo_root)
+    )
     state_dir = root / ".ahadiff"
     runs_dir = state_dir / "runs"
     db_path = state_dir / "review.sqlite"
@@ -3891,6 +3970,7 @@ def provider_test_cmd(
 ) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        apply_repo_env_file(_state_dir_for_root(root, has_git_repo=has_git_repo) / ".env")
         snapshot = (
             load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))
             if has_git_repo
@@ -3961,7 +4041,9 @@ def provider_test_cmd(
                 effective_api_key = typer.prompt("Provider API key", hide_input=True)
             else:
                 raise AhaDiffError(
-                    "--api-key-env must point to a set env var when stdin is non-interactive"
+                    "--api-key-env must point to a set env var or a loaded .ahadiff/.env entry "
+                    "when stdin is non-interactive; re-enter the key in WebUI Settings or "
+                    "check .ahadiff/.env"
                 )
 
         with console.status("[bold]Testing provider...[/bold]", spinner="dots"):

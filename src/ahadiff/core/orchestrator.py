@@ -609,11 +609,21 @@ def _privacy_mode_for_explicit_provider_call(
 
 def _resolve_workspace_root(
     workspace_root: Path,
+    *,
+    allow_non_git: bool,
 ) -> tuple[Path, bool]:
     try:
         return find_repo_root(workspace_root), True
     except AhaDiffError:
-        ws = find_workspace_root(workspace_root)
+        if not allow_non_git:
+            raise
+        if str(workspace_root) in {"", "."}:
+            ws = find_workspace_root(workspace_root)
+        else:
+            ws = workspace_root.expanduser()
+            if ws.is_file():
+                ws = ws.parent
+            ws = ws.resolve()
         assert_local_repo_path(ws)
         return ws, False
 
@@ -749,7 +759,9 @@ def _resolve_provider_from_config(
         and transport_target == "remote"
     ):
         raise AhaDiffError(
-            f"env var {provider_config.api_key_env!r} is not set (required for remote provider)"
+            f"env var {provider_config.api_key_env!r} is not set and no repo .ahadiff/.env "
+            "value was loaded (required for remote provider); re-enter the key in WebUI "
+            "Settings or check .ahadiff/.env"
         )
 
     return provider_config, effective_api_key, transport_target, provider_selection_explicit
@@ -1172,14 +1184,10 @@ def run_learn_pipeline(
         or request.compare_dir is not None
         or request.patch_url is not None
     )
-    try:
-        root, has_git_repo = _resolve_workspace_root(request.workspace_root)
-    except AhaDiffError:
-        if not allow_non_git:
-            raise
-        root = find_workspace_root(request.workspace_root)
-        assert_local_repo_path(root)
-        has_git_repo = False
+    root, has_git_repo = _resolve_workspace_root(
+        request.workspace_root,
+        allow_non_git=allow_non_git,
+    )
 
     overrides = _cli_overrides(
         privacy_mode=request.privacy_mode,

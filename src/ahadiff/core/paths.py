@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections.abc as _collections_abc
+import errno
 import os
 import re
 import stat
@@ -23,6 +24,15 @@ _MACOS_LONG_PATH_WARNING = 180
 _WINDOWS_LONG_PATH_WARNING = 240
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_STATE_GITIGNORE_TEXT = (
+    "# AhaDiff local secrets & private state — auto-generated; do not commit secrets\n"
+    ".env\n"
+    ".env.*\n"
+    "audit.private.jsonl\n"
+    "*.lock\n"
+    "*.log\n"
+)
+_STATE_GITIGNORE_PATTERNS = (".env", ".env.*", "audit.private.jsonl", "*.lock", "*.log")
 _WINDOWS_RESERVED_DEVICE_NAMES = {
     "CON",
     "PRN",
@@ -263,7 +273,97 @@ def ensure_state_parent_dir(path: Path) -> Path:
     validate_state_path_no_symlinks(parent, allow_missing_leaf=True)
     parent.mkdir(parents=True, exist_ok=True)
     validate_state_path_no_symlinks(parent, allow_missing_leaf=False)
+    state_dir = _state_dir_ancestor(parent)
+    if state_dir is not None:
+        ensure_state_gitignore(state_dir)
     return parent
+
+
+def _state_dir_ancestor(path: Path) -> Path | None:
+    return next(
+        (candidate for candidate in (path, *path.parents) if candidate.name == ".ahadiff"),
+        None,
+    )
+
+
+def ensure_state_gitignore(state_dir: Path) -> Path:
+    validate_state_dir_path(state_dir)
+    gitignore_path = state_dir / ".gitignore"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(gitignore_path), flags, 0o644)
+    except FileExistsError:
+        _ensure_existing_state_gitignore_patterns(gitignore_path)
+        return gitignore_path
+    except OSError as exc:
+        if exc.errno == errno.EEXIST:
+            _ensure_existing_state_gitignore_patterns(gitignore_path)
+            return gitignore_path
+        raise StorageError(f"failed to create state gitignore: {gitignore_path}") from exc
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            handle.write(_STATE_GITIGNORE_TEXT)
+    finally:
+        if fd != -1:
+            os.close(fd)
+    return gitignore_path
+
+
+def _ensure_existing_state_gitignore_patterns(gitignore_path: Path) -> None:
+    expected_stat = _existing_state_gitignore_regular_stat(gitignore_path)
+    if expected_stat is None:
+        return
+    flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(gitignore_path), flags)
+    except OSError:
+        return
+    try:
+        path_stat = os.fstat(fd)
+        if not _state_gitignore_stat_is_safe(path_stat):
+            return
+        if (path_stat.st_dev, path_stat.st_ino) != (
+            expected_stat.st_dev,
+            expected_stat.st_ino,
+        ):
+            return
+        try:
+            raw_text = os.read(fd, max(path_stat.st_size, 0))
+        except OSError:
+            return
+        try:
+            text = raw_text.decode("utf-8")
+        except UnicodeDecodeError:
+            return
+        existing_lines = set(text.splitlines())
+        missing = [line for line in _STATE_GITIGNORE_PATTERNS if line not in existing_lines]
+        if not missing:
+            return
+        prefix = "" if not text or text.endswith("\n") else "\n"
+        append_text = prefix + "\n".join(missing) + "\n"
+        os.lseek(fd, 0, os.SEEK_END)
+        os.write(fd, append_text.encode("utf-8"))
+    finally:
+        os.close(fd)
+
+
+def _existing_state_gitignore_regular_stat(gitignore_path: Path) -> os.stat_result | None:
+    try:
+        path_stat = reject_leaf_symlink_or_reparse(gitignore_path, label="state gitignore")
+    except (InputError, StorageError):
+        return None
+    if not _state_gitignore_stat_is_safe(path_stat):
+        return None
+    return path_stat
+
+
+def _state_gitignore_stat_is_safe(path_stat: os.stat_result) -> bool:
+    return (
+        stat.S_ISREG(path_stat.st_mode)
+        and not _has_windows_reparse_point(path_stat)
+        and getattr(path_stat, "st_nlink", 1) == 1
+    )
 
 
 def atomic_write_state_text(path: Path, text: str) -> None:
@@ -349,6 +449,7 @@ __all__ = [
     "PathWarning",
     "atomic_write_state_text",
     "audit_log_path",
+    "ensure_state_gitignore",
     "ensure_state_parent_dir",
     "assert_local_repo_path",
     "find_repo_root",

@@ -1025,8 +1025,8 @@ export const providerModelsResponseSchema = z
  *
  * Mirrors the backend `ProviderCreateRequest` DTO. `alias`, `provider_class`,
  * `provider_kind`, `model_name`, and `base_url` are required identity fields;
- * the rest are optional override hints. Secrets are NEVER posted in plaintext —
- * `api_key_env` carries the env var NAME holding the credential.
+ * the rest are optional override hints. `api_key` is a plaintext secret stored only
+ * in local .ahadiff/.env (0600); `api_key_env` carries an env var NAME (legacy/advanced).
  */
 export const providerCreateRequestSchema = z
   .object({
@@ -1034,7 +1034,8 @@ export const providerCreateRequestSchema = z
     provider_class: z.string().min(1),
     model_name: z.string().min(1),
     base_url: z.string().min(1),
-    api_key_env: z.string().min(1),
+    api_key: z.string().min(1).max(4096).nullable().optional(),
+    api_key_env: z.string().min(1).optional(),
     max_output_tokens: z.number().int().positive().nullable().optional(),
     thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
     model_limits_name: z.string().min(1).nullable().optional(),
@@ -1046,6 +1047,7 @@ export const providerUpdateRequestSchema = z
     provider_class: z.string().min(1).optional(),
     model_name: z.string().min(1).optional(),
     base_url: z.string().min(1).optional(),
+    api_key: z.string().min(1).max(4096).nullable().optional(),
     api_key_env: z.string().min(1).optional(),
     max_output_tokens: z.number().int().positive().nullable().optional(),
     thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
@@ -1060,6 +1062,14 @@ export const providerMutationResponseSchema = z
     warnings: z.array(modelLimitsWarningSchema).optional(),
     updated: z.boolean(),
     provider: providerSummarySchema,
+    verification: z
+      .object({
+        ok: z.boolean(),
+        error: z.string().nullable(),
+        detail: z.string().nullable(),
+      })
+      .nullable()
+      .optional(),
   })
   .strict();
 

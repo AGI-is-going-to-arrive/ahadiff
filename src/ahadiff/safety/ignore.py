@@ -12,11 +12,12 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 from ahadiff.core.config import load_security_config, load_workspace_security_config
-from ahadiff.core.errors import SafetyError
+from ahadiff.core.errors import InputError, SafetyError
 from ahadiff.core.paths import find_repo_root, ignore_file_path
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _IGNORE_FILE_MAX_BYTES = 1_000_000
+_INTERNAL_CAPTURE_PATH_COMPONENTS = frozenset({".ahadiff", ".git"})
 
 
 @dataclass(frozen=True)
@@ -135,9 +136,19 @@ def resolve_safe_path_from_root(root: Path, candidate: str | Path) -> Path:
     _reject_symlink_or_special_path(root, absolute_candidate)
     resolved = absolute_candidate.resolve(strict=False)
     try:
-        resolved.relative_to(root)
+        relative_path = resolved.relative_to(root)
     except ValueError as exc:
         raise SafetyError("path escapes repo root") from exc
+    # Case-fold each component (and strip trailing dots/spaces, which Win32 silently
+    # drops) so a variant like ``.AHADIFF`` / ``.Git`` / ``.ahadiff.`` cannot alias the
+    # real ``.ahadiff`` / ``.git`` dir on a case-insensitive or Windows filesystem and
+    # slip internal state (provider keys in ``.ahadiff/.env`` / ``.ahadiff/config.toml``)
+    # into capture.
+    if any(
+        part.rstrip(" .").casefold() in _INTERNAL_CAPTURE_PATH_COMPONENTS
+        for part in relative_path.parts
+    ):
+        raise InputError("capture input may not read .ahadiff/.git internal state")
     return resolved
 
 

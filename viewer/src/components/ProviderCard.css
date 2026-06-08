@@ -369,6 +369,33 @@
   color: var(--ink);
 }
 
+.provider-card__verify {
+  font-size: var(--fs-sm);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.provider-card__verify--ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.provider-card__verify--failed {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.provider-card__verify-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--elevated);
+  padding: 1px var(--sp-2);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+}
+
 /* ---- Edit form ---- */
 .provider-card__form {
   display: flex;
@@ -759,7 +786,7 @@
   margin-top: var(--sp-1);
 }
 @media (forced-colors: active) {
-  .provider-card__badge, .provider-card__warning {
+  .provider-card__badge, .provider-card__warning, .provider-card__verify {
     border: 1px solid CanvasText;
   }
   .provider-card__recommend-btn:focus-visible {

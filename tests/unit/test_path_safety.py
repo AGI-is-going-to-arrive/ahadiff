@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ahadiff.core.errors import SafetyError
+from ahadiff.core.errors import InputError, SafetyError
 from ahadiff.safety.ignore import (
     escape_html_text,
     escape_json_text,
@@ -119,6 +119,75 @@ def test_resolve_safe_path_rejects_absolute_path_outside_repo(tmp_path: Path) ->
 
     with pytest.raises(SafetyError, match="path is outside repo root"):
         resolve_safe_path_from_root(repo_root, outside)
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        ".ahadiff/.env",
+        ".ahadiff/runs/run-1/metadata.json",
+        ".git/config",
+        "nested/.git/config",
+    ],
+)
+def test_resolve_safe_path_rejects_internal_state_components(
+    tmp_path: Path,
+    candidate: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    target = repo_root / candidate
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("secret\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="capture input may not read"):
+        resolve_safe_path_from_root(repo_root, candidate)
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        ".AHADIFF/.env",
+        ".Ahadiff/.env",
+        ".Git/config",
+        "nested/.GIT/config",
+        ".ahadiff./.env",
+        ".ahadiff /.env",
+        ".AHADIFF./.env",
+        ".git./config",
+    ],
+)
+def test_resolve_safe_path_rejects_internal_state_case_variants(
+    tmp_path: Path,
+    candidate: str,
+) -> None:
+    # A case-variant of .ahadiff/.git must not bypass the internal-state guard: on a
+    # case-insensitive filesystem (macOS APFS / Windows NTFS) ".AHADIFF/.env" aliases the
+    # real ".ahadiff/.env" and would otherwise leak provider secrets into capture.
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    (repo_root / ".ahadiff").mkdir(exist_ok=True)
+    (repo_root / ".ahadiff" / ".env").write_text("AHADIFF_X_KEY=sk-secret123\n", encoding="utf-8")
+
+    with pytest.raises(InputError, match="capture input may not read"):
+        resolve_safe_path_from_root(repo_root, candidate)
+
+
+@pytest.mark.parametrize("candidate", ["change.diff", "SPEC.md", "src/.gitkeep"])
+def test_resolve_safe_path_allows_normal_repo_relative_files(
+    tmp_path: Path,
+    candidate: str,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    target = repo_root / candidate
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("ok\n", encoding="utf-8")
+
+    assert resolve_safe_path_from_root(repo_root, candidate) == target.resolve()
 
 
 @pytest.mark.parametrize("candidate", ["C:secret.txt", "C:/repo/secret.txt", "//server/share/x"])

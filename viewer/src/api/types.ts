@@ -827,7 +827,10 @@ export interface ProviderCreateInput {
   provider_class: string;
   model_name: string;
   base_url: string;
-  api_key_env: string;
+  /** Plaintext secret. Stored only in local .ahadiff/.env (0600); config.toml keeps a generated reference name. */
+  api_key?: string | null;
+  /** Env-var NAME holding the credential (legacy / advanced). Optional when `api_key` is provided. */
+  api_key_env?: string;
   max_output_tokens?: number | null;
   thinking_level?: string | null;
   model_limits_name?: string | null;
@@ -837,16 +840,26 @@ export interface ProviderUpdateInput {
   provider_class?: string;
   model_name?: string;
   base_url?: string;
+  /** New plaintext secret. Omit/empty to keep the existing key (masked round-trip). */
+  api_key?: string | null;
   api_key_env?: string;
   max_output_tokens?: number | null;
   thinking_level?: string | null;
   model_limits_name?: string | null;
 }
 
+/** Save-time connectivity probe result. Never carries the plaintext key. */
+export interface ProviderVerification {
+  ok: boolean;
+  error: string | null;
+  detail: string | null;
+}
+
 export interface ProviderMutationResponse {
   updated: boolean;
   provider: import('./config').ProviderSummary;
   warnings?: ModelLimitsWarning[];
+  verification?: ProviderVerification | null;
 }
 
 export interface ProviderDeleteResponse {

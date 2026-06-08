@@ -8,7 +8,11 @@ core fields did not change while the probe was running.
 
 from __future__ import annotations
 
+import os
+import re
 from collections.abc import Mapping
+from contextlib import suppress
+from copy import deepcopy
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -33,16 +37,19 @@ from ahadiff.core import config as config_module
 from ahadiff.core.config import (
     SecurityConfig,
     clear_provider_probe_fields,
+    load_repo_env_file,
     local_hosts_for_privacy_mode,
     mask_provider_base_url_for_display,
     normalize_provider_base_url,
     provider_core_fingerprint,
     read_config_data,
+    remove_repo_env_var,
     resolve_provider_api_key,
     validate_provider_alias,
     validate_provider_base_url,
     validate_repo_api_key_env_name,
     write_config_data,
+    write_repo_env_var,
 )
 from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
 from ahadiff.core.ids import make_event_id
@@ -151,6 +158,214 @@ def _validate_provider_api_key_env(value: object) -> str:
     except ConfigError as exc:
         raise _ProviderFieldError(f"api_key_env: {exc}") from exc
     return value
+
+
+def _provider_key_env_base(alias: str) -> str:
+    sanitized = re.sub(r"[^A-Z0-9_]+", "_", alias.upper())
+    sanitized = re.sub(r"_+", "_", sanitized).strip("_") or "PROVIDER"
+    return f"AHADIFF_{sanitized}_KEY"
+
+
+def _provider_key_env_names_in_use(
+    providers: Mapping[str, object],
+    *,
+    exclude_alias: str | None = None,
+) -> set[str]:
+    names: set[str] = set()
+    for provider_alias, provider_data in providers.items():
+        if exclude_alias is not None and provider_alias == exclude_alias:
+            continue
+        if not isinstance(provider_data, Mapping):
+            continue
+        provider_mapping = cast("Mapping[str, object]", provider_data)
+        api_key_env = provider_mapping.get("api_key_env")
+        if isinstance(api_key_env, str) and api_key_env:
+            names.add(api_key_env)
+    return names
+
+
+def _provider_key_env_name(
+    alias: str,
+    providers: Mapping[str, object],
+    *,
+    existing_provider: Mapping[str, object] | None = None,
+    occupied_env_names: set[str] | None = None,
+    owned_repo_env_names: set[str] | None = None,
+) -> str:
+    provider_used_names = _provider_key_env_names_in_use(providers, exclude_alias=alias)
+    occupied_names = set(provider_used_names)
+    if occupied_env_names is not None:
+        occupied_names.update(occupied_env_names)
+    owned_names = owned_repo_env_names or set()
+    if existing_provider is not None:
+        existing_api_key_env = existing_provider.get("api_key_env")
+        if (
+            isinstance(existing_api_key_env, str)
+            and existing_api_key_env.startswith("AHADIFF_")
+            and existing_api_key_env not in provider_used_names
+        ):
+            try:
+                validate_repo_api_key_env_name(existing_api_key_env)
+            except ConfigError:
+                pass
+            else:
+                if (
+                    existing_api_key_env in owned_names
+                    or existing_api_key_env not in occupied_names
+                ):
+                    return existing_api_key_env
+
+    base_name = _provider_key_env_base(alias)
+    if base_name not in occupied_names:
+        return base_name
+    stem = base_name.removesuffix("_KEY")
+    for suffix in range(2, 1000):
+        candidate = f"{stem}_{suffix}_KEY"
+        if candidate not in occupied_names:
+            return candidate
+    raise _ProviderFieldError("api_key_env collision could not be resolved")
+
+
+def _occupied_provider_key_env_names(repo_env: Mapping[str, str]) -> set[str]:
+    return set(os.environ) | set(repo_env)
+
+
+def _owned_repo_env_names(repo_env: Mapping[str, str]) -> set[str]:
+    names: set[str] = set()
+    for name, value in repo_env.items():
+        current_value = os.environ.get(name)
+        if current_value is None or current_value == value:
+            names.add(name)
+    return names
+
+
+def _legacy_repo_env_name_for_cleanup(name: object) -> str | None:
+    if not isinstance(name, str) or name.startswith("AHADIFF_"):
+        return None
+    try:
+        validate_repo_api_key_env_name(name)
+    except ConfigError:
+        return None
+    return name
+
+
+def _apply_saved_repo_env_value(
+    name: str,
+    value: str,
+    *,
+    previous_repo_env: Mapping[str, str],
+) -> None:
+    current_value = os.environ.get(name)
+    previous_value = previous_repo_env.get(name)
+    if current_value is None or (previous_value is not None and current_value == previous_value):
+        os.environ[name] = value
+
+
+def _restore_repo_env_value(
+    env_path: Path,
+    name: str,
+    *,
+    previous_repo_env: Mapping[str, str],
+) -> None:
+    previous_repo_value = previous_repo_env.get(name)
+    if previous_repo_value is None:
+        remove_repo_env_var(env_path, name)
+    else:
+        write_repo_env_var(env_path, name, previous_repo_value)
+        if name not in os.environ:
+            os.environ[name] = previous_repo_value
+
+
+def _remove_owned_repo_env_value(
+    env_path: Path,
+    name: str,
+    *,
+    repo_env: Mapping[str, str],
+) -> bool:
+    repo_value = repo_env.get(name)
+    removed = remove_repo_env_var(env_path, name)
+    if removed and repo_value is not None and os.environ.get(name) == repo_value:
+        os.environ.pop(name, None)
+    return removed
+
+
+def _restore_repo_env_value_best_effort(
+    env_path: Path,
+    name: str,
+    *,
+    previous_repo_env: Mapping[str, str],
+) -> None:
+    with suppress(Exception):
+        _restore_repo_env_value(env_path, name, previous_repo_env=previous_repo_env)
+
+
+def _rollback_saved_repo_env_value(
+    env_path: Path,
+    name: str,
+    attempted_value: str,
+    *,
+    previous_repo_env: Mapping[str, str],
+    previous_process_value: str | None,
+    previous_process_value_exists: bool,
+) -> None:
+    _restore_repo_env_value(env_path, name, previous_repo_env=previous_repo_env)
+    if os.environ.get(name) == attempted_value:
+        if previous_process_value_exists:
+            assert previous_process_value is not None
+            os.environ[name] = previous_process_value
+        else:
+            os.environ.pop(name, None)
+
+
+def _restore_config_snapshot(
+    config_path: Path,
+    data: Mapping[str, Any],
+    *,
+    existed: bool,
+) -> None:
+    if existed:
+        write_config_data(config_path, data)
+    else:
+        config_path.unlink(missing_ok=True)
+
+
+def _restore_config_snapshot_best_effort(
+    config_path: Path,
+    data: Mapping[str, Any],
+    *,
+    existed: bool,
+) -> None:
+    with suppress(Exception):
+        _restore_config_snapshot(config_path, data, existed=existed)
+
+
+def _is_api_key_noop(value: object) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    stripped = value.strip()
+    return not stripped or all(char == "*" for char in stripped)
+
+
+def _validate_plain_api_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if "\n" in value or "\r" in value:
+        raise _ProviderFieldError("api_key must not contain newlines")
+    if any(ord(char) < 32 for char in value):
+        raise _ProviderFieldError("api_key must not contain control characters")
+    return value
+
+
+def _drop_noop_api_key(payload: dict[str, object]) -> bool:
+    if "api_key" not in payload:
+        return False
+    value = payload.get("api_key")
+    if _is_api_key_noop(value):
+        payload.pop("api_key", None)
+        return True
+    return False
 
 
 def _error(message: str, *, status: int) -> JSONResponse:
@@ -517,6 +732,47 @@ def _provider_probe_failed_result(alias: str) -> dict[str, Any]:
     }
 
 
+def _verification_from_provider_probe(
+    *,
+    alias: str,
+    provider_data: Mapping[str, Any],
+    api_key: str | None,
+    security_config: SecurityConfig,
+    workspace_root: Path,
+) -> dict[str, object] | None:
+    if api_key is None:
+        return None
+    try:
+        provider_class = _provider_required_str(provider_data, "provider_class")
+        model_name = _provider_required_str(provider_data, "model_name")
+        model_limits_name = _provider_optional_str(provider_data, "model_limits_name")
+        base_url = _provider_required_str(provider_data, "base_url")
+        api_key_env = _validate_provider_api_key_env(provider_data.get("api_key_env"))
+        report = probe_provider(
+            provider_name=alias,
+            provider_class=provider_class,
+            model_name=model_name,
+            model_limits_name=model_limits_name,
+            base_url=base_url,
+            api_key=api_key,
+            api_key_env=api_key_env,
+            workspace_root=workspace_root,
+            security_config=security_config,
+            request_timeout_seconds=5,
+            persist_result=False,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": "provider_probe_failed",
+            "detail": type(exc).__name__,
+        }
+    detail = next((note for note in report.notes if note), None)
+    if not report.connectivity_ok:
+        return {"ok": False, "error": "provider_probe_failed", "detail": detail}
+    return {"ok": True, "error": None, "detail": detail}
+
+
 def _persist_probe_result_if_current(
     *,
     state: ServeState,
@@ -572,6 +828,7 @@ async def create_provider(request: Request) -> JSONResponse:
         alias_error = _invalid_alias_response(raw_alias)
         if alias_error is not None:
             return alias_error
+    _drop_noop_api_key(payload)
 
     try:
         body = ProviderCreateRequest.model_validate(payload)
@@ -582,62 +839,135 @@ async def create_provider(request: Request) -> JSONResponse:
             body.model_limits_name,
             field_name="model_limits_name",
         )
-        api_key_env = _validate_provider_api_key_env(body.api_key_env)
+        plain_api_key = _validate_plain_api_key(body.api_key)
+        requested_api_key_env = (
+            None if plain_api_key is not None else _validate_provider_api_key_env(body.api_key_env)
+        )
     except _ProviderFieldError as exc:
         return _error(str(exc), status=422)
 
     config_path = _config_path(state)
 
-    def _persist() -> tuple[bool, dict[str, Any] | None, list[dict[str, object]]]:
+    def _persist() -> tuple[
+        bool,
+        dict[str, Any] | None,
+        list[dict[str, object]],
+        SecurityConfig | None,
+    ]:
         with serve_repo_write_lock(state, command="serve provider create"):
             data, providers = _read_providers_table(config_path)
             if body.alias in providers:
-                return False, None, []
+                return False, None, [], None
+            security_config = _security_config_from_data(data)
+            previous_config_data = deepcopy(data)
+            previous_config_exists = config_path.exists()
             normalized_base_url = _normalize_and_validate_base_url(
                 body.base_url,
                 provider_class=body.provider_class,
                 data=data,
             )
-            new_provider: dict[str, Any] = {
-                "provider_class": body.provider_class,
-                "model_name": body.model_name,
-                "base_url": normalized_base_url,
-                "api_key_env": api_key_env,
-            }
-            if body.max_output_tokens is not None:
-                new_provider["max_output_tokens"] = body.max_output_tokens
-            if body.thinking_level is not None:
-                new_provider["thinking_level"] = body.thinking_level
-            if model_limits_name is not None:
-                new_provider["model_limits_name"] = model_limits_name
-            warnings = _apply_max_output_policy(new_provider)
-            providers[body.alias] = new_provider
-            write_config_data(config_path, data)
-            _append_provider_audit_event(
-                state,
-                event_type="provider_create",
-                alias=body.alias,
-                provider_data=new_provider,
-            )
-            return True, dict(new_provider), warnings
+            env_path = state.state_dir / ".env"
+            if plain_api_key is not None:
+                repo_env = load_repo_env_file(env_path)
+                api_key_env = _provider_key_env_name(
+                    body.alias,
+                    providers,
+                    occupied_env_names=_occupied_provider_key_env_names(repo_env),
+                    owned_repo_env_names=_owned_repo_env_names(repo_env),
+                )
+            else:
+                repo_env = {}
+                api_key_env = requested_api_key_env
+            if api_key_env is None:
+                raise _ProviderFieldError("api_key_env must be a non-empty string")
+            previous_process_value = os.environ.get(api_key_env)
+            previous_process_value_exists = api_key_env in os.environ
+            attempted_repo_env_value: str | None = None
+            config_committed = False
+            if plain_api_key is not None:
+                write_repo_env_var(env_path, api_key_env, plain_api_key)
+                _apply_saved_repo_env_value(
+                    api_key_env,
+                    plain_api_key,
+                    previous_repo_env=repo_env,
+                )
+                attempted_repo_env_value = plain_api_key
+            try:
+                new_provider: dict[str, Any] = {
+                    "provider_class": body.provider_class,
+                    "model_name": body.model_name,
+                    "base_url": normalized_base_url,
+                    "api_key_env": api_key_env,
+                }
+                if body.max_output_tokens is not None:
+                    new_provider["max_output_tokens"] = body.max_output_tokens
+                if body.thinking_level is not None:
+                    new_provider["thinking_level"] = body.thinking_level
+                if model_limits_name is not None:
+                    new_provider["model_limits_name"] = model_limits_name
+                warnings = _apply_max_output_policy(new_provider)
+                providers[body.alias] = new_provider
+                write_config_data(config_path, data)
+                config_committed = True
+                _append_provider_audit_event(
+                    state,
+                    event_type="provider_create",
+                    alias=body.alias,
+                    provider_data=new_provider,
+                )
+            except Exception:
+                if attempted_repo_env_value is not None:
+                    with suppress(Exception):
+                        _rollback_saved_repo_env_value(
+                            env_path,
+                            api_key_env,
+                            attempted_repo_env_value,
+                            previous_repo_env=repo_env,
+                            previous_process_value=previous_process_value,
+                            previous_process_value_exists=previous_process_value_exists,
+                        )
+                if config_committed:
+                    _restore_config_snapshot_best_effort(
+                        config_path,
+                        previous_config_data,
+                        existed=previous_config_exists,
+                    )
+                raise
+            return True, dict(new_provider), warnings, security_config
 
     try:
-        created, persisted, warnings = await to_thread.run_sync(_persist)
+        created, persisted, warnings, security_config = await to_thread.run_sync(_persist)
     except _ProviderBaseUrlError as exc:
         return _error(f"base_url: {exc}", status=422)
     except _ProviderFieldError as exc:
         return _error(str(exc), status=422)
     except ConfigError as exc:
         return _error(str(exc), status=500)
+    except Exception:
+        return _error("provider_persist_failed", status=500)
     if not created or persisted is None:
         return _error("provider_alias_conflict", status=409)
 
     summary = _build_summary(state, body.alias, persisted)
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
+    verification = await to_thread.run_sync(
+        lambda: _verification_from_provider_probe(
+            alias=body.alias,
+            provider_data=persisted,
+            api_key=plain_api_key,
+            security_config=security_config or SecurityConfig(),
+            workspace_root=state.state_dir.parent,
+        )
+    )
     return JSONResponse(
         ProviderMutationResponse.model_validate(
-            {"updated": True, "provider": summary, "warnings": warnings}
+            {
+                "updated": True,
+                "provider": summary,
+                "warnings": warnings,
+                "verification": verification,
+            }
         ).model_dump(mode="json"),
         status_code=201,
     )
@@ -734,9 +1064,11 @@ async def update_provider(request: Request) -> JSONResponse:
         return _error("invalid_json", status=400)
     if not isinstance(raw_payload, dict):
         return _error("body_must_be_object", status=400)
+    payload = cast("dict[str, object]", raw_payload)
+    api_key_noop_requested = _drop_noop_api_key(payload)
 
     try:
-        body = ProviderUpdateRequest.model_validate(raw_payload)
+        body = ProviderUpdateRequest.model_validate(payload)
     except ValidationError as exc:
         return _validation_error(exc)
 
@@ -755,6 +1087,17 @@ async def update_provider(request: Request) -> JSONResponse:
         clear_fields.add("max_output_tokens")
     if "model_limits_name" in fields_set and body.model_limits_name is None:
         clear_fields.add("model_limits_name")
+    raw_plain_api_key = update_payload.pop("api_key", None)
+    try:
+        plain_api_key = (
+            _validate_plain_api_key(raw_plain_api_key)
+            if isinstance(raw_plain_api_key, str)
+            else None
+        )
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
+    if isinstance(plain_api_key, str):
+        update_payload.pop("api_key_env", None)
     masked_key = update_payload.get("api_key_env")
     if isinstance(masked_key, str) and "****" in masked_key:
         del update_payload["api_key_env"]
@@ -765,76 +1108,175 @@ async def update_provider(request: Request) -> JSONResponse:
             )
         except _ProviderFieldError as exc:
             return _error(str(exc), status=422)
-    if not update_payload and not clear_fields:
+    if (
+        not update_payload
+        and not clear_fields
+        and not api_key_noop_requested
+        and plain_api_key is None
+    ):
         return _error("at_least_one_field_required", status=422)
 
     config_path = _config_path(state)
 
-    def _persist() -> tuple[bool, dict[str, Any] | None, list[dict[str, object]]]:
+    def _persist() -> tuple[
+        bool,
+        dict[str, Any] | None,
+        list[dict[str, object]],
+        SecurityConfig | None,
+    ]:
         with serve_repo_write_lock(state, command="serve provider update"):
             data, providers = _read_providers_table(config_path)
             existing = providers.get(alias)
             if not isinstance(existing, dict):
-                return False, None, []
+                return False, None, [], None
+            previous_config_data = deepcopy(data)
+            previous_config_exists = config_path.exists()
             existing_typed = cast("dict[str, Any]", existing)
             updated_provider: dict[str, Any] = dict(existing_typed)
-            safe_update = {
-                k: v
-                for k, v in update_payload.items()
-                if not (k == "api_key_env" and isinstance(v, str) and "****" in v)
-            }
-            updated_provider.update(safe_update)
-            for field_name in clear_fields:
-                updated_provider.pop(field_name, None)
-            updated_provider["api_key_env"] = _validate_provider_api_key_env(
-                updated_provider.get("api_key_env")
-            )
-            # Recompute base_url normalization if either base_url or
-            # provider_class changed (so suffix stripping stays aligned).
-            if "base_url" in update_payload or "provider_class" in update_payload:
-                provider_class = str(updated_provider.get("provider_class", ""))
-                base_url = str(updated_provider.get("base_url", ""))
-                if base_url:
-                    updated_provider["base_url"] = _normalize_and_validate_base_url(
-                        base_url,
-                        provider_class=provider_class,
-                        data=data,
+            env_path = state.state_dir / ".env"
+            repo_env: Mapping[str, str] = {}
+            api_key_env_for_rollback: str | None = None
+            attempted_repo_env_value: str | None = None
+            legacy_env_name_for_restore: str | None = None
+            previous_process_value: str | None = None
+            previous_process_value_exists = False
+            config_committed = False
+            if isinstance(plain_api_key, str):
+                repo_env = load_repo_env_file(env_path)
+                api_key_env = _provider_key_env_name(
+                    alias,
+                    providers,
+                    existing_provider=existing_typed,
+                    occupied_env_names=_occupied_provider_key_env_names(repo_env),
+                    owned_repo_env_names=_owned_repo_env_names(repo_env),
+                )
+                update_payload["api_key_env"] = api_key_env
+                previous_process_value = os.environ.get(api_key_env)
+                previous_process_value_exists = api_key_env in os.environ
+                write_repo_env_var(env_path, api_key_env, plain_api_key)
+                _apply_saved_repo_env_value(
+                    api_key_env,
+                    plain_api_key,
+                    previous_repo_env=repo_env,
+                )
+                existing_api_key_env = _legacy_repo_env_name_for_cleanup(
+                    existing_typed.get("api_key_env")
+                )
+                if (
+                    existing_api_key_env is not None
+                    and existing_api_key_env != api_key_env
+                    and existing_api_key_env in _owned_repo_env_names(repo_env)
+                    and existing_api_key_env
+                    not in _provider_key_env_names_in_use(providers, exclude_alias=alias)
+                ):
+                    _remove_owned_repo_env_value(
+                        env_path,
+                        existing_api_key_env,
+                        repo_env=repo_env,
                     )
-            # Clear stale probe results when the provider identity or registry
-            # model override changes; old live probe limits belong to the old identity.
-            limit_identity_changed = any(
-                field in update_payload or field in clear_fields for field in _LIMIT_IDENTITY_FIELDS
-            )
-            if limit_identity_changed:
-                clear_provider_probe_fields(updated_provider)
-            warnings = _apply_max_output_policy(updated_provider)
-            providers[alias] = updated_provider
-            write_config_data(config_path, data)
-            _append_provider_audit_event(
-                state,
-                event_type="provider_update",
-                alias=alias,
-                provider_data=updated_provider,
-            )
-            return True, dict(updated_provider), warnings
+                    legacy_env_name_for_restore = existing_api_key_env
+                api_key_env_for_rollback = api_key_env
+                attempted_repo_env_value = plain_api_key
+            try:
+                safe_update = {
+                    k: v
+                    for k, v in update_payload.items()
+                    if not (k == "api_key_env" and isinstance(v, str) and "****" in v)
+                }
+                updated_provider.update(safe_update)
+                for field_name in clear_fields:
+                    updated_provider.pop(field_name, None)
+                updated_provider["api_key_env"] = _validate_provider_api_key_env(
+                    updated_provider.get("api_key_env")
+                )
+                # Recompute base_url normalization if either base_url or
+                # provider_class changed (so suffix stripping stays aligned).
+                if "base_url" in update_payload or "provider_class" in update_payload:
+                    provider_class = str(updated_provider.get("provider_class", ""))
+                    base_url = str(updated_provider.get("base_url", ""))
+                    if base_url:
+                        updated_provider["base_url"] = _normalize_and_validate_base_url(
+                            base_url,
+                            provider_class=provider_class,
+                            data=data,
+                        )
+                # Clear stale probe results when the provider identity or registry
+                # model override changes; old live probe limits belong to the old identity.
+                limit_identity_changed = any(
+                    field in update_payload or field in clear_fields
+                    for field in _LIMIT_IDENTITY_FIELDS
+                )
+                if limit_identity_changed:
+                    clear_provider_probe_fields(updated_provider)
+                warnings = _apply_max_output_policy(updated_provider)
+                providers[alias] = updated_provider
+                write_config_data(config_path, data)
+                config_committed = True
+                _append_provider_audit_event(
+                    state,
+                    event_type="provider_update",
+                    alias=alias,
+                    provider_data=updated_provider,
+                )
+            except Exception:
+                if api_key_env_for_rollback is not None and attempted_repo_env_value is not None:
+                    with suppress(Exception):
+                        _rollback_saved_repo_env_value(
+                            env_path,
+                            api_key_env_for_rollback,
+                            attempted_repo_env_value,
+                            previous_repo_env=repo_env,
+                            previous_process_value=previous_process_value,
+                            previous_process_value_exists=previous_process_value_exists,
+                        )
+                if legacy_env_name_for_restore is not None:
+                    _restore_repo_env_value_best_effort(
+                        env_path,
+                        legacy_env_name_for_restore,
+                        previous_repo_env=repo_env,
+                    )
+                if config_committed:
+                    _restore_config_snapshot_best_effort(
+                        config_path,
+                        previous_config_data,
+                        existed=previous_config_exists,
+                    )
+                raise
+            return True, dict(updated_provider), warnings, _security_config_from_data(data)
 
     try:
-        updated, persisted, warnings = await to_thread.run_sync(_persist)
+        updated, persisted, warnings, security_config = await to_thread.run_sync(_persist)
     except _ProviderBaseUrlError as exc:
         return _error(f"base_url: {exc}", status=422)
     except _ProviderFieldError as exc:
         return _error(str(exc), status=422)
     except ConfigError as exc:
         return _error(str(exc), status=500)
+    except Exception:
+        return _error("provider_persist_failed", status=500)
     if not updated or persisted is None:
         return _error("provider_not_found", status=404)
 
     summary = _build_summary(state, alias, persisted)
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
+    verification = await to_thread.run_sync(
+        lambda: _verification_from_provider_probe(
+            alias=alias,
+            provider_data=persisted,
+            api_key=plain_api_key if isinstance(plain_api_key, str) else None,
+            security_config=security_config or SecurityConfig(),
+            workspace_root=state.state_dir.parent,
+        )
+    )
     return JSONResponse(
         ProviderMutationResponse.model_validate(
-            {"updated": True, "provider": summary, "warnings": warnings}
+            {
+                "updated": True,
+                "provider": summary,
+                "warnings": warnings,
+                "verification": verification,
+            }
         ).model_dump(mode="json")
     )
 
@@ -862,21 +1304,54 @@ async def delete_provider(request: Request) -> JSONResponse:
             existing = providers.get(alias)
             if not isinstance(existing, dict):
                 return False, None
+            previous_config_data = deepcopy(data)
+            previous_config_exists = config_path.exists()
             existing_typed = cast("dict[str, Any]", existing)
-            providers.pop(alias)
-            write_config_data(config_path, data)
-            _append_provider_audit_event(
-                state,
-                event_type="provider_delete",
-                alias=alias,
-                provider_data=existing_typed,
-            )
+            env_path = state.state_dir / ".env"
+            repo_env = load_repo_env_file(env_path)
+            api_key_env = existing_typed.get("api_key_env")
+            env_name_for_restore: str | None = None
+            config_committed = False
+            try:
+                providers.pop(alias)
+                if (
+                    isinstance(api_key_env, str)
+                    and api_key_env.startswith("AHADIFF_")
+                    and api_key_env in repo_env
+                    and api_key_env not in _provider_key_env_names_in_use(providers)
+                ):
+                    _remove_owned_repo_env_value(env_path, api_key_env, repo_env=repo_env)
+                    env_name_for_restore = api_key_env
+                write_config_data(config_path, data)
+                config_committed = True
+                _append_provider_audit_event(
+                    state,
+                    event_type="provider_delete",
+                    alias=alias,
+                    provider_data=existing_typed,
+                )
+            except Exception:
+                if env_name_for_restore is not None:
+                    _restore_repo_env_value_best_effort(
+                        env_path,
+                        env_name_for_restore,
+                        previous_repo_env=repo_env,
+                    )
+                if config_committed:
+                    _restore_config_snapshot_best_effort(
+                        config_path,
+                        previous_config_data,
+                        existed=previous_config_exists,
+                    )
+                raise
             return True, dict(existing_typed)
 
     try:
         deleted, _persisted = await to_thread.run_sync(_persist)
     except ConfigError as exc:
         return _error(str(exc), status=500)
+    except Exception:
+        return _error("provider_persist_failed", status=500)
     if not deleted:
         return _error("provider_not_found", status=404)
 

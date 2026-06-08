@@ -29,7 +29,8 @@ class ProviderCreateRequest(BaseModel):
     provider_class: ProviderClass
     model_name: str = Field(min_length=1, max_length=200)
     base_url: str = Field(min_length=1, max_length=2048)
-    api_key_env: str = Field(min_length=1, max_length=128)
+    api_key_env: str | None = Field(default=None, min_length=1, max_length=128)
+    api_key: str | None = Field(default=None, min_length=1, max_length=4096)
     max_output_tokens: ProviderMaxOutputTokens | None = None
     thinking_level: ThinkingLevel | None = None
     model_limits_name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -42,6 +43,7 @@ class ProviderUpdateRequest(BaseModel):
     model_name: str | None = Field(default=None, min_length=1, max_length=200)
     base_url: str | None = Field(default=None, min_length=1, max_length=2048)
     api_key_env: str | None = Field(default=None, min_length=1, max_length=128)
+    api_key: str | None = Field(default=None, min_length=1, max_length=4096)
     max_output_tokens: ProviderMaxOutputTokens | None = None
     thinking_level: ThinkingLevel | None = None
     model_limits_name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -53,6 +55,7 @@ class ProviderMutationResponse(BaseModel):
     updated: bool
     provider: ProviderSummary
     warnings: list[dict[str, object]] = Field(default_factory=_empty_provider_warnings)
+    verification: dict[str, object] | None = None
 
 
 class ModelLimitsPreviewRequest(BaseModel):

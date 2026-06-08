@@ -6,8 +6,10 @@ import type {
   ProviderCreateInput,
   ProviderMutationResponse,
   ProviderUpdateInput,
+  ProviderVerification,
   TaskInfoResponse,
 } from '../api/types';
+import { ApiError } from '../api/client';
 import { getTask } from '../api/tasks';
 import {
   discoverModels,
@@ -52,12 +54,13 @@ const PROVIDER_CLASSES = [
 
 type ProviderClass = (typeof PROVIDER_CLASSES)[number];
 
-interface DraftFields {
+export interface DraftFields {
   alias: string;
   provider_class: string;
   model_name: string;
   base_url: string;
-  api_key_env: string;
+  /** Plaintext secret typed by the user. Empty on edit = keep existing key. */
+  api_key: string;
   max_output_tokens: string;
   thinking_level: string;
   model_limits_name: string;
@@ -78,7 +81,7 @@ const DEFAULT_DRAFT: DraftFields = {
   provider_class: 'openai',
   model_name: '',
   base_url: '',
-  api_key_env: '',
+  api_key: '',
   max_output_tokens: '',
   thinking_level: 'none',
   model_limits_name: '',
@@ -94,27 +97,27 @@ const PROVIDER_EXAMPLES: Record<string, ProviderExample> = {
   openai: {
     base_url: 'https://api.openai.com/v1',
     model_name: 'gpt-5.5',
-    api_key: 'sk-... or OPENAI_API_KEY',
+    api_key: 'sk-...',
   },
   openai_responses: {
     base_url: 'https://api.openai.com/v1',
     model_name: 'gpt-5.5',
-    api_key: 'sk-... or OPENAI_API_KEY',
+    api_key: 'sk-...',
   },
   gemini: {
     base_url: 'https://generativelanguage.googleapis.com',
     model_name: 'gemini-3.1-pro-preview',
-    api_key: 'AIza... or GEMINI_API_KEY',
+    api_key: 'AIza...',
   },
   anthropic: {
     base_url: 'https://api.anthropic.com',
     model_name: 'claude-opus-4-6',
-    api_key: 'sk-ant-... or ANTHROPIC_API_KEY',
+    api_key: 'sk-ant-...',
   },
   azure: {
     base_url: 'https://{resource}.openai.azure.com',
     model_name: 'gpt-5.5',
-    api_key: 'AZURE_OPENAI_API_KEY',
+    api_key: 'your Azure OpenAI key',
   },
   newapi: {
     base_url: 'https://api.newapi.com/v1',
@@ -276,11 +279,44 @@ function toDraft(p: ProviderSummary): DraftFields {
     provider_class: p.provider_class,
     model_name: p.model_name,
     base_url: p.base_url,
-    api_key_env: p.api_key_env ?? '',
+    api_key: '',
     max_output_tokens: p.max_output_tokens != null ? String(p.max_output_tokens) : '',
     thinking_level: p.thinking_level ?? 'none',
     model_limits_name: p.model_limits_name ?? '',
   };
+}
+
+export function buildProviderUpdatePayload(
+  draft: DraftFields,
+  provider: ProviderSummary,
+): ProviderUpdateInput {
+  const parsedMaxOutput = parseInt(draft.max_output_tokens, 10);
+  const maxOutput = Number.isFinite(parsedMaxOutput) && parsedMaxOutput > 0 ? parsedMaxOutput : null;
+  const thinkingLevel = SUPPORTS_THINKING.includes(draft.provider_class)
+    ? (draft.thinking_level === 'none' || !draft.thinking_level ? null : draft.thinking_level)
+    : null;
+  const modelLimitsName = draft.model_limits_name.trim() || null;
+  const apiKey = draft.api_key.trim();
+
+  const payload: ProviderUpdateInput = {
+    // Empty = keep the existing key (masked round-trip).
+    api_key: apiKey || undefined,
+    max_output_tokens: maxOutput,
+    thinking_level: thinkingLevel,
+    model_limits_name: modelLimitsName,
+  };
+
+  if (draft.provider_class !== provider.provider_class) {
+    payload.provider_class = draft.provider_class;
+  }
+  if (draft.model_name.trim() !== provider.model_name) {
+    payload.model_name = draft.model_name.trim();
+  }
+  if (draft.base_url.trim() !== provider.base_url) {
+    payload.base_url = draft.base_url.trim();
+  }
+
+  return payload;
 }
 
 export default function ProviderCard({
@@ -312,6 +348,7 @@ export default function ProviderCard({
   );
   const [savingModels, setSavingModels] = useState(false);
   const [mutationWarnings, setMutationWarnings] = useState<ModelLimitsWarning[]>([]);
+  const [verification, setVerification] = useState<ProviderVerification | null>(null);
   const mountedRef = useRef(false);
   const probeRequestRef = useRef(0);
   const probePollerRef = useRef<ProviderProbePoller | null>(null);
@@ -370,6 +407,7 @@ export default function ProviderCard({
     setExpanded(true);
     setSaveError(null);
     setMutationWarnings([]);
+    setVerification(null);
   };
 
   const cancelEdit = () => {
@@ -385,6 +423,7 @@ export default function ProviderCard({
   const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
+    setVerification(null);
     try {
       const parsedMaxOutput = parseInt(draft.max_output_tokens, 10);
       const maxOutput = Number.isFinite(parsedMaxOutput) && parsedMaxOutput > 0 ? parsedMaxOutput : null;
@@ -392,35 +431,32 @@ export default function ProviderCard({
         ? (draft.thinking_level === 'none' || !draft.thinking_level ? null : draft.thinking_level)
         : null;
       const modelLimitsName = draft.model_limits_name.trim() || null;
+      const apiKey = draft.api_key.trim();
+      let result: ProviderMutationResponse | void;
       if (isNew) {
         const payload: ProviderCreateInput = {
           alias: draft.alias.trim(),
           provider_class: draft.provider_class,
           model_name: draft.model_name.trim(),
           base_url: draft.base_url.trim(),
-          api_key_env: draft.api_key_env.trim(),
+          api_key: apiKey || null,
           max_output_tokens: maxOutput,
           thinking_level: thinkingLevel,
           model_limits_name: modelLimitsName,
         };
-        const result = await onSave(draft.alias.trim(), payload);
-        setMutationWarnings(result?.warnings ?? []);
+        result = await onSave(draft.alias.trim(), payload);
       } else {
-        const payload: ProviderUpdateInput = {
-          provider_class: draft.provider_class,
-          model_name: draft.model_name.trim(),
-          base_url: draft.base_url.trim(),
-          api_key_env: draft.api_key_env.trim() || undefined,
-          max_output_tokens: maxOutput,
-          thinking_level: thinkingLevel,
-          model_limits_name: modelLimitsName,
-        };
-        const result = await onSave(provider.alias, payload);
-        setMutationWarnings(result?.warnings ?? []);
+        const payload = buildProviderUpdatePayload(draft, provider);
+        result = await onSave(provider.alias, payload);
       }
+      setMutationWarnings(result?.warnings ?? []);
+      setVerification(result?.verification ?? null);
       setEditing(false);
-    } catch {
-      setSaveError(providerActionError(t, 'Settings_page.provider_save_failed'));
+    } catch (err) {
+      // Surface the backend's specific reason (e.g. base_url/alias error) instead of
+      // collapsing every failure into the generic message.
+      const detail = err instanceof ApiError ? err.message : null;
+      setSaveError(detail ?? providerActionError(t, 'Settings_page.provider_save_failed'));
     } finally {
       setSaving(false);
     }
@@ -591,6 +627,7 @@ export default function ProviderCard({
       {expanded && (
         <div className="provider-card__body" id={bodyId} role="region" aria-labelledby={headerId}>
           {mutationWarnings.length > 0 && <ProviderWarnings warnings={mutationWarnings} t={t} />}
+          {verification && <ProviderVerificationNotice verification={verification} t={t} />}
           {editing ? (
             <ProviderEditForm
               draft={draft}
@@ -927,6 +964,30 @@ function ProviderWarnings({
   );
 }
 
+export function ProviderVerificationNotice({
+  verification,
+  t,
+}: {
+  verification: ProviderVerification;
+  t: TranslateFn;
+}) {
+  if (verification.ok) {
+    return (
+      <div className="provider-card__verify provider-card__verify--ok" role="status">
+        {t('Settings_page.provider_verify_ok')}
+      </div>
+    );
+  }
+  return (
+    <div className="provider-card__verify provider-card__verify--failed" role="alert">
+      {t('Settings_page.provider_verify_failed')}
+      {verification.error && (
+        <code className="provider-card__verify-code">{verification.error}</code>
+      )}
+    </div>
+  );
+}
+
 interface FormProps {
   draft: DraftFields;
   setDraft: React.Dispatch<React.SetStateAction<DraftFields>>;
@@ -939,7 +1000,7 @@ interface FormProps {
   locale: string;
 }
 
-function ProviderEditForm({
+export function ProviderEditForm({
   draft,
   setDraft,
   isNew,
@@ -1016,12 +1077,12 @@ function ProviderEditForm({
     setDiscoveredModels(null);
     setDiscoverError(null);
     setDiscoveringModels(false);
-  }, [draft.api_key_env, draft.base_url, draft.provider_class]);
+  }, [draft.api_key, draft.base_url, draft.provider_class]);
 
   const handleDiscoverModels = async () => {
     const requestDraft = {
       base_url: draft.base_url.trim(),
-      api_key: draft.api_key_env.trim(),
+      api_key: draft.api_key.trim(),
       provider_class: draft.provider_class,
     };
     if (!requestDraft.base_url || !requestDraft.api_key) return;
@@ -1042,7 +1103,7 @@ function ProviderEditForm({
         setDraft((prev) => {
           const stillSameProvider =
             prev.base_url.trim() === requestDraft.base_url
-            && prev.api_key_env.trim() === requestDraft.api_key
+            && prev.api_key.trim() === requestDraft.api_key
             && prev.provider_class === requestDraft.provider_class;
           if (!stillSameProvider || prev.model_name.trim()) return prev;
           return { ...prev, model_name: firstModel };
@@ -1066,7 +1127,9 @@ function ProviderEditForm({
   const aliasInvalid = isNew && draft.alias.trim() === '';
   const modelInvalid = draft.model_name.trim() === '';
   const baseInvalid = draft.base_url.trim() === '';
-  const canSave = !saving && !aliasInvalid && !modelInvalid && !baseInvalid;
+  const maxOutputTrimmed = draft.max_output_tokens.trim();
+  const maxOutputInvalid = maxOutputTrimmed !== '' && !/^[1-9]\d*$/.test(maxOutputTrimmed);
+  const canSave = !saving && !aliasInvalid && !modelInvalid && !baseInvalid && !maxOutputInvalid;
   const thinkingSupported = typeof modelLimits?.thinking?.supported === 'boolean'
     ? modelLimits.thinking.supported
     : SUPPORTS_THINKING.includes(draft.provider_class);
@@ -1157,7 +1220,7 @@ function ProviderEditForm({
             type="button"
             className="provider-card__btn provider-card__btn--secondary provider-card__btn--sm"
             onClick={handleDiscoverModels}
-            disabled={discoveringModels || !draft.base_url.trim() || !draft.api_key_env.trim()}
+            disabled={discoveringModels || !draft.base_url.trim() || !draft.api_key.trim()}
             title={t('Settings_page.provider_models_fetch')}
           >
             {discoveringModels ? '…' : '↻'}
@@ -1188,18 +1251,26 @@ function ProviderEditForm({
       <div className="provider-card__form-row">
         <label
           className="provider-card__form-label"
-          htmlFor={`provider-keyenv-${isNew ? 'new' : draft.alias}`}
+          htmlFor={`provider-apikey-${isNew ? 'new' : draft.alias}`}
         >
           {t('Settings_page.provider_api_key_env_label')}
         </label>
         <input
-          id={`provider-keyenv-${isNew ? 'new' : draft.alias}`}
-          type="text"
+          id={`provider-apikey-${isNew ? 'new' : draft.alias}`}
+          type="password"
+          autoComplete="off"
           className="provider-card__input"
-          value={draft.api_key_env}
-          onChange={(e) => setField('api_key_env', e.target.value)}
-          placeholder={example.api_key}
+          value={draft.api_key}
+          onChange={(e) => setField('api_key', e.target.value)}
+          placeholder={isNew ? example.api_key : t('Settings_page.provider_api_key_keep_ph')}
+          aria-describedby={`provider-apikey-hint-${isNew ? 'new' : draft.alias}`}
         />
+        <p
+          id={`provider-apikey-hint-${isNew ? 'new' : draft.alias}`}
+          className="provider-card__hint"
+        >
+          {t('Settings_page.provider_api_key_hint')}
+        </p>
       </div>
 
       <details className="provider-card__advanced">
@@ -1213,13 +1284,25 @@ function ProviderEditForm({
           </label>
           <input
             id={`provider-maxout-${isNew ? 'new' : draft.alias}`}
-            type="number"
+            type="text"
             className="provider-card__input"
             value={draft.max_output_tokens}
             onChange={(e) => setField('max_output_tokens', e.target.value)}
             placeholder={t('Settings_page.provider_max_output_ph')}
-            min={1}
+            aria-invalid={maxOutputInvalid}
+            aria-describedby={`provider-maxout-hint-${isNew ? 'new' : draft.alias}`}
           />
+          {maxOutputInvalid && (
+            <p className="provider-card__error provider-card__error--sm" style={{ gridColumn: '1 / -1', marginTop: 0 }}>
+              {t('Settings_page.provider_max_output_invalid')}
+            </p>
+          )}
+          <p
+            id={`provider-maxout-hint-${isNew ? 'new' : draft.alias}`}
+            className="provider-card__hint"
+          >
+            {t('Settings_page.provider_max_output_hint')}
+          </p>
         </div>
         <div className="provider-card__form-row">
           <label

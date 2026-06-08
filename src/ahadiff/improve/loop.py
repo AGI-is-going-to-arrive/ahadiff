@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.contracts import ProviderConfig, ResultEvent, compute_runtime_eval_bundle_version
+from ahadiff.core.config import load_repo_env_file
 from ahadiff.core.errors import ConfigError, InputError, StorageError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.json_util import safe_json_loads
@@ -58,6 +59,7 @@ _BASELINE_STATUSES = frozenset(
 )
 _PENDING_WORKTREE_NOTE = "session has a pending improve worktree; resolve it before resuming"
 _REPLAY_LEARN_TIMEOUT_SECONDS = 30 * 60
+_REPLAY_REPO_ENV_FILE_ENV = "AHADIFF_REPLAY_REPO_ENV_FILE"
 # Hard cap on bytes for any single mutated prompt produced by the improve LLM.
 # 256 KiB is generous for hand-edited Markdown prompts but bounds runaway output.
 _MAX_MUTATED_PROMPT_BYTES = 256 * 1024
@@ -168,6 +170,18 @@ class _InterruptController:
             _terminate_replay_process(process, force=force)
         if force:
             raise SystemExit(1)
+
+
+def _remove_repo_backed_env_values(
+    env: dict[str, str],
+    repo_env_values: dict[str, str],
+) -> bool:
+    removed = False
+    for name, value in repo_env_values.items():
+        if env.get(name) == value:
+            env.pop(name, None)
+            removed = True
+    return removed
 
 
 def run_improve_loop(
@@ -1330,8 +1344,16 @@ def _run_replay_learn_subprocess(
         command.extend(("--lang", output_lang))
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
+    repo_env_path = anchor_run_path.parent.parent / ".env"
+    repo_env_values = load_repo_env_file(repo_env_path)
+    stripped_repo_env = _remove_repo_backed_env_values(env, repo_env_values)
     if api_key is not None:
-        env[provider_config.api_key_env] = api_key
+        if repo_env_values.get(provider_config.api_key_env) == api_key:
+            stripped_repo_env = True
+        else:
+            env[provider_config.api_key_env] = api_key
+    if stripped_repo_env:
+        env[_REPLAY_REPO_ENV_FILE_ENV] = str(repo_env_path)
     state_dir = worktree_root / ".ahadiff" / "runs"
     before_runs: set[str] = (
         {child.name for child in state_dir.iterdir() if child.is_dir()}

@@ -170,6 +170,41 @@ def test_resolve_provider_keeps_distinct_implicit_aliases_ambiguous() -> None:
         )
 
 
+def test_resolve_provider_missing_remote_key_mentions_repo_env_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["privacy_mode"] = "explicit_remote"
+    snapshot.values["providers"] = {
+        "remote": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "https://api.example.test/v1",
+            "api_key_env": "AHADIFF_REMOTE_KEY",
+        }
+    }
+    monkeypatch.delenv("AHADIFF_REMOTE_KEY", raising=False)
+
+    with pytest.raises(AhaDiffError) as exc_info:
+        _resolve_provider_from_config(
+            snapshot=snapshot,
+            operation_label="lesson generation",
+            provider_name="remote",
+            provider_class="openai",
+            base_url=None,
+            model=None,
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            privacy_mode="explicit_remote",
+            local_hosts=("127.0.0.1",),
+            strict_local_hosts=("127.0.0.1",),
+        )
+
+    message = str(exc_info.value)
+    assert "AHADIFF_REMOTE_KEY" in message
+    assert ".ahadiff/.env" in message
+    assert "WebUI" in message
+
+
 @pytest.mark.parametrize(
     ("base_url", "message"),
     [

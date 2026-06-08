@@ -20,7 +20,7 @@ from ahadiff.core.errors import AhaDiffError
 from ahadiff.core.orchestrator import (
     _effective_capture_recommendation,  # pyright: ignore[reportPrivateUsage]
 )
-from ahadiff.core.paths import assert_local_repo_path, find_repo_root, find_workspace_root
+from ahadiff.core.paths import assert_local_repo_path, find_repo_root
 from ahadiff.git.capture import capture_patch
 from ahadiff.git.repo import repo_write_lock
 from ahadiff.llm.cost import estimate_text_tokens
@@ -308,9 +308,13 @@ def _resolve_workspace_root_for_estimate(workspace_root: Path) -> tuple[Path, bo
     try:
         return find_repo_root(workspace_root), True
     except AhaDiffError:
-        ws = find_workspace_root(workspace_root)
+        ws = workspace_root.resolve()
         assert_local_repo_path(ws)
         return ws, False
+
+
+def _workspace_root_from_state_dir(state_dir: Path) -> Path:
+    return state_dir.parent if state_dir.name == ".ahadiff" else state_dir
 
 
 def _file_count_from_capture(capture: object) -> int:
@@ -476,7 +480,7 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         return parse_error
     assert params is not None  # noqa: S101
 
-    workspace_root = state.state_dir.parent
+    workspace_root = _workspace_root_from_state_dir(state.state_dir)
     root, has_git_repo = _resolve_workspace_root_for_estimate(workspace_root)
     against_spec_error = _resolve_against_spec_param(root, params)
     if against_spec_error is not None:
@@ -624,7 +628,7 @@ async def post_learn(request: Request) -> JSONResponse:
         return parse_error
     assert params is not None  # noqa: S101
 
-    workspace_root = state.state_dir.parent
+    workspace_root = _workspace_root_from_state_dir(state.state_dir)
     root, _has_git_repo = _resolve_workspace_root_for_estimate(workspace_root)
     against_spec_error = _resolve_against_spec_param(root, params)
     if against_spec_error is not None:

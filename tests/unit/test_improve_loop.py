@@ -558,11 +558,12 @@ def test_run_replay_learn_subprocess_timeout_is_bounded_and_reported(
         )
 
 
-def test_run_improve_loop_propagates_interactive_api_key_to_replay(
+def test_run_improve_loop_does_not_inject_repo_env_api_key_to_replay_env(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    run_path = tmp_path / "anchor"
+    state_dir = tmp_path / ".ahadiff"
+    run_path = state_dir / "runs" / "run_anchor"
     _write_run_fixture(
         run_path,
         run_id="run_anchor",
@@ -570,7 +571,14 @@ def test_run_improve_loop_propagates_interactive_api_key_to_replay(
         base_ref="base-ref",
         finalized=False,
     )
+    (state_dir / ".env").write_text(
+        "AHADIFF_PROVIDER_API_KEY=interactive-secret\n",
+        encoding="utf-8",
+    )
+    worktree_root = tmp_path / "worktree"
+    worktree_root.mkdir()
     captured_env: dict[str, str] = {}
+    monkeypatch.delenv("AHADIFF_PROVIDER_API_KEY", raising=False)
 
     def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
         del args
@@ -578,7 +586,7 @@ def test_run_improve_loop_propagates_interactive_api_key_to_replay(
         assert isinstance(env, dict)
         captured_env.update(cast("dict[str, str]", env))
         _write_run_fixture(
-            tmp_path / ".ahadiff" / "runs" / "run_replay",
+            worktree_root / ".ahadiff" / "runs" / "run_replay",
             run_id="run_replay",
             source_ref="head-ref",
             base_ref="base-ref",
@@ -589,7 +597,7 @@ def test_run_improve_loop_propagates_interactive_api_key_to_replay(
     monkeypatch.setattr(improve_loop_module.subprocess, "run", fake_run)
 
     replay_path = cast("Any", improve_loop_module)._run_replay_learn_subprocess(
-        worktree_root=tmp_path,
+        worktree_root=worktree_root,
         anchor_run_path=run_path,
         metadata=json.loads((run_path / "metadata.json").read_text(encoding="utf-8")),
         provider_config=_provider_config(),
@@ -598,8 +606,88 @@ def test_run_improve_loop_propagates_interactive_api_key_to_replay(
     )
 
     assert replay_path.name == "run_replay"
-    assert captured_env["AHADIFF_PROVIDER_API_KEY"] == "interactive-secret"
+    assert "AHADIFF_PROVIDER_API_KEY" not in captured_env
+    assert captured_env["AHADIFF_REPLAY_REPO_ENV_FILE"] == str(state_dir / ".env")
     assert captured_env["PYTHONUTF8"] == "1"
+
+
+def test_run_improve_loop_removes_all_repo_backed_provider_keys_from_replay_env(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    run_path = state_dir / "runs" / "run_anchor"
+    _write_run_fixture(
+        run_path,
+        run_id="run_anchor",
+        source_ref="head-ref",
+        base_ref="base-ref",
+        finalized=False,
+    )
+    (state_dir / ".env").write_text(
+        "AHADIFF_PROVIDER_API_KEY=current-secret\n"
+        "AHADIFF_OTHER_PROVIDER_KEY=other-secret\n"
+        "AHADIFF_SYSTEM_OVERRIDE_KEY=repo-secret\n",
+        encoding="utf-8",
+    )
+    worktree_root = tmp_path / "worktree"
+    worktree_root.mkdir()
+    captured_env: dict[str, str] = {}
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "current-secret")
+    monkeypatch.setenv("AHADIFF_OTHER_PROVIDER_KEY", "other-secret")
+    monkeypatch.setenv("AHADIFF_SYSTEM_OVERRIDE_KEY", "system-secret")
+    monkeypatch.setenv("AHADIFF_UNRELATED_KEY", "keep-me")
+
+    def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        del args
+        env = kwargs.get("env")
+        assert isinstance(env, dict)
+        captured_env.update(cast("dict[str, str]", env))
+        _write_run_fixture(
+            worktree_root / ".ahadiff" / "runs" / "run_replay",
+            run_id="run_replay",
+            source_ref="head-ref",
+            base_ref="base-ref",
+            finalized=True,
+        )
+        return subprocess.CompletedProcess(["ahadiff", "learn"], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(improve_loop_module.subprocess, "run", fake_run)
+
+    replay_path = cast("Any", improve_loop_module)._run_replay_learn_subprocess(
+        worktree_root=worktree_root,
+        anchor_run_path=run_path,
+        metadata=json.loads((run_path / "metadata.json").read_text(encoding="utf-8")),
+        provider_config=_provider_config(),
+        api_key="current-secret",
+        privacy_mode="explicit_remote",
+    )
+
+    assert replay_path.name == "run_replay"
+    assert "AHADIFF_PROVIDER_API_KEY" not in captured_env
+    assert "AHADIFF_OTHER_PROVIDER_KEY" not in captured_env
+    assert captured_env["AHADIFF_SYSTEM_OVERRIDE_KEY"] == "system-secret"
+    assert captured_env["AHADIFF_UNRELATED_KEY"] == "keep-me"
+    assert captured_env["AHADIFF_REPLAY_REPO_ENV_FILE"] == str(state_dir / ".env")
+
+
+def test_learn_replay_env_file_helper_loads_repo_env_without_parent_secret(
+    tmp_path: Path,
+    monkeypatch: Any,
+    request: pytest.FixtureRequest,
+) -> None:
+    from ahadiff import cli as cli_module
+
+    env_path = tmp_path / ".ahadiff" / ".env"
+    env_path.parent.mkdir()
+    env_path.write_text("AHADIFF_PROVIDER_API_KEY=repo-env-secret\n", encoding="utf-8")
+    monkeypatch.delenv("AHADIFF_PROVIDER_API_KEY", raising=False)
+    monkeypatch.setenv("AHADIFF_REPLAY_REPO_ENV_FILE", str(env_path))
+    request.addfinalizer(lambda: os.environ.pop("AHADIFF_PROVIDER_API_KEY", None))
+
+    cast("Any", cli_module)._apply_replay_repo_env_file_from_env()
+
+    assert os.environ["AHADIFF_PROVIDER_API_KEY"] == "repo-env-secret"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
