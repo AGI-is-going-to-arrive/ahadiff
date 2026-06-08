@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.1</span></div>
+      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.2</span></div>
       <h1>AhaDiff User Guide</h1>
       <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
       <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> English walkthrough (YouTube)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code>. The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
@@ -1004,7 +1004,7 @@ ahadiff config show --resolved</span></div>
     <section id="provider">
       <div class="section-eyebrow">Setup</div>
       <h2>2. Configure a Provider</h2>
-      <p>Configuring one LLM provider is the only setup step before <code>ahadiff learn</code>. The key goes in an environment variable; you hand AhaDiff only the variable name. No key ever lands in Git, the README, manifests, or checked-in scripts.</p>
+      <p>Configuring one LLM provider is the only setup step before <code>ahadiff learn</code>. There are two paths. From the CLI, the key goes in an environment variable and you hand AhaDiff only the variable name. From the WebUI Settings, you paste the plaintext key and AhaDiff stores it for you (see "How the WebUI stores your key" below). Either way, no key ever lands in Git, the README, manifests, or checked-in scripts.</p>
 
       <h3>What <code>provider test</code> does</h3>
       <div class="mini-flow">
@@ -1031,7 +1031,7 @@ ahadiff config show --resolved</span></div>
         </div>
         <div class="g-card">
           <h3>Secret</h3>
-          <p>The real key stays in your shell environment. It never goes in a flag or a file.</p>
+          <p>On this CLI path the real key stays in your shell environment and never goes in a flag. The WebUI path is different: it writes the plaintext key to <code>.ahadiff/.env</code> (see below). Both ways keep the key out of Git.</p>
         </div>
       </div>
 
@@ -1097,6 +1097,20 @@ ahadiff provider test `
           <li>Server section with the serve port field and a Save button.</li>
         </ol>
       </figure>
+
+      <h3>How the WebUI stores your key</h3>
+      <p>In Settings you paste the plaintext key directly into the API Key field; you do not type a variable name there. AhaDiff then:</p>
+      <ul>
+        <li>Generates a unique reference name shaped like <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>. Uniqueness avoids names already in your system environment and names already in <code>.ahadiff/.env</code>, adding a numeric suffix on a clash (for example <code>AHADIFF_DEMO_2_KEY</code>).</li>
+        <li>Writes the plaintext key only into the repo-local <code>.ahadiff/.env</code> file. On POSIX the file is <code>chmod 0600</code>; on Windows <code>chmod</code> is not equivalent to a POSIX owner-only ACL, so it is best-effort and not strong isolation.</li>
+        <li>Makes sure the secret patterns (<code>.env</code>, <code>.env.*</code>, <code>audit.private.jsonl</code>, <code>*.lock</code>, and <code>*.log</code>) stay git-ignored: it creates <code>.ahadiff/.gitignore</code> if it is missing, and if you already have one it appends only the missing secret lines (your existing lines are preserved). Either way the key file is ignored by a normal <code>git add</code> (a forced <code>git add -f</code> could still override it).</li>
+        <li>Stores only the reference name in <code>config.toml</code> (<code>api_key_env</code> equals <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>); the plaintext is never written to <code>config.toml</code>.</li>
+        <li>When you save with an API key in the field, probes the provider to validate connectivity. This is best-effort: a failed probe does not block the save, and the UI shows the validation result. Updating an existing provider with the key field left blank keeps the current key and skips the probe (verification is empty).</li>
+      </ul>
+      <p>On startup, both <code>serve</code> and the CLI load <code>.ahadiff/.env</code> into the process environment. If a variable with the same name already exists in the system environment, the system value takes precedence and is not overwritten.</p>
+      <p>Deleting a provider cleans up its entry in <code>.ahadiff/.env</code>, but only unreferenced entries that use the AhaDiff-reserved <code>AHADIFF_</code> prefix. System or shared env names (such as <code>OPENAI_API_KEY</code>), and names still referenced by another provider, are left untouched. Cleanup keys off the <code>AHADIFF_</code> prefix and the reference count, not a record of which line AhaDiff authored, so keep that prefix reserved for AhaDiff and avoid hand-authoring your own <code>AHADIFF_*</code> variables in <code>.ahadiff/.env</code>.</p>
+      <p>The CLI path is unchanged: <code>ahadiff provider test --api-key-env NAME</code> still uses an environment-variable name, and it can now also resolve a reference name from <code>.ahadiff/.env</code>. An identifier-shaped value that is not a set environment variable fails closed (it is not sent as a literal key); a value containing dashes is used as a literal key.</p>
+      <p><strong>Windows note:</strong> the local <code>.ahadiff/.env</code> is protected by NTFS folder permissions rather than POSIX <code>0600</code>. For stricter handling, point <code>api_key_env</code> at a real OS environment variable (it takes precedence and is never written to <code>.ahadiff/.env</code>). For at-rest protection, use full-disk encryption such as BitLocker (or FileVault on macOS).</p>
 
       <h3>Registry context example</h3>
       <div class="cmp2">
@@ -1829,7 +1843,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>Screenshots are committed PNGs served from the docs tree; the workflow animation is CSS. For release status, see GitHub Actions.</p>
-      <div class="footer-version">v1.3.1</div>
+      <div class="footer-version">v1.3.2</div>
     </footer>
   </main>
 </div>

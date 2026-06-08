@@ -44,7 +44,7 @@ AI writes code faster, but developers can understand less of what actually chang
 
 ```bash
 pip install ahadiff
-ahadiff --version   # should print ahadiff 1.3.1
+ahadiff --version   # should print ahadiff 1.3.2
 ```
 This ships a working WebUI out of the box, and all default features work with no extras.
 
@@ -78,7 +78,18 @@ ahadiff provider test \
 ```
 `provider test` sends a small probe request. If it succeeds, the provider is saved to `.ahadiff/config.toml`. When the provider exposes model limits, AhaDiff records split input / output limits; otherwise auto capture falls back to the bundled model registry or conservative defaults.
 
-`api_key_env` is the environment variable name, not the secret. Repo config accepts `AHADIFF_*` names and the common provider names (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_API_KEY`). Identifier-shaped values are treated as environment-variable names and fail closed when unset, so a missing variable is not sent as a literal bearer token.
+On this CLI path, `api_key_env` is the environment variable name, not the secret. Repo config accepts `AHADIFF_*` names and the common provider names (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_API_KEY`). Identifier-shaped values are treated as environment-variable names and fail closed when unset, so a missing variable is not sent as a literal bearer token. `ahadiff provider test --api-key-env NAME` still uses an environment variable name, and now also resolves reference names defined in `.ahadiff/.env`.
+
+In the Settings WebUI, you paste the plaintext API key directly instead of supplying an environment variable name. Here is what AhaDiff does with it:
+
+- **Plaintext goes to one local file only.** It writes the key into the repo-local `.ahadiff/.env`, and stores only a reference name in `config.toml` (`api_key_env` is set to `AHADIFF_<UPPERCASE_ALIAS>_KEY`, with a numeric suffix like `AHADIFF_DEMO_2_KEY` if that name is already taken). The plaintext never lands in `config.toml`.
+- **The key file stays out of Git.** AhaDiff makes sure the secret patterns (`.env`, `.env.*`, `audit.private.jsonl`, `*.lock`, `*.log`) stay git-ignored: it creates `.ahadiff/.gitignore` if it is missing, and if you already have one it appends only the missing secret lines (your existing lines are preserved). Either way the key file is ignored by a normal `git add` (a forced `git add -f` could still override it).
+- **File permissions.** On POSIX the file is `chmod 0600`. On Windows that mode isn't a POSIX owner-only ACL, so it's best-effort only — see the Windows note below.
+- **A real OS env var wins.** At startup both `serve` and the CLI load `.ahadiff/.env` into the process environment, but a system variable of the same name takes precedence and is never overwritten.
+- **Saving with a key entered runs a quick probe.** When you save with an API key in the field, AhaDiff checks provider connectivity; this is best-effort, so a failed probe does not block saving and the UI shows the result. Updating an existing provider with the key field left blank keeps the current key and skips the probe (verification is empty).
+- **Delete cleans up after itself.** Removing a provider drops its `.ahadiff/.env` entry, but only unreferenced entries under the reserved `AHADIFF_` prefix. Shared names like `OPENAI_API_KEY`, and names another provider still uses, are left alone. Cleanup keys off the `AHADIFF_` prefix and reference count, so keep that prefix for AhaDiff and don't hand-author your own `AHADIFF_*` variables in `.ahadiff/.env`.
+
+**Windows note:** the local `.ahadiff/.env` is protected by NTFS folder permissions rather than POSIX `0600`. For stricter handling, point `api_key_env` at a real OS environment variable (it takes precedence and is never written to `.ahadiff/.env`). For at-rest protection, use full-disk encryption such as BitLocker (or FileVault on macOS).
 
 Supported provider classes: `openai`, `openai_responses`, `gemini`, `anthropic`, `azure`, `newapi`, `lmstudio`, `ollama`. Advanced OpenAI-compatible or local setups can use `providers.<name>.capability_overrides` for known boolean capabilities such as native JSON schema support; invalid keys or non-boolean values are rejected. NewAPI disables `supports_native_json_schema` by default; if your NewAPI gateway backend actually supports native JSON schema, you can add `capability_overrides = { supports_native_json_schema = true }` in the provider config. See [User Guide](./docs/USER_GUIDE.en.html) for details.
 
@@ -126,7 +137,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture sources,
 - **i18n**: English and Chinese for the WebUI and prompt output language. CLI help and most CLI diagnostics are in English.
 - **Cross-platform**: macOS and Linux are the primary tested platforms; Windows is supported for the core CLI and serve flows. `--compare-dir` and the `hooks` install target are macOS/Linux only. Installer writes and rollbacks use atomic replacement; POSIX restores file mode before replace, while Windows uses a best-effort mode restore after replace.
 - **Validation scope**: the latest local release audit covered backend unit/integration/eval tests, ruff/pyright, wheel build, viewer Vitest/typecheck/build, real-serve smoke, Guide browser checks, i18n parity, and live learn runs for the documented capture sources. A clean full Playwright matrix, remote CI, and a real Windows runner remain separate release gates.
-- **Security**: URL secret redaction, provider URL validation, provider API-key environment validation, input validation, prompt injection detection, safety hard gates, and redacted judge-failure reporting.
+- **Security**: URL secret redaction, provider URL validation, provider API-key environment validation, input validation, prompt injection detection, safety hard gates, and redacted judge-failure reporting. WebUI-pasted keys are stored by reference: the plaintext is written only to `.ahadiff/.env` (POSIX `chmod 0600`; Windows best-effort) while `config.toml` keeps only the reference name, and AhaDiff makes sure the secret patterns stay git-ignored (creating `.ahadiff/.gitignore` if missing, or appending only the missing secret lines to an existing one) so the key file is ignored by a normal `git add` (a forced `git add -f` could still override it).
 
 ## Screenshots
 

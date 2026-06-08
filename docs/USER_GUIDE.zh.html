@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.1</span></div>
+      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.2</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
       <p class="guide-lead">AhaDiff 把一次 git diff 变成带代码证据的课程、一份可验证的 claim 清单、测验、复习卡、概念图谱和质量棘轮。它默认 local-first：每个仓库自己的 AhaDiff 状态都存在 <code>.ahadiff/</code> 下。</p>
       <div class="start-tip">视频教程：<a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 英文讲解（YouTube）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。安装以 <code>pip install ahadiff</code> 为准；英文讲解已是最新，中文 B 站视频正在同步更新。</div>
@@ -1004,7 +1004,7 @@ ahadiff config show --resolved</span></div>
     <section id="provider">
       <div class="section-eyebrow">配置</div>
       <h2>2. 配置 Provider</h2>
-      <p>配置一个 LLM provider 是 <code>ahadiff learn</code> 之前唯一的准备步骤。密钥放在环境变量里；你只把变量名交给 AhaDiff。密钥不会进入 Git、README、manifest 或纳管的脚本。</p>
+      <p>配置一个 LLM provider 是 <code>ahadiff learn</code> 之前唯一的准备步骤。有两条路径。在 CLI 上，密钥放在环境变量里，你只把变量名交给 AhaDiff。在 WebUI Settings 里，你直接粘贴明文密钥，由 AhaDiff 替你存储（见下文「WebUI 如何存储你的密钥」）。无论哪种方式，密钥都不会进入 Git、README、manifest 或纳管的脚本。</p>
 
       <h3><code>provider test</code> 做了什么</h3>
       <div class="mini-flow">
@@ -1031,7 +1031,7 @@ ahadiff config show --resolved</span></div>
         </div>
         <div class="g-card">
           <h3>密钥</h3>
-          <p>真正的密钥留在你的 shell 环境里。它从不进入命令行参数或文件。</p>
+          <p>在这条 CLI 路径上，真正的密钥留在你的 shell 环境里，从不进入命令行参数。WebUI 路径不同：它会把明文密钥写入 <code>.ahadiff/.env</code>（见下文）。两种方式都不会让密钥进入 Git。</p>
         </div>
       </div>
 
@@ -1097,6 +1097,20 @@ ahadiff provider test `
           <li>Server 区块含 serve 端口输入框与 Save 按钮。</li>
         </ol>
       </figure>
+
+      <h3>WebUI 如何存储你的密钥</h3>
+      <p>在 Settings 里，你把明文密钥直接粘贴进 API Key 输入框；你不在那里填变量名。随后 AhaDiff 会：</p>
+      <ul>
+        <li>生成一个形如 <code>AHADIFF_&lt;ALIAS&gt;_KEY</code> 的唯一引用名。唯一性会避开你系统环境里已有的变量名，以及 <code>.ahadiff/.env</code> 里已有的名；冲突时加数字后缀（例如 <code>AHADIFF_DEMO_2_KEY</code>）。</li>
+        <li>只把明文密钥写入仓库内的 <code>.ahadiff/.env</code> 文件。在 POSIX 上权限为 <code>chmod 0600</code>；在 Windows 上 <code>chmod</code> 不等价于 POSIX owner-only ACL，只是尽力限制（best-effort），并非强隔离。</li>
+        <li>会确保这些 secret 模式（<code>.env</code>、<code>.env.*</code>、<code>audit.private.jsonl</code>、<code>*.lock</code>、<code>*.log</code>）被 Git 忽略：<code>.ahadiff/.gitignore</code> 不存在时会创建它，已存在时只追加缺失的 secret 行（你已有的行会保留）。无论哪种情况，key 文件都会被正常的 <code>git add</code> 忽略（强制 <code>git add -f</code> 仍可能覆盖）。</li>
+        <li>在 <code>config.toml</code> 里只存引用名（<code>api_key_env</code> 等于 <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>）；明文绝不写入 <code>config.toml</code>。</li>
+        <li>当你在字段里填了 API key 再保存时，会探测 provider 以验证连通性。这是 best-effort：探测失败不阻塞保存，UI 会显示验证结果。更新已有 provider 时如果 key 字段留空，会沿用当前 key 并跳过探测（验证结果为空）。</li>
+      </ul>
+      <p>启动时，<code>serve</code> 和 CLI 都会把 <code>.ahadiff/.env</code> 加载进进程环境变量。如果系统环境里已存在同名变量，系统值优先、不会被覆盖。</p>
+      <p>删除 provider 时会清理它在 <code>.ahadiff/.env</code> 里的条目，但仅限使用 AhaDiff 保留前缀 <code>AHADIFF_</code> 且没有被其它 provider 引用的条目。系统或共享的 env 名（如 <code>OPENAI_API_KEY</code>），以及仍被引用的名，都不会被改动。清理依据是 <code>AHADIFF_</code> 前缀和引用计数，并不记录某行是否由 AhaDiff 写入，所以请把该前缀留给 AhaDiff，不要在 <code>.ahadiff/.env</code> 里自定义 <code>AHADIFF_</code> 开头的变量。</p>
+      <p>CLI 路径未变：<code>ahadiff provider test --api-key-env NAME</code> 仍然使用环境变量名，现在也能解析 <code>.ahadiff/.env</code> 里的引用名。标识符形态、但并非已设置环境变量的值会 fail closed（不会被当作字面 key 发出）；含连字符（dash）的值则按字面 key 使用。</p>
+      <p><strong>Windows 说明：</strong>本地 <code>.ahadiff/.env</code> 由 NTFS 文件夹权限保护，而非 POSIX <code>0600</code>。想要更严格，可把 <code>api_key_env</code> 指向一个真实的 OS 环境变量（它优先生效，且绝不会被写入 <code>.ahadiff/.env</code>）。静态加密请使用全盘加密，如 BitLocker（macOS 上为 FileVault）。</p>
 
       <h3>Registry 上下文示例</h3>
       <div class="cmp2">
@@ -1829,7 +1843,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>截图是从文档树提供的已提交 PNG；工作流动画用 CSS 实现。发布状态见 GitHub Actions。</p>
-      <div class="footer-version">v1.3.1</div>
+      <div class="footer-version">v1.3.2</div>
     </footer>
   </main>
 </div>
