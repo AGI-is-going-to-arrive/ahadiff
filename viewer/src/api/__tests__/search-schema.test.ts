@@ -33,7 +33,7 @@ describe('search API schema', () => {
       results: [
         {
           source_table: 'graph_nodes',
-          primary_key: 'users_yangjunjie_desktop_demo_node',
+          primary_key: 'users_alice_project_demo_node',
           snippet: '<b>str value</b> with spaces / ? #',
           rank: 0.99,
           href: null,
@@ -45,7 +45,7 @@ describe('search API schema', () => {
     expect(parsed.results[0]).toMatchObject({
       kind: 'concept',
       sourceTable: 'graph_nodes',
-      id: 'users_yangjunjie_desktop_demo_node',
+      id: 'users_alice_project_demo_node',
       focusText: 'str value with spaces / ? #',
       title: 'str value with spaces / ? #',
       snippet: 'str value with spaces / ? #',

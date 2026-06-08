@@ -237,6 +237,8 @@ def _quarantine_usage_db(
             except OSError as exc:
                 if _is_missing_path_error(exc) or not sidecar.exists():
                     continue
+                if _is_windows_sharing_violation(exc):
+                    continue
                 raise
     return quarantine_path
 
@@ -253,6 +255,8 @@ def _replace_usage_db_with_quarantine(
     except FileNotFoundError:
         return False
     except OSError as exc:
+        if _is_windows_sharing_violation(exc):
+            return False
         if _is_missing_path_error(exc) or not _usage_db_signature_matches(
             db_path,
             expected_signature,
@@ -263,6 +267,8 @@ def _replace_usage_db_with_quarantine(
         except FileNotFoundError:
             return False
         except OSError as replace_exc:
+            if _is_windows_sharing_violation(replace_exc):
+                return False
             if _is_missing_path_error(replace_exc) or not _usage_db_signature_matches(
                 db_path,
                 expected_signature,
@@ -282,6 +288,8 @@ def _replace_usage_db_with_quarantine(
         return True
     except OSError as exc:
         _remove_unexpected_quarantine(quarantine_path)
+        if _is_windows_sharing_violation(exc):
+            return False
         if _is_missing_path_error(exc) or not _usage_db_signature_matches(
             db_path,
             expected_signature,
@@ -312,6 +320,10 @@ def _restore_concurrent_healed_usage_db(db_path: Path, quarantine_path: Path) ->
             quarantine_path.unlink()
     except FileNotFoundError:
         return
+    except OSError as exc:
+        if _is_windows_sharing_violation(exc):
+            return
+        raise
 
 
 def _remove_unexpected_quarantine(quarantine_path: Path) -> None:
@@ -319,6 +331,10 @@ def _remove_unexpected_quarantine(quarantine_path: Path) -> None:
         quarantine_path.unlink()
     except FileNotFoundError:
         return
+    except OSError as exc:
+        if _is_windows_sharing_violation(exc):
+            return
+        raise
 
 
 def _usage_db_file_signature(db_path: Path) -> _UsageDbFileSignature | None:
@@ -338,6 +354,10 @@ def _usage_db_signature_matches(
 
 def _is_missing_path_error(exc: OSError) -> bool:
     return exc.errno in {errno.ENOENT, errno.ENOTDIR} or getattr(exc, "winerror", None) in {2, 3}
+
+
+def _is_windows_sharing_violation(exc: OSError) -> bool:
+    return getattr(exc, "winerror", None) in {32, 33}
 
 
 def _usage_quarantine_path(db_path: Path) -> Path:

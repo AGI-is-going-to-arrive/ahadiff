@@ -814,6 +814,7 @@
     "platform_terminal": "Terminal",
     "platform_note_path": "Replace placeholders like RUN_ID, CLAIM_ID, and PATH/TO/... with values from your repo; use repo-relative paths",
     "platform_note_space": "Quote paths with spaces",
+    "platform_note_staged": "Worktree modes capture the current state; --staged only sees files after git add, and an empty capture is skipped by the learnability gate",
     "nav_label": "Jump to section",
     "nav_workflow": "Workflow",
     "nav_commands": "Commands",

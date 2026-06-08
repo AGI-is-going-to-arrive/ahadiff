@@ -55,6 +55,7 @@ from .core.paths import (
 )
 from .core.sqlite_util import safe_sqlite_connect
 from .i18n import normalize_locale, resolve_locale
+from .install.usage_hints import get_usage_hint
 from .serve.static import _resolve_viewer_dist  # pyright: ignore[reportPrivateUsage]
 
 if TYPE_CHECKING:
@@ -348,7 +349,7 @@ def _learn_result_run_path(result: Any) -> Path | None:
     return Path(str(artifacts_path))
 
 
-def _learnability_metadata_for_result(result: Any) -> dict[str, Any]:
+def _metadata_for_learn_result(result: Any) -> dict[str, Any]:
     run_path = _learn_result_run_path(result)
     if run_path is None:
         return {}
@@ -358,9 +359,7 @@ def _learnability_metadata_for_result(result: Any) -> dict[str, Any]:
     with suppress(Exception):
         metadata = safe_json_loads(metadata_path.read_text(encoding="utf-8"))
         if isinstance(metadata, dict):
-            raw_learnability = cast("dict[str, Any]", metadata).get("learnability")
-            if isinstance(raw_learnability, dict):
-                return cast("dict[str, Any]", raw_learnability)
+            return cast("dict[str, Any]", metadata)
     return {}
 
 
@@ -380,7 +379,11 @@ def _status_message_callback(status: Status) -> Callable[[str], None]:
 
 def _print_learn_pipeline_result(result: Any) -> None:
     run_path = _learn_result_run_path(result)
-    learnability = _learnability_metadata_for_result(result)
+    metadata = _metadata_for_learn_result(result)
+    raw_learnability = metadata.get("learnability")
+    learnability = (
+        cast("dict[str, Any]", raw_learnability) if isinstance(raw_learnability, dict) else {}
+    )
 
     console.print(f"[bold]Run ID[/bold]: {result.run_id}")
     console.print(f"[bold]Status[/bold]: {result.status}")
@@ -435,6 +438,9 @@ def _print_learn_pipeline_result(result: Any) -> None:
 
     if result.status == "learnability_skip":
         console.print("[bold]Lesson[/bold]: skipped by learnability gate")
+        empty_diff_hint = _empty_captured_diff_hint(metadata)
+        if empty_diff_hint is not None:
+            console.print(f"[yellow]Hint[/yellow]: {empty_diff_hint}")
     elif result.status == "no_verified_claims":
         console.print(
             "[bold]Lesson[/bold]: skipped because no verified claims survived verification"
@@ -454,6 +460,23 @@ def _print_learn_pipeline_result(result: Any) -> None:
         console.print(f"[bold]Recoverable errors[/bold]: {recoverable_errors}")
     for warning in getattr(result, "warnings", []) or []:
         console.print(f"[yellow]Warning[/yellow]: {warning}")
+
+
+def _empty_captured_diff_hint(metadata: dict[str, Any]) -> str | None:
+    raw_stats = metadata.get("diff_stats")
+    if not isinstance(raw_stats, dict):
+        return None
+    stats = cast("dict[str, Any]", raw_stats)
+    if (
+        stats.get("file_count") != 0
+        or stats.get("total_hunk_count") != 0
+        or stats.get("total_changed_lines") != 0
+    ):
+        return None
+    mode = str(metadata.get("source_kind") or "unknown")
+    if mode == "git_staged":
+        return "Captured staged diff is empty; run git add first or use --unstaged."
+    return f"Captured diff is empty for mode {mode}."
 
 
 def _state_dir_for_root(root: Path, *, has_git_repo: bool) -> Path:
@@ -1364,9 +1387,11 @@ def install_cmd(
             console.print(installer.preview(context))
             return
         written_paths = installer.write(context)
+        config_lang = str(load_config(root).values["lang"])
         console.print(f"[green]Installed[/green] {target}")
         for path in written_paths:
             console.print(f"  - {_display_install_path(path, root)}")
+        _print_install_usage_hint(target, config_lang=config_lang)
     except ValueError as error:
         _handle_cli_error(AhaDiffError(str(error)))
     except Exception as error:  # pragma: no cover - exercised through CLI tests
@@ -1395,12 +1420,17 @@ def uninstall_cmd(
         if dry_run:
             console.print(installer.preview_uninstall(context))
             return
+        uninstall_preview = installer.preview_uninstall(context)
         removed_paths = installer.uninstall(context)
         console.print(f"[green]Uninstalled[/green] {target}")
         if not removed_paths:
             console.print("  - nothing to remove")
-        for path in removed_paths:
-            console.print(f"  - {_display_install_path(path, root)}")
+        else:
+            _print_uninstall_action_lines(
+                uninstall_preview,
+                removed_paths=removed_paths,
+                repo_root=root,
+            )
     except ValueError as error:
         _handle_cli_error(AhaDiffError(str(error)))
     except Exception as error:  # pragma: no cover - exercised through CLI tests
@@ -1412,6 +1442,48 @@ def _display_install_path(path: Path, repo_root: Path) -> str:
         return path.relative_to(repo_root).as_posix()
     except ValueError:
         return str(path)
+
+
+def _print_uninstall_action_lines(
+    preview_text: str,
+    *,
+    removed_paths: list[Path] | None = None,
+    repo_root: Path | None = None,
+) -> None:
+    if removed_paths is None:
+        for line in preview_text.splitlines():
+            if line.startswith("- "):
+                console.print(f"  {line}")
+        return
+    action_lines_by_path = _uninstall_action_lines_by_path(preview_text)
+    for path in removed_paths:
+        display_path = _display_install_path(path, repo_root or Path())
+        action_line = action_lines_by_path.get(display_path, f"- remove: {display_path}")
+        console.print(f"  {action_line}")
+
+
+def _uninstall_action_lines_by_path(preview_text: str) -> dict[str, str]:
+    action_lines: dict[str, str] = {}
+    for line in preview_text.splitlines():
+        if not line.startswith("- "):
+            continue
+        _action, separator, display_path = line.partition(": ")
+        if separator:
+            action_lines[display_path] = line
+    return action_lines
+
+
+def _print_install_usage_hint(target: str, *, config_lang: str | None) -> None:
+    locale = resolve_locale(cli_lang=None, config_lang=config_lang)
+    hint = get_usage_hint(target, locale)
+    if hint is None:
+        return
+    console.print(f"[bold]Usage[/bold]: {hint.invocation_pattern}")
+    if hint.quick_start_steps:
+        console.print("[bold]Next steps[/bold]:")
+        for step in hint.quick_start_steps:
+            console.print(f"  - {step}")
+    console.print(f"[bold]Expected[/bold]: {hint.expected_behavior}")
 
 
 def _backup_artifact_for_rollback(path: Path) -> Path | None:

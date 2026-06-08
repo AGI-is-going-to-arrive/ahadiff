@@ -3,6 +3,7 @@ from __future__ import annotations
 import errno
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -186,10 +187,16 @@ class HooksTarget:
         post_commit_template = (
             "post_commit_hook_auto.sh.j2" if context.auto_learn else "post_commit_hook.sh.j2"
         )
+        template_context: dict[str, object] = {}
+        if context.auto_learn:
+            install_time_binary = shutil.which("ahadiff")
+            template_context["ahadiff_install_bin"] = (
+                shlex.quote(install_time_binary) if install_time_binary else ""
+            )
         _append_hook_section(
             post_commit,
             self.name,
-            render_template(post_commit_template),
+            render_template(post_commit_template, **template_context),
         )
         _append_hook_section(
             pre_push,

@@ -1155,6 +1155,12 @@
   text-align: left;
 }
 
+/* Agent card heading wrapper: keeps h2->h3->h4 order without changing visuals */
+.guide-agent-card__heading {
+  margin: 0;
+  font: inherit;
+}
+
 /* Agent card header button reset */
 .guide-agent-card__header {
   all: unset;

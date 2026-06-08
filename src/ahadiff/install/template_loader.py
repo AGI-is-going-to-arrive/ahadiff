@@ -12,6 +12,7 @@ _ENVIRONMENT = Environment(
 )
 
 
-def render_template(name: str) -> str:
+def render_template(name: str, **context: object) -> str:
     template = files("ahadiff.install.templates").joinpath(name).read_text(encoding="utf-8")
-    return _ENVIRONMENT.from_string(template).render()
+    values = {"ahadiff_install_bin": "", **context}
+    return _ENVIRONMENT.from_string(template).render(**values)

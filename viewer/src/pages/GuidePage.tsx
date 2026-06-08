@@ -520,6 +520,7 @@ function CoreCommandsSection({
       <ul className="guide-notes" role="list">
         <li className="guide-notes__item">{t('Guide.platform_note_path')}</li>
         <li className="guide-notes__item">{t('Guide.platform_note_space')}</li>
+        <li className="guide-notes__item">{t('Guide.platform_note_staged')}</li>
       </ul>
 
       <div className="guide-env">
@@ -784,30 +785,32 @@ function AgentSkillsSection({
           const renderPanelContent = isExpanded || printExpanded;
           return (
             <article className={`guide-agent-card ${isExpanded ? 'is-expanded' : ''}`} key={name}>
-              <button
-                className="guide-agent-card__header"
-                type="button"
-                aria-expanded={isExpanded}
-                aria-controls={`agent-content-${name}`}
-                onClick={() => setExpandedCard(current => (current === name ? null : name))}
-              >
-                <span className="guide-agent-card__header-content">
-                  <span className="guide-agent-card__topline">
-                    <span className="guide-agent-card__mark">{targetMark(name)}</span>
-                    <span className={`guide-agent-card__status guide-agent-card__status--${status}`}>
-                      {t(`Guide.agent_status_${status}` as MessageKey)}
-                    </span>
-                    {meta?.posixOnly && (
-                      <span className="guide-agent-card__platform-badge">
-                        {t('Guide.integrations_posix_only')}
+              <h3 className="guide-agent-card__heading">
+                <button
+                  className="guide-agent-card__header"
+                  type="button"
+                  aria-expanded={isExpanded}
+                  aria-controls={`agent-content-${name}`}
+                  onClick={() => setExpandedCard(current => (current === name ? null : name))}
+                >
+                  <span className="guide-agent-card__header-content">
+                    <span className="guide-agent-card__topline">
+                      <span className="guide-agent-card__mark">{targetMark(name)}</span>
+                      <span className={`guide-agent-card__status guide-agent-card__status--${status}`}>
+                        {t(`Guide.agent_status_${status}` as MessageKey)}
                       </span>
-                    )}
+                      {meta?.posixOnly && (
+                        <span className="guide-agent-card__platform-badge">
+                          {t('Guide.integrations_posix_only')}
+                        </span>
+                      )}
+                    </span>
+                    <span className="guide-agent-card__name">{displayName}</span>
+                    {pathHint && <span className="guide-agent-card__path">{pathHint}</span>}
                   </span>
-                  <span className="guide-agent-card__name">{displayName}</span>
-                  {pathHint && <span className="guide-agent-card__path">{pathHint}</span>}
-                </span>
-                <ChevronDown className="guide-agent-card__chevron" size={18} aria-hidden="true" />
-              </button>
+                  <ChevronDown className="guide-agent-card__chevron" size={18} aria-hidden="true" />
+                </button>
+              </h3>
 
               <div
                 id={`agent-content-${name}`}

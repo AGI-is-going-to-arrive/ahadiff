@@ -111,6 +111,10 @@ describe('GuidePage command examples', () => {
     expect(commands).toContain('ahadiff learn --compare-dir old/ new/');
     expect(commands).toContain('ahadiff learn --patch-url https://example.com/change.diff');
     expect(commands).toContain('ahadiff mcp-server');
+    expect(commands).toContain('ahadiff install hooks --auto-learn');
+    expect(commands).toContain('claude mcp add ahadiff -- ahadiff mcp-server --repo-root <path>');
+    expect(commands).toContain('codex mcp add ahadiff -- ahadiff mcp-server --repo-root <path>');
+    expect(commands).toContain('ahadiff improve-run RUN_ID --candidates 3');
     expect(commands).toContain('ahadiff export preview RUN_ID --out ./preview');
     expect(commands).toContain('ahadiff challenge build RUN_ID');
     expect(commands).toContain('ahadiff challenge status');

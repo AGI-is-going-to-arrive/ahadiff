@@ -5,13 +5,28 @@
 # - Treat `.ahadiff/` as local state.
 # - Prefer verified claims with file-line evidence.
 # - Do not upload `.ahadiff/` artifacts to external services without explicit user consent.
+AHADIFF_INSTALL_BIN=[[ ahadiff_install_bin ]]
 (
+  repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+  log_dir="$repo_root/.ahadiff"
+  hooks_log="$log_dir/hooks.log"
+  mkdir -p "$log_dir" 2>/dev/null || exit 0
+
+  ahadiff_bin=
   if command -v ahadiff >/dev/null 2>&1; then
-    printf '%s\n' 'AhaDiff: learning back this commit in the background (log: .ahadiff/hooks.log)'
-    repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-    mkdir -p "$repo_root/.ahadiff" 2>/dev/null || exit 0
-    cd "$repo_root" || exit 0
-    nohup ahadiff learn --last >> "$repo_root/.ahadiff/hooks.log" 2>&1 &
+    ahadiff_bin=$(command -v ahadiff)
+  elif [ -n "$AHADIFF_INSTALL_BIN" ] && [ -x "$AHADIFF_INSTALL_BIN" ]; then
+    ahadiff_bin=$AHADIFF_INSTALL_BIN
   fi
+
+  if [ -z "$ahadiff_bin" ]; then
+    printf '%s\n' 'AhaDiff: skipped auto-learn because ahadiff was not found on PATH and no usable install-time binary fallback was available.' >> "$hooks_log" 2>/dev/null || true
+    exit 0
+  fi
+
+  # Runs ahadiff learn --last through the resolved binary path.
+  printf '%s\n' 'AhaDiff: learning back this commit in the background (log: .ahadiff/hooks.log)'
+  cd "$repo_root" || exit 0
+  nohup "$ahadiff_bin" learn --last >> "$hooks_log" 2>&1 &
 ) || true
 # AHADIFF:END

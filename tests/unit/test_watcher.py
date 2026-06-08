@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from types import SimpleNamespace
@@ -240,6 +241,17 @@ class TestFileWatcherEventPaths:
                 str(tmp_path / "old.py"),
                 str(tmp_path / "new.py"),
             )
+
+    def test_bytes_src_path_is_decoded_before_filtering(self, tmp_path: Path) -> None:
+        changed = tmp_path / "src" / "main.py"
+        with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):
+            watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+            event = SimpleNamespace(
+                src_path=os.fsencode(changed),
+                dest_path=None,
+            )
+
+            assert watcher._changed_event_paths(event) == (str(changed),)
 
     def test_move_event_keeps_non_ignored_dest_path(self, tmp_path: Path) -> None:
         with patch("ahadiff.core.watcher.is_watchdog_available", return_value=True):

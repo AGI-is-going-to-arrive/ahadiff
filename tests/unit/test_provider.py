@@ -1958,6 +1958,49 @@ def test_usage_db_quarantines_when_reindex_fails(
     assert str(quarantined[0]) in quarantine_logs[0].message
 
 
+def test_usage_db_quarantine_windows_sharing_violation_skips_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "usage.sqlite"
+    usage_module.record_usage_event(_usage_record(), db_path=db_path)
+    original_quick_check = usage_module._fetch_usage_quick_check  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def fail_once(connection: sqlite3.Connection) -> str | None:
+        nonlocal calls
+        if calls == 0:
+            calls += 1
+            return "row 1 missing from index idx_llm_usage_cache_key"
+        return original_quick_check(connection)
+
+    def fail_reindex(_path: Path) -> bool:
+        return False
+
+    original_unlink = type(db_path).unlink
+
+    def sharing_violation_unlink(self: Path, missing_ok: bool = False) -> None:
+        if self == db_path:
+            error = OSError("file is locked by another process")
+            error.winerror = 32  # type: ignore[attr-defined]
+            raise error
+        original_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(usage_module, "_fetch_usage_quick_check", fail_once)
+    monkeypatch.setattr(usage_module, "_attempt_usage_reindex", fail_reindex)
+    monkeypatch.setattr(type(db_path), "unlink", sharing_violation_unlink)
+
+    usage_module.record_usage_event(
+        replace(_usage_record(), cache_key="b" * 64, request_id="req-after-lock"),
+        db_path=db_path,
+    )
+
+    assert _usage_quarantine_files(db_path) == []
+    with sqlite3.connect(db_path) as connection:
+        row_count = connection.execute("SELECT COUNT(*) FROM llm_usage").fetchone()[0]
+    assert row_count == 2
+
+
 def test_usage_db_concurrent_corruption_healers_adopt_single_quarantine(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

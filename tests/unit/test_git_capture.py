@@ -759,6 +759,40 @@ def test_learn_staged_unstaged_and_combined_modes(tmp_path: Path) -> None:
     assert "unstaged.py" in combined_patch
 
 
+def test_learn_staged_empty_diff_prints_git_add_hint(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_repo(repo_root)
+    (repo_root / "main.py").write_text("value = 1\n", encoding="utf-8")
+    _commit_all(repo_root, "base")
+    (repo_root / "main.py").write_text("value = 2\n", encoding="utf-8")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(runner, repo_root, ["learn", "--staged"])
+
+    assert result.exit_code == 0
+    assert "low learning value" in result.stdout
+    assert "Captured staged diff is empty; run git add first or use --unstaged." in result.stdout
+
+
+def test_learn_patch_empty_diff_prints_neutral_hint(tmp_path: Path) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    patch_path = workspace_root / "empty.patch"
+    patch_path.write_text("", encoding="utf-8")
+
+    runner = CliRunner()
+    result = _invoke_repo_cli(
+        runner,
+        workspace_root,
+        ["learn", "--patch", "empty.patch"],
+    )
+
+    assert result.exit_code == 0
+    assert "low learning value" in result.stdout
+    assert "Captured diff is empty for mode patch_file." in result.stdout
+
+
 def test_learn_unstaged_include_untracked_records_new_file(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1178,6 +1212,8 @@ def test_learn_patch_file_and_stdin_modes(tmp_path: Path) -> None:
     assert file_result.exit_code == 0
     _, file_metadata, file_patch = _load_run_artifacts(repo_root)
     assert file_metadata["source_kind"] == "patch_file"
+    file_source_detail = cast("dict[str, object]", file_metadata["source_detail"])
+    assert file_source_detail["type"] == "patch_file"
     assert "[REDACTED:openai_api_key]" in file_patch
 
     stdin_result = _invoke_repo_cli(
@@ -2178,6 +2214,7 @@ def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     degraded_flags = compare_metadata["degraded_flags"]
     assert degraded_flags["diff_clipped"] is True
     compare_detail = compare_metadata["source_detail"]
+    assert compare_detail["type"] == "compare"
     assert compare_detail["old_name"] == "old.py"
     assert compare_detail["new_name"] == "new.py"
     assert "old_path" not in compare_detail

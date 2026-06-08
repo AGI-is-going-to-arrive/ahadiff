@@ -814,6 +814,7 @@
     "platform_terminal": "终端",
     "platform_note_path": "将 RUN_ID、CLAIM_ID、PATH/TO/... 等占位符替换为当前仓库的真实值；路径使用仓库相对路径",
     "platform_note_space": "含空格的路径需要加引号",
+    "platform_note_staged": "工作区类模式按当前状态捕获；--staged 只能看到 git add 之后的文件，空捕获会被 learnability gate 跳过",
     "nav_label": "跳转到章节",
     "nav_workflow": "工作流",
     "nav_commands": "命令",

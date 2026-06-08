@@ -138,7 +138,10 @@ class FileWatcher:
             path = getattr(event, attr, None)
             if path is None:
                 continue
-            path_text = str(path)
+            if isinstance(path, bytes):
+                path_text = path.decode("utf-8", "surrogateescape")
+            else:
+                path_text = str(path)
             if not path_text.strip():
                 continue
             if path_text not in paths and not self._should_ignore(path_text):

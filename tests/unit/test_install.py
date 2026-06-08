@@ -363,7 +363,9 @@ def test_v02_install_targets_are_available_in_help(target: str) -> None:
 
 
 def test_install_templates_are_static_and_render_without_values() -> None:
-    assert tuple(inspect.signature(render_template).parameters) == ("name",)
+    signature = inspect.signature(render_template)
+    assert tuple(signature.parameters) == ("name", "context")
+    assert signature.parameters["context"].kind is inspect.Parameter.VAR_KEYWORD
     templates_root = files("ahadiff.install.templates")
     assert sorted(
         template.name for template in templates_root.iterdir() if template.name.endswith(".j2")
@@ -372,8 +374,9 @@ def test_install_templates_are_static_and_render_without_values() -> None:
         if not template.name.endswith(".j2"):
             continue
         template_text = template.read_text(encoding="utf-8")
-        assert "[[" not in template_text
-        assert "]]" not in template_text
+        if template.name != "post_commit_hook_auto.sh.j2":
+            assert "[[" not in template_text
+            assert "]]" not in template_text
         assert "{%" not in template_text
         assert "{#" not in template_text
         rendered = render_template(template.name)
@@ -907,6 +910,146 @@ def test_uninstall_dry_run_previews_removals_without_mutating(tmp_path: Path) ->
     assert "AHADIFF:BEGIN target=codex" in (repo_root / "AGENTS.md").read_text(encoding="utf-8")
 
 
+def test_uninstall_actual_run_prints_remove_actions(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    install_result = _RUNNER.invoke(app(), ["install", "codex", "--repo-root", str(repo_root)])
+    uninstall_result = _RUNNER.invoke(app(), ["uninstall", "codex", "--repo-root", str(repo_root)])
+
+    assert install_result.exit_code == 0, install_result.output
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    assert "Uninstalled codex" in uninstall_result.output
+    assert "- remove: .agents/skills/ahadiff/SKILL.md" in uninstall_result.output
+    assert "- remove section: AGENTS.md" in uninstall_result.output
+
+
+def test_github_action_default_uninstall_prints_only_removed_workflow(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    install_result = _RUNNER.invoke(
+        app(),
+        ["install", "github-action", "--repo-root", str(repo_root)],
+    )
+    uninstall_result = _RUNNER.invoke(
+        app(),
+        ["uninstall", "github-action", "--repo-root", str(repo_root)],
+    )
+
+    assert install_result.exit_code == 0, install_result.output
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    assert "- remove: .github/workflows/ahadiff-verify.yml" in uninstall_result.output
+    assert "ahadiff-generate.yml" not in uninstall_result.output
+
+
+def test_install_uninstall_respect_ahadiff_lang_for_usage_hints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AHADIFF_LANG", "zh-CN")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    install_result = _RUNNER.invoke(app(), ["install", "codex", "--repo-root", str(repo_root)])
+    uninstall_result = _RUNNER.invoke(app(), ["uninstall", "codex", "--repo-root", str(repo_root)])
+
+    assert install_result.exit_code == 0, install_result.output
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    assert "把 Codex CLI 指引写入当前仓库" in install_result.output
+    assert "要求它运行 AhaDiff 学习 staged diff" in install_result.output
+    assert "把 Codex CLI 指引写入当前仓库" not in uninstall_result.output
+    assert "Ask it to run AhaDiff" not in install_result.output
+
+
+def test_install_uninstall_default_to_english_usage_hints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AHADIFF_LANG", raising=False)
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    install_result = _RUNNER.invoke(app(), ["install", "codex", "--repo-root", str(repo_root)])
+    uninstall_result = _RUNNER.invoke(app(), ["uninstall", "codex", "--repo-root", str(repo_root)])
+
+    assert install_result.exit_code == 0, install_result.output
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    assert "Write the Codex CLI guidance into this repository" in install_result.output
+    assert "Ask it to run AhaDiff" in install_result.output
+    assert "Write the Codex CLI guidance into this repository" not in uninstall_result.output
+    assert "把 Codex CLI 指引写入当前仓库" not in install_result.output
+
+
+def test_install_usage_hint_respects_repo_config_lang_before_system_lang(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AHADIFF_LANG", raising=False)
+    monkeypatch.setenv("LANG", "en_US.UTF-8")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    config_path = repo_root / ".ahadiff" / "config.toml"
+    config_path.parent.mkdir()
+    config_path.write_text('lang = "zh-CN"\n', encoding="utf-8")
+
+    result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+
+    assert result.exit_code == 0, result.output
+    assert "Git hooks 默认只在 commit 后提醒学习" in result.output
+    assert "commit-time learn reminders" not in result.output
+
+
+def test_install_usage_hint_env_lang_overrides_repo_config_lang(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AHADIFF_LANG", "en")
+    monkeypatch.setenv("LANG", "zh_CN.UTF-8")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    config_path = repo_root / ".ahadiff" / "config.toml"
+    config_path.parent.mkdir()
+    config_path.write_text('lang = "zh-CN"\n', encoding="utf-8")
+
+    result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+
+    assert result.exit_code == 0, result.output
+    assert "Git hooks defaults to commit-time learn reminders" in result.output
+    assert "Git hooks 默认只在 commit 后提醒学习" not in result.output
+
+
+def test_hooks_install_uninstall_respect_ahadiff_lang_for_usage_hints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AHADIFF_LANG", "zh-CN")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+
+    install_result = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--auto-learn"],
+    )
+    uninstall_result = _RUNNER.invoke(app(), ["uninstall", "hooks", "--repo-root", str(repo_root)])
+
+    assert install_result.exit_code == 0, install_result.output
+    assert uninstall_result.exit_code == 0, uninstall_result.output
+    assert "Git hooks 默认只在 commit 后提醒学习" in install_result.output
+    assert "日志写入" in install_result.output
+    assert "`.ahadiff/hooks.log`" in install_result.output
+    assert "Git hooks 默认只在 commit 后提醒学习" not in uninstall_result.output
+    assert "commit-time learn reminders" not in install_result.output
+
+
 def test_claude_install_writes_generated_skill_and_refuses_user_file(
     tmp_path: Path,
 ) -> None:
@@ -1094,6 +1237,77 @@ def test_hooks_auto_learn_switches_section_in_place_and_is_idempotent(tmp_path: 
     assert reverted_result.exit_code == 0, reverted_result.output
     assert post_commit.read_text(encoding="utf-8") == (
         "#!/bin/sh\n\n" + render_template("post_commit_hook.sh.j2") + "\n"
+    )
+
+
+def test_hooks_auto_learn_bakes_shell_quoted_binary_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    fake_binary = tmp_path / "bin dir" / "aha'diff"
+    fake_binary.parent.mkdir()
+    fake_binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    original_which = hooks_module.shutil.which
+
+    def fake_which(name: str) -> str | None:
+        return str(fake_binary) if name == "ahadiff" else original_which(name)
+
+    monkeypatch.setattr(hooks_module.shutil, "which", fake_which)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--auto-learn"],
+    )
+
+    assert result.exit_code == 0, result.output
+    post_commit = repo_root / ".git" / "hooks" / "post-commit"
+    hook_text = post_commit.read_text(encoding="utf-8")
+    assert "AHADIFF_INSTALL_BIN='/" in hook_text
+    assert """bin dir/aha'"'"'diff'""" in hook_text
+    assert 'nohup "$ahadiff_bin" learn --last' in hook_text
+
+
+def test_hooks_auto_learn_logs_skip_when_binary_missing_from_gui_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    original_which = hooks_module.shutil.which
+
+    def fake_which(name: str) -> str | None:
+        return None if name == "ahadiff" else original_which(name)
+
+    monkeypatch.setattr(hooks_module.shutil, "which", fake_which)
+
+    result = _RUNNER.invoke(
+        app(),
+        ["install", "hooks", "--repo-root", str(repo_root), "--auto-learn"],
+    )
+    post_commit = repo_root / ".git" / "hooks" / "post-commit"
+
+    hook_run = subprocess.run(
+        ["/bin/sh", str(post_commit)],
+        cwd=repo_root,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "home")},
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert hook_run.returncode == 0
+    hooks_log = repo_root / ".ahadiff" / "hooks.log"
+    assert hooks_log.exists()
+    assert "AhaDiff: skipped auto-learn because ahadiff was not found" in hooks_log.read_text(
+        encoding="utf-8"
     )
 
 
