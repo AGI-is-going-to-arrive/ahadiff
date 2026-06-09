@@ -457,6 +457,8 @@ def _provider_summary_from_mapping(
     provider_mapping: Mapping[str, object],
     *,
     role: str | None = None,
+    scope: Literal["repo", "global"] = "repo",
+    overrides_global: bool | None = None,
 ) -> ProviderSummary | None:
     provider_class = str(provider_mapping.get("provider_class") or "")
     model_name = str(provider_mapping.get("model_name") or "")
@@ -511,6 +513,8 @@ def _provider_summary_from_mapping(
     )
     return ProviderSummary(
         alias=alias,
+        scope=scope,
+        overrides_global=overrides_global,
         role=role,
         provider_class=provider_class,
         provider_kind=provider_kind,
@@ -574,6 +578,10 @@ def _build_providers(state: ServeState) -> dict[str, Any]:
     try:
         cfg = load_config(state.state_dir.parent)
         values = cast("dict[str, Any]", getattr(cfg, "values", {}))
+        provider_scopes = cast("Mapping[str, object]", getattr(cfg, "provider_scopes", {}) or {})
+        provider_overrides_global = {
+            str(alias) for alias in (getattr(cfg, "provider_overrides_global", ()) or ())
+        }
         providers_config = values.get("providers")
         if isinstance(providers_config, Mapping):
             for alias, provider in sorted(
@@ -588,6 +596,8 @@ def _build_providers(state: ServeState) -> dict[str, Any]:
                     str(alias),
                     provider_mapping,
                     role=str(raw_role) if isinstance(raw_role, str) and raw_role else None,
+                    scope="global" if provider_scopes.get(str(alias)) == "global" else "repo",
+                    overrides_global=(True if str(alias) in provider_overrides_global else None),
                 )
                 if summary is not None:
                     providers.append(summary)

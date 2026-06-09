@@ -27,6 +27,7 @@ from . import __version__
 from .contracts import ProviderConfig
 from .core.config import (
     SecurityConfig,
+    apply_global_env_file,
     apply_repo_env_file,
     iter_resolved_settings,
     load_config,
@@ -265,6 +266,7 @@ def _apply_replay_repo_env_file_from_env() -> None:
     env_path = Path(raw_path)
     if env_path.name != ".env" or env_path.parent.name != ".ahadiff":
         return
+    apply_global_env_file()
     apply_repo_env_file(env_path)
 
 
@@ -658,7 +660,12 @@ def _resolve_runtime_provider(
                     f"{role}_provider '{config_provider}' not found in configured providers"
                 )
         if resolved_name is None:
-            configured_names = sorted(providers_table.keys())
+            from ahadiff.core.orchestrator import provider_names_for_auto_default
+
+            configured_names = provider_names_for_auto_default(
+                snapshot=snapshot,
+                providers_table=providers_table,
+            )
             if len(configured_names) != 1:
                 from ahadiff.core.orchestrator import implicit_duplicate_provider_name
 
@@ -1028,6 +1035,13 @@ def doctor_cmd(
         else:
             console.print("[green]Sensitive repo config keys[/green]: none")
 
+        if snapshot.global_sensitive_keys:
+            console.print("[red]Sensitive global config keys[/red]:")
+            for key in snapshot.global_sensitive_keys:
+                console.print(f"  - {key}")
+        else:
+            console.print("[green]Sensitive global config keys[/green]: none")
+
         review_path = review_db_path(root)
         if review_path.exists() or review_path.is_symlink():
             try:
@@ -1262,6 +1276,7 @@ def learn_cmd(
             paths=workspace_hint_paths,
         )
         _apply_replay_repo_env_file_from_env()
+        apply_global_env_file()
         apply_repo_env_file(_state_dir_for_root(root, has_git_repo=has_git_repo) / ".env")
         _assert_sqlite_runtime_supported_for_learn()
         from .core import orchestrator as orchestrator_module
@@ -2032,6 +2047,7 @@ def improve_cmd(
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=False)
         if not has_git_repo:
             raise AhaDiffError("improve requires a git repository")
+        apply_global_env_file()
         apply_repo_env_file(project_state_dir(root) / ".env")
         snapshot = load_config(
             root,
@@ -2175,6 +2191,7 @@ def improve_run_cmd(
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
         state_dir = _state_dir_for_root(root, has_git_repo=has_git_repo)
+        apply_global_env_file()
         apply_repo_env_file(state_dir / ".env")
         config_overrides = _cli_overrides(privacy_mode=privacy_mode, lang=lang)
         snapshot = (
@@ -3992,6 +4009,7 @@ def provider_test_cmd(
 ) -> None:
     try:
         root, has_git_repo = _resolve_learn_workspace_root(repo_root, allow_non_git=True)
+        apply_global_env_file()
         apply_repo_env_file(_state_dir_for_root(root, has_git_repo=has_git_repo) / ".env")
         snapshot = (
             load_config(root, cli_overrides=_cli_overrides(privacy_mode=privacy_mode))

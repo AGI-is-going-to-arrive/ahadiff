@@ -28,6 +28,7 @@ from ahadiff.contracts.serve_stats import (
     UsageModelSummary,
     UsageResponse,
 )
+from ahadiff.core import config as config_module
 from ahadiff.review.database import count_concepts, initialize_review_db, upsert_concept
 from ahadiff.serve import ServeState, create_app
 
@@ -1133,6 +1134,7 @@ class TestGetProviders:
         names = {p["model_name"] for p in providers}
         assert "gpt-5.4-mini" in names
         assert "gpt-5.4" in names
+        assert {p["scope"] for p in providers} == {"repo"}
 
     def test_no_config_returns_empty(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"
@@ -1207,14 +1209,65 @@ class TestGetProviders:
         assert providers[0]["provider_kind"] == "openai"
         assert providers[0]["api_family"] == "openai"
         assert providers[0]["key_status"] == "configured"
+        assert providers[0]["scope"] == "repo"
         assert providers[0]["model_name"] == "gpt-5.4-mini"
         assert providers[0]["probed"] is True
         assert providers[0]["probed_max_context"] == 200000
         assert providers[0]["probed_tpm"] == 1000
         assert providers[0]["probed_rpm"] == 60
         assert providers[1]["provider_class"] == "anthropic"
+        assert providers[1]["scope"] == "repo"
         assert providers[1]["key_status"] == "missing"
         assert providers[1]["probed"] is False
+
+    def test_marks_global_and_repo_override_provider_scope(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        (tmp_path / ".git").mkdir()
+        state_dir = tmp_path / ".ahadiff"
+        state_dir.mkdir()
+        global_dir = tmp_path / "global-config"
+        global_dir.mkdir()
+        (global_dir / "config.toml").write_text(
+            "[providers.demo]\n"
+            'provider_class = "openai"\n'
+            'model_name = "global-model"\n'
+            'base_url = "https://api.example.test/v1"\n'
+            'api_key_env = "AHADIFF_DEMO_KEY"\n'
+            "\n"
+            "[providers.global_only]\n"
+            'provider_class = "anthropic"\n'
+            'model_name = "claude-sonnet-4-6"\n'
+            'base_url = "https://api.anthropic.example/v1"\n'
+            'api_key_env = "AHADIFF_GLOBAL_ONLY_KEY"\n',
+            encoding="utf-8",
+        )
+        (state_dir / "config.toml").write_text(
+            '[providers.demo]\nmodel_name = "repo-model"\n',
+            encoding="utf-8",
+        )
+
+        def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+            del platform, env
+            return global_dir
+
+        monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+        client = _client(state_dir)
+
+        response = client.get("/api/providers", headers=_AUTH)
+
+        assert response.status_code == 200
+        providers = {
+            str(provider["alias"]): provider
+            for provider in cast("list[dict[str, object]]", response.json()["providers"])
+        }
+        assert providers["global_only"]["scope"] == "global"
+        assert providers["global_only"].get("overrides_global") is None
+        assert providers["demo"]["scope"] == "repo"
+        assert providers["demo"]["overrides_global"] is True
+        assert providers["demo"]["model_name"] == "repo-model"
 
     def test_auth_required(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".ahadiff"

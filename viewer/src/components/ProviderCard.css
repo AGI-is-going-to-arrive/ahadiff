@@ -410,6 +410,10 @@
   align-items: center;
 }
 
+.provider-card__form-row > .provider-card__hint {
+  grid-column: 2;
+}
+
 .provider-card__form-label {
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
@@ -463,6 +467,9 @@
       grid-template-columns: 1fr;
       gap: var(--sp-1);
     }
+    .provider-card__form-row > .provider-card__hint {
+      grid-column: auto;
+    }
     .provider-card__field {
       grid-template-columns: 1fr;
       gap: var(--sp-1);
@@ -481,6 +488,9 @@
     .provider-card__form-row {
       grid-template-columns: 1fr;
       gap: var(--sp-1);
+    }
+    .provider-card__form-row > .provider-card__hint {
+      grid-column: auto;
     }
     .provider-card__field {
       grid-template-columns: 1fr;
@@ -797,5 +807,106 @@
 @media (prefers-reduced-motion: reduce) {
   .provider-card__recommend-btn {
     transition: none;
+  }
+}
+
+/* ---- Scope Selector ---- */
+.provider-card__scope-segmented {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+}
+
+.provider-card__scope-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 90px;
+  padding: var(--sp-1) var(--sp-3);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  border-right: 1px solid var(--hair);
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+
+.provider-card__scope-option:first-child {
+  border-top-left-radius: var(--r-md);
+  border-bottom-left-radius: var(--r-md);
+}
+
+.provider-card__scope-option:last-child {
+  border-right: none;
+  border-top-right-radius: var(--r-md);
+  border-bottom-right-radius: var(--r-md);
+}
+
+.provider-card__scope-option.is-active {
+  background: var(--accent-softer);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.provider-card__scope-radio {
+  /* Visually hide but keep accessible */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.provider-card__scope-option:focus-within {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+  z-index: 1;
+}
+
+/* ---- Read-only Scope Info (Badge + Hint) ---- */
+.provider-card__scope-info {
+  display: grid;
+  gap: 2px;
+  margin: var(--sp-2) 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  background: var(--subtle);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+}
+
+.provider-card__scope-info span {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (forced-colors: active) {
+  .provider-card__scope-segmented {
+    border: 1px solid CanvasText;
+  }
+  .provider-card__scope-option {
+    border-right: 1px solid CanvasText;
+  }
+  .provider-card__scope-option.is-active {
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+  .provider-card__scope-info {
+    border: 1px solid CanvasText;
   }
 }

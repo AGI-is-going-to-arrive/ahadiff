@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import subprocess
 import sys
 import tomllib
@@ -18,12 +19,18 @@ from ahadiff.cli import app
 from ahadiff.core import config as config_module
 from ahadiff.core.config import (
     DEFAULT_CONFIG,
+    apply_global_env_file,
+    apply_repo_env_file,
+    global_config_write_lock,
     iter_resolved_settings,
     load_config,
     load_workspace_config,
     load_workspace_pricing_settings,
     resolve_effective,
+    write_config_data,
     write_default_config,
+    write_global_env_var,
+    write_repo_env_var,
 )
 from ahadiff.core.errors import ConfigError, InputError, StorageError
 from ahadiff.core.ids import make_claim_id, make_hunk_id, make_run_id
@@ -717,7 +724,9 @@ def test_repo_provider_api_key_env_rejects_arbitrary_env_var(tmp_path: Path) -> 
         load_config(repo_root, env={"HOME": str(tmp_path / "home")})
 
 
-def test_global_provider_api_key_env_is_exempt_from_repo_restriction(tmp_path: Path) -> None:
+def test_global_provider_api_key_env_read_warns_and_skips_unsafe_name(
+    tmp_path: Path,
+) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _init_git_repo(repo_root)
@@ -730,11 +739,191 @@ def test_global_provider_api_key_env_is_exempt_from_repo_restriction(tmp_path: P
         encoding="utf-8",
     )
 
-    snapshot = load_config(repo_root, env={"HOME": str(home_root)})
+    with pytest.warns(RuntimeWarning, match="unsafe global provider api_key_env"):
+        snapshot = load_config(repo_root, env={"HOME": str(home_root)})
 
     providers = snapshot.values["providers"]
     assert isinstance(providers, dict)
-    assert providers["demo"]["api_key_env"] == "AWS_SECRET_ACCESS_KEY"
+    assert "api_key_env" not in providers["demo"]
+    assert snapshot.provider_scopes == {"demo": "global"}
+
+
+def test_global_provider_literal_secret_is_reported_as_sensitive(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    home_root = tmp_path / "home"
+    global_path = global_config_dir(env={"HOME": str(home_root)}) / "config.toml"
+    global_path.parent.mkdir(parents=True)
+    global_path.write_text(
+        '[providers.demo]\nprovider_class = "openai"\nmodel_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test"\napi_key_env = "sk-live-secret-1234567890"\n',
+        encoding="utf-8",
+    )
+
+    snapshot = load_config(repo_root, env={"HOME": str(home_root)})
+
+    assert snapshot.repo_sensitive_keys == ()
+    assert snapshot.global_sensitive_keys == ("providers.demo.api_key_env",)
+
+
+def test_global_env_write_load_precedence_gitignore_and_chmod(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "global-config"
+    repo_env_path = tmp_path / "repo" / ".ahadiff" / ".env"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.delenv("AHADIFF_GLOBAL_ONLY_KEY", raising=False)
+    monkeypatch.delenv("AHADIFF_SHARED_KEY", raising=False)
+    monkeypatch.setenv("AHADIFF_AMBIENT_KEY", "from-ambient")
+
+    write_global_env_var("AHADIFF_GLOBAL_ONLY_KEY", "from-global")
+    write_global_env_var("AHADIFF_SHARED_KEY", "from-global")
+    write_global_env_var("AHADIFF_AMBIENT_KEY", "from-global")
+    write_repo_env_var(repo_env_path, "AHADIFF_SHARED_KEY", "from-repo")
+    write_repo_env_var(repo_env_path, "AHADIFF_AMBIENT_KEY", "from-repo")
+
+    apply_global_env_file()
+    apply_repo_env_file(repo_env_path)
+
+    assert os.environ["AHADIFF_GLOBAL_ONLY_KEY"] == "from-global"
+    assert os.environ["AHADIFF_SHARED_KEY"] == "from-repo"
+    assert os.environ["AHADIFF_AMBIENT_KEY"] == "from-ambient"
+    assert (global_dir / ".gitignore").read_text(encoding="utf-8").splitlines() == [
+        "# AhaDiff global provider secrets — auto-generated; do not commit secrets",
+        ".env",
+        ".env.*",
+    ]
+    assert (global_dir / ".env").read_text(encoding="utf-8").splitlines() == [
+        "AHADIFF_GLOBAL_ONLY_KEY=from-global",
+        "AHADIFF_SHARED_KEY=from-global",
+        "AHADIFF_AMBIENT_KEY=from-global",
+    ]
+    if os.name != "nt":
+        assert stat.S_IMODE((global_dir / ".env").stat().st_mode) == 0o600
+
+
+def test_global_config_write_uses_cross_process_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "global-config"
+    lock_identities: list[tuple[int, int]] = []
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    def fake_lock(handle: Any, _flags: int) -> None:
+        path_stat = os.fstat(handle.fileno())
+        lock_identities.append((path_stat.st_dev, path_stat.st_ino))
+
+    def fake_unlock(_handle: Any) -> None:
+        return None
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr(config_module.portalocker, "lock", fake_lock)
+    monkeypatch.setattr(config_module.portalocker, "unlock", fake_unlock)
+
+    write_config_data(global_dir / "config.toml", {"lang": "en"})
+
+    lock_stat = (global_dir / ".global.lock").lstat()
+    assert lock_identities == [(lock_stat.st_dev, lock_stat.st_ino)]
+
+
+def test_global_env_write_and_remove_use_cross_process_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "global-config"
+    lock_identities: list[tuple[int, int]] = []
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    def fake_lock(handle: Any, _flags: int) -> None:
+        path_stat = os.fstat(handle.fileno())
+        lock_identities.append((path_stat.st_dev, path_stat.st_ino))
+
+    def fake_unlock(_handle: Any) -> None:
+        return None
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr(config_module.portalocker, "lock", fake_lock)
+    monkeypatch.setattr(config_module.portalocker, "unlock", fake_unlock)
+
+    write_global_env_var("AHADIFF_DEMO_KEY", "from-global")
+    write_global_env_var("AHADIFF_OTHER_KEY", "from-second-writer")
+    assert config_module.load_global_env_file() == {
+        "AHADIFF_DEMO_KEY": "from-global",
+        "AHADIFF_OTHER_KEY": "from-second-writer",
+    }
+    assert config_module.remove_global_env_var("AHADIFF_DEMO_KEY") is True
+    assert config_module.load_global_env_file() == {"AHADIFF_OTHER_KEY": "from-second-writer"}
+
+    lock_stat = (global_dir / ".global.lock").lstat()
+    assert lock_identities == [
+        (lock_stat.st_dev, lock_stat.st_ino),
+        (lock_stat.st_dev, lock_stat.st_ino),
+        (lock_stat.st_dev, lock_stat.st_ino),
+    ]
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")
+def test_global_config_lock_rejects_symlink_leaf(tmp_path: Path) -> None:
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    target = tmp_path / "attacker-lock"
+    target.write_text("", encoding="utf-8")
+    os.symlink(target, global_dir / ".global.lock")
+
+    with (
+        pytest.raises(StorageError, match="global config lock.*symlink"),
+        global_config_write_lock(global_dir),
+    ):
+        raise AssertionError("lock body must not run")
+
+
+def test_global_secret_writes_reject_network_global_config_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "global-config"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    def fake_is_network_path(_path: Path) -> bool:
+        return True
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr(config_module, "is_network_path", fake_is_network_path)
+
+    with pytest.raises(StorageError, match="network/UNC path"):
+        write_global_env_var("AHADIFF_DEMO_KEY", "from-global")
+    with pytest.raises(StorageError, match="network/UNC path"):
+        write_config_data(global_dir / "config.toml", {"lang": "en"})
+    assert not (global_dir / ".env").exists()
+    assert not (global_dir / "config.toml").exists()
+
+
+def test_global_env_write_rejects_non_provider_and_blocked_names(tmp_path: Path) -> None:
+    global_dir = tmp_path / "global-config"
+
+    with pytest.raises(ConfigError, match="global provider api_key_env"):
+        write_global_env_var("AWS_SECRET_ACCESS_KEY", "aws-secret", config_dir=global_dir)
+    with pytest.raises(ConfigError, match="global provider api_key_env"):
+        write_global_env_var("AHADIFF_LANG", "zh-CN", config_dir=global_dir)
+
+    assert not (global_dir / ".env").exists()
 
 
 def test_security_config_keeps_global_local_hosts_for_strict_local(tmp_path: Path) -> None:

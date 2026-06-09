@@ -171,6 +171,8 @@ export interface ProviderSummary {
   probed_rpm?: number | null;
   probe_timestamp?: string | null;
   available_models?: string[];
+  scope?: 'repo' | 'global';
+  overrides_global?: boolean;
 }
 
 export interface ProvidersResponse {

@@ -51,12 +51,14 @@ export async function updateProvider(
 
 export async function deleteProvider(
   alias: string,
+  data?: { scope?: 'repo' | 'global' },
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<ProviderDeleteResponse> {
   const raw = await apiFetch<unknown>(
     `/api/providers/${encodeURIComponent(alias)}`,
     {
       method: 'DELETE',
+      body: data ? JSON.stringify(data) : undefined,
       signal: opts?.signal,
     },
   );
@@ -101,13 +103,14 @@ export async function fetchProviderModels(
 export async function saveProviderModels(
   alias: string,
   models: string[],
+  data?: { scope?: 'repo' | 'global' },
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<ProviderMutationResponse> {
   const raw = await apiFetch<unknown>(
     `/api/providers/${encodeURIComponent(alias)}/models`,
     {
       method: 'PUT',
-      body: JSON.stringify({ models }),
+      body: JSON.stringify({ models, ...data }),
       signal: opts?.signal,
     },
   );
@@ -121,13 +124,17 @@ export async function saveProviderModels(
 export async function probeProvider(
   alias: string,
   force?: boolean,
+  data?: { scope?: 'repo' | 'global' },
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<ProviderProbeSubmitResponse> {
   const raw = await apiFetch<unknown>(
     `/api/providers/${encodeURIComponent(alias)}/probe`,
     {
       method: 'POST',
-      body: JSON.stringify(force === undefined ? {} : { force }),
+      body: JSON.stringify({
+        ...(force === undefined ? {} : { force }),
+        ...data,
+      }),
       signal: opts?.signal,
     },
   );

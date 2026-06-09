@@ -20,7 +20,7 @@ let mockLocale = 'en-US';
 vi.mock('../../i18n/useTranslation', () => ({
   useTranslation: () => ({
     locale: mockLocale,
-    t: (key: string) => {
+    t: (key: string, params?: Record<string, string | number>) => {
       const messages: Record<string, string> = {
         'Settings_page.key_configured': 'configured',
         'Settings_page.key_missing': 'not set',
@@ -35,12 +35,22 @@ vi.mock('../../i18n/useTranslation', () => ({
         'Settings_page.provider_limits_warning_route_specific': 'Route-specific limits can vary.',
         'Settings_page.provider_limits_warning_unknown': 'Limits could not be verified.',
         'Settings_page.provider_thinking_hint_gemini': 'Gemini hint',
-        'Settings_page.provider_api_key_hint': 'stored in local .env',
+        'Settings_page.provider_api_key_hint': 'stored in local {location}',
+        'Settings_page.provider_api_key_location_repo': 'repo-env',
+        'Settings_page.provider_api_key_location_global': 'global-env',
         'Settings_page.provider_api_key_keep_ph': 'leave blank to keep',
         'Settings_page.provider_verify_ok': 'verified ok',
         'Settings_page.provider_verify_failed': 'verify failed',
+        'Settings_page.provider_scope_label': 'Scope',
+        'Settings_page.provider_scope_repo': 'This repo',
+        'Settings_page.provider_scope_global': 'All repos (global)',
+        'Settings_page.provider_scope_hint': 'Choose scope',
+        'Settings_page.provider_scope_global_badge': 'From global config',
+        'Settings_page.provider_scope_global_hint_override': 'override locally',
       };
-      return messages[key] ?? key;
+      const template = messages[key] ?? key;
+      if (!params) return template;
+      return template.replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? `{${k}}`));
     },
   }),
 }));
@@ -62,6 +72,7 @@ function makeProvider(overrides: Partial<ProviderSummary> = {}): ProviderSummary
     probed_tpm: null,
     probed_rpm: null,
     probe_timestamp: null,
+    scope: 'repo',
     ...overrides,
   };
 }
@@ -264,7 +275,7 @@ describe('ProviderCard', () => {
 
     expect(html).toContain('type="password"');
     expect(html).toContain('id="provider-apikey-new"');
-    expect(html).toContain('stored in local .env');
+    expect(html).toContain('stored in local repo-env');
     // The security/storage hint must be announced to screen readers on focus:
     // the API-key input is aria-describedby the hint paragraph's stable id.
     expect(html).toContain('aria-describedby="provider-apikey-hint-new"');
@@ -305,6 +316,7 @@ describe('ProviderCard', () => {
       max_output_tokens: '',
       thinking_level: 'none',
       model_limits_name: '',
+      scope: 'repo' as const,
     };
 
     it('blocks saving and shows validation message for non-integer "12.5"', () => {
@@ -448,6 +460,7 @@ describe('ProviderCard', () => {
         max_output_tokens: '',
         thinking_level: 'none',
         model_limits_name: '',
+        scope: 'repo' as const,
       };
 
       const payload = buildProviderUpdatePayload(draft, provider);
@@ -472,6 +485,7 @@ describe('ProviderCard', () => {
         max_output_tokens: '8192',
         thinking_level: 'none',
         model_limits_name: '',
+        scope: 'repo' as const,
       };
 
       const payload = buildProviderUpdatePayload(draft, provider);
@@ -500,6 +514,7 @@ describe('ProviderCard', () => {
         max_output_tokens: '',
         thinking_level: 'none',
         model_limits_name: '',
+        scope: 'repo' as const,
       };
 
       const payload = buildProviderUpdatePayload(draft, provider);
@@ -520,6 +535,79 @@ describe('ProviderCard', () => {
       expect(PROVIDER_ERROR_KEY_BY_CODE.AUTH_REQUIRED).toBe('Settings_page.provider_error_auth_required');
       expect(PROVIDER_ERROR_KEY_BY_CODE.LOCK_CONFLICT).toBe('Settings_page.provider_error_lock_conflict');
       expect(PROVIDER_ERROR_KEY_BY_CODE.INTERNAL_ERROR).toBe('Settings_page.provider_error_internal_error');
+    });
+  });
+
+  describe('Global BYOK Scope Support', () => {
+    it('defaults scope to repo in DraftFields', () => {
+      const card = renderToStaticMarkup(
+        <ProviderCard
+          provider={makeProvider({ scope: undefined })}
+          isNew
+          onSave={async () => undefined}
+          onDelete={async () => undefined}
+          onProbe={async () => 'task-1'}
+        />,
+      );
+      expect(card).toContain('checked');
+      expect(card).toContain('This repo');
+    });
+
+    it('buildProviderUpdatePayload carries chosen scope in payload', () => {
+      const provider = makeProvider({ scope: 'repo' });
+      const draft = {
+        alias: 'local',
+        provider_class: 'openai',
+        model_name: 'gpt-test',
+        base_url: 'https://api.example.test/v1',
+        api_key: '',
+        max_output_tokens: '',
+        thinking_level: 'none',
+        model_limits_name: '',
+        scope: 'global' as const,
+      };
+      const payload = buildProviderUpdatePayload(draft, provider);
+      expect(payload.scope).toBe('global');
+    });
+
+    it('renders global badge and override hint when scope is global', () => {
+      const html = renderToStaticMarkup(
+        <ProviderDetailView
+          provider={makeProvider({ scope: 'global' })}
+          probeStatus="idle"
+          probeError={null}
+          probeRunning={false}
+          confirmDelete={false}
+          deleting={false}
+          deleteError={null}
+          onEdit={() => {}}
+          onProbe={async () => 'task-1'}
+          onAskDelete={() => {}}
+          onCancelDelete={() => {}}
+          onConfirmDelete={async () => {}}
+          remoteModels={null}
+          fetchingModels={false}
+          fetchModelsError={null}
+          selectedModels={new Set()}
+          savingModels={false}
+          onFetchModels={() => {}}
+          onSaveModels={() => {}}
+          onToggleModel={() => {}}
+          onCancelModels={() => {}}
+          t={(key, params) => {
+            const messages: Record<string, string> = {
+              'Settings_page.provider_scope_global_badge': 'From global config',
+              'Settings_page.provider_scope_global_hint_override': 'override locally',
+            };
+            const template = messages[key] ?? key;
+            if (!params) return template;
+            return template.replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? `{${k}}`));
+          }}
+          locale="en-US"
+        />,
+      );
+      expect(html).toContain('From global config');
+      expect(html).toContain('override locally');
     });
   });
 });

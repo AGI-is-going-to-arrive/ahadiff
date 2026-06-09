@@ -8,10 +8,11 @@ core fields did not change while the probe was running.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections.abc import Mapping
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from copy import deepcopy
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -30,26 +31,30 @@ from ahadiff.contracts.serve_providers import (
     ProviderCreateRequest,
     ProviderDeleteResponse,
     ProviderMutationResponse,
+    ProviderProbeRequest,
     ProviderProbeSubmitResponse,
+    ProviderScope,
     ProviderUpdateRequest,
 )
 from ahadiff.core import config as config_module
 from ahadiff.core.config import (
     SecurityConfig,
     clear_provider_probe_fields,
+    global_config_write_lock,
     load_repo_env_file,
     local_hosts_for_privacy_mode,
     mask_provider_base_url_for_display,
     normalize_provider_base_url,
     provider_core_fingerprint,
     read_config_data,
-    remove_repo_env_var,
+    remove_provider_env_var,
     resolve_provider_api_key,
     validate_provider_alias,
     validate_provider_base_url,
     validate_repo_api_key_env_name,
     write_config_data,
-    write_repo_env_var,
+    write_global_env_var,
+    write_provider_env_var,
 )
 from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
 from ahadiff.core.ids import make_event_id
@@ -107,9 +112,38 @@ class _ProviderFieldError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def _config_path(state: ServeState) -> Path:
-    """Return the path to the per-repo ``.ahadiff/config.toml``."""
-    return state.state_dir.parent / ".ahadiff" / "config.toml"
+def _config_path(state: ServeState, scope: ProviderScope = "repo") -> Path:
+    """Return the provider config path for the requested scope."""
+    return state.provider_scope_dir(scope) / "config.toml"
+
+
+def _env_path(state: ServeState, scope: ProviderScope) -> Path:
+    return state.provider_scope_dir(scope) / ".env"
+
+
+@contextmanager
+def _provider_scope_write_lock(state: ServeState, scope: ProviderScope, *, command: str) -> Any:
+    if scope == "repo":
+        with serve_repo_write_lock(state, command=command):
+            yield
+        return
+    with global_config_write_lock(state.provider_scope_dir("global")):
+        yield
+
+
+def _write_scoped_config_data(
+    config_path: Path,
+    data: Mapping[str, Any],
+    *,
+    scope: ProviderScope,
+) -> Path:
+    return write_config_data(config_path, data, lock_global=scope == "repo")
+
+
+def _validate_provider_scope(value: object) -> ProviderScope:
+    if value in ("repo", "global"):
+        return value
+    raise _ProviderFieldError("scope must be 'repo' or 'global'")
 
 
 def _read_providers_table(config_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -126,16 +160,40 @@ def _read_providers_table(config_path: Path) -> tuple[dict[str, Any], dict[str, 
     return data, providers
 
 
+def _read_optional_providers_table(config_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not config_path.exists():
+        return {}, {}
+    return _read_providers_table(config_path)
+
+
+def _load_effective_provider_for_read(
+    state: ServeState,
+    alias: str,
+) -> tuple[dict[str, Any], dict[str, Any], ProviderScope] | None:
+    repo_data, repo_providers = _read_optional_providers_table(_config_path(state, "repo"))
+    repo_provider = repo_providers.get(alias)
+    if isinstance(repo_provider, dict):
+        return dict(cast("dict[str, Any]", repo_provider)), repo_data, "repo"
+
+    global_data, global_providers = _read_optional_providers_table(_config_path(state, "global"))
+    global_provider = global_providers.get(alias)
+    if isinstance(global_provider, dict):
+        return dict(cast("dict[str, Any]", global_provider)), global_data, "global"
+    return None
+
+
 def _build_summary(
     state: ServeState,
     alias: str,
     provider_data: dict[str, Any],
+    *,
+    scope: ProviderScope = "repo",
 ) -> dict[str, Any] | None:
     """Build a JSON-ready ProviderSummary dict via the canonical helper."""
     del state  # unused; ServeState is accepted for symmetry with other helpers
     raw_role = provider_data.get("role")
     role = str(raw_role) if isinstance(raw_role, str) and raw_role else None
-    summary = provider_summary_from_mapping(alias, provider_data, role=role)
+    summary = provider_summary_from_mapping(alias, provider_data, role=role, scope=scope)
     if summary is None:
         return None
     return summary.model_dump(mode="json")
@@ -164,6 +222,16 @@ def _provider_key_env_base(alias: str) -> str:
     sanitized = re.sub(r"[^A-Z0-9_]+", "_", alias.upper())
     sanitized = re.sub(r"_+", "_", sanitized).strip("_") or "PROVIDER"
     return f"AHADIFF_{sanitized}_KEY"
+
+
+def _is_provider_key_env_name(name: str) -> bool:
+    if not name.startswith("AHADIFF_") or not name.endswith("_KEY"):
+        return False
+    try:
+        validate_repo_api_key_env_name(name)
+    except ConfigError:
+        return False
+    return True
 
 
 def _provider_key_env_names_in_use(
@@ -230,6 +298,24 @@ def _occupied_provider_key_env_names(repo_env: Mapping[str, str]) -> set[str]:
     return set(os.environ) | set(repo_env)
 
 
+def _occupied_provider_key_env_names_for_scope(
+    scope: ProviderScope,
+    scoped_env: Mapping[str, str],
+    *,
+    saved_global_value: str | None = None,
+) -> set[str]:
+    if scope == "global":
+        occupied_names = set(scoped_env) | config_module.original_ambient_provider_key_env_names()
+        for name, value in os.environ.items():
+            # Global .env apply must not override repo/ambient process values.
+            # Treat current AHADIFF_*_KEY names with other values as occupied,
+            # or a fresh global save can resolve to the wrong secret immediately.
+            if _is_provider_key_env_name(name) and value != saved_global_value:
+                occupied_names.add(name)
+        return occupied_names
+    return _occupied_provider_key_env_names(scoped_env)
+
+
 def _owned_repo_env_names(repo_env: Mapping[str, str]) -> set[str]:
     names: set[str] = set()
     for name, value in repo_env.items():
@@ -237,6 +323,26 @@ def _owned_repo_env_names(repo_env: Mapping[str, str]) -> set[str]:
         if current_value is None or current_value == value:
             names.add(name)
     return names
+
+
+def _owned_provider_env_names_for_scope(
+    scope: ProviderScope,
+    scoped_env: Mapping[str, str],
+    *,
+    saved_global_value: str | None = None,
+) -> set[str]:
+    if scope == "global":
+        names: set[str] = set()
+        for name, value in scoped_env.items():
+            current_value = os.environ.get(name)
+            if (
+                saved_global_value is None
+                or current_value is None
+                or current_value in (value, saved_global_value)
+            ):
+                names.add(name)
+        return names
+    return _owned_repo_env_names(scoped_env)
 
 
 def _repo_env_name_for_cleanup(name: object) -> str | None:
@@ -257,6 +363,7 @@ def _remove_previous_provider_repo_env_value(
     repo_env: Mapping[str, str],
     providers: Mapping[str, object],
     alias: str,
+    scope: ProviderScope = "repo",
 ) -> str | None:
     previous_env_name = _repo_env_name_for_cleanup(previous_name)
     if (
@@ -266,11 +373,15 @@ def _remove_previous_provider_repo_env_value(
         or previous_env_name in _provider_key_env_names_in_use(providers, exclude_alias=alias)
     ):
         return None
-    if not previous_env_name.startswith("AHADIFF_") and (
-        previous_env_name not in _owned_repo_env_names(repo_env)
-    ):
+    owned_names = _owned_provider_env_names_for_scope(scope, repo_env)
+    if not previous_env_name.startswith("AHADIFF_") and previous_env_name not in owned_names:
         return None
-    if not _remove_owned_repo_env_value(env_path, previous_env_name, repo_env=repo_env):
+    if not _remove_owned_repo_env_value(
+        env_path,
+        previous_env_name,
+        repo_env=repo_env,
+        scope=scope,
+    ):
         return None
     return previous_env_name
 
@@ -280,11 +391,27 @@ def _apply_saved_repo_env_value(
     value: str,
     *,
     previous_repo_env: Mapping[str, str],
+    scope: ProviderScope = "repo",
 ) -> None:
     current_value = os.environ.get(name)
     previous_value = previous_repo_env.get(name)
-    if current_value is None or (previous_value is not None and current_value == previous_value):
+    if scope == "global":
+        if current_value is None or (
+            previous_value is not None and current_value == previous_value
+        ):
+            os.environ[name] = value
+            config_module._clear_repo_env_applied_value(name)  # pyright: ignore[reportPrivateUsage]
+            config_module._remember_global_env_applied_value(name, value)  # pyright: ignore[reportPrivateUsage]
+        return
+    if (
+        current_value is None
+        or (previous_value is not None and current_value == previous_value)
+        or config_module.is_global_env_applied_value(name)
+        or config_module.is_repo_env_applied_value(name)
+    ):
         os.environ[name] = value
+        config_module._clear_global_env_applied_value(name)  # pyright: ignore[reportPrivateUsage]
+        config_module._remember_repo_env_applied_value(name, value)  # pyright: ignore[reportPrivateUsage]
 
 
 def _restore_repo_env_value(
@@ -292,12 +419,18 @@ def _restore_repo_env_value(
     name: str,
     *,
     previous_repo_env: Mapping[str, str],
+    scope: ProviderScope = "repo",
 ) -> None:
     previous_repo_value = previous_repo_env.get(name)
     if previous_repo_value is None:
-        remove_repo_env_var(env_path, name)
+        _remove_scoped_provider_env_var(env_path, name, scope=scope)
     else:
-        write_repo_env_var(env_path, name, previous_repo_value)
+        _write_scoped_provider_env_var(
+            env_path,
+            name,
+            previous_repo_value,
+            scope=scope,
+        )
         if name not in os.environ:
             os.environ[name] = previous_repo_value
 
@@ -307,12 +440,41 @@ def _remove_owned_repo_env_value(
     name: str,
     *,
     repo_env: Mapping[str, str],
+    scope: ProviderScope = "repo",
 ) -> bool:
     repo_value = repo_env.get(name)
-    removed = remove_repo_env_var(env_path, name)
+    removed = _remove_scoped_provider_env_var(env_path, name, scope=scope)
     if removed and repo_value is not None and os.environ.get(name) == repo_value:
         os.environ.pop(name, None)
+        if scope == "global":
+            config_module._clear_global_env_applied_value(name)  # pyright: ignore[reportPrivateUsage]
+        else:
+            config_module._clear_repo_env_applied_value(name)  # pyright: ignore[reportPrivateUsage]
     return removed
+
+
+def _write_scoped_provider_env_var(
+    env_path: Path,
+    name: str,
+    value: str,
+    *,
+    scope: ProviderScope,
+) -> None:
+    if scope == "global":
+        write_global_env_var(name, value, config_dir=env_path.parent, lock=False)
+        return
+    write_provider_env_var(env_path, name, value)
+
+
+def _remove_scoped_provider_env_var(
+    env_path: Path,
+    name: str,
+    *,
+    scope: ProviderScope,
+) -> bool:
+    if scope == "global":
+        return config_module.remove_global_env_var(name, config_dir=env_path.parent, lock=False)
+    return remove_provider_env_var(env_path, name)
 
 
 def _restore_repo_env_value_best_effort(
@@ -320,9 +482,15 @@ def _restore_repo_env_value_best_effort(
     name: str,
     *,
     previous_repo_env: Mapping[str, str],
+    scope: ProviderScope = "repo",
 ) -> None:
     with suppress(Exception):
-        _restore_repo_env_value(env_path, name, previous_repo_env=previous_repo_env)
+        _restore_repo_env_value(
+            env_path,
+            name,
+            previous_repo_env=previous_repo_env,
+            scope=scope,
+        )
 
 
 def _rollback_saved_repo_env_value(
@@ -333,14 +501,19 @@ def _rollback_saved_repo_env_value(
     previous_repo_env: Mapping[str, str],
     previous_process_value: str | None,
     previous_process_value_exists: bool,
+    scope: ProviderScope = "repo",
 ) -> None:
-    _restore_repo_env_value(env_path, name, previous_repo_env=previous_repo_env)
+    _restore_repo_env_value(env_path, name, previous_repo_env=previous_repo_env, scope=scope)
     if os.environ.get(name) == attempted_value:
         if previous_process_value_exists:
             assert previous_process_value is not None
             os.environ[name] = previous_process_value
         else:
             os.environ.pop(name, None)
+        if scope == "global":
+            config_module._clear_global_env_applied_value(name)  # pyright: ignore[reportPrivateUsage]
+        else:
+            config_module._clear_repo_env_applied_value(name)  # pyright: ignore[reportPrivateUsage]
 
 
 def _restore_config_snapshot(
@@ -348,9 +521,10 @@ def _restore_config_snapshot(
     data: Mapping[str, Any],
     *,
     existed: bool,
+    scope: ProviderScope = "repo",
 ) -> None:
     if existed:
-        write_config_data(config_path, data)
+        _write_scoped_config_data(config_path, data, scope=scope)
     else:
         config_path.unlink(missing_ok=True)
 
@@ -360,9 +534,10 @@ def _restore_config_snapshot_best_effort(
     data: Mapping[str, Any],
     *,
     existed: bool,
+    scope: ProviderScope = "repo",
 ) -> None:
     with suppress(Exception):
-        _restore_config_snapshot(config_path, data, existed=existed)
+        _restore_config_snapshot(config_path, data, existed=existed, scope=scope)
 
 
 def _is_api_key_noop(value: object) -> bool:
@@ -469,6 +644,18 @@ def _security_config_from_data(data: Mapping[str, object]) -> SecurityConfig:
         local_hosts=_security_string_tuple(security, "local_hosts"),
         strict_local_hosts=_security_string_tuple(security, "strict_local_hosts"),
     )
+
+
+def _security_config_for_provider_scope(
+    state: ServeState,
+    scope: ProviderScope,
+    scoped_data: Mapping[str, Any],
+) -> SecurityConfig:
+    if scope == "repo":
+        return _security_config_from_data(scoped_data)
+    repo_config_path = _config_path(state, "repo")
+    repo_data = read_config_data(repo_config_path) if repo_config_path.exists() else {}
+    return _security_config_from_data(repo_data)
 
 
 _DEFAULT_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
@@ -803,11 +990,12 @@ def _persist_probe_result_if_current(
     *,
     state: ServeState,
     config_path: Path,
+    scope: ProviderScope,
     alias: str,
     expected_fingerprint: str,
     report: ProbeReport,
 ) -> bool:
-    with serve_repo_write_lock(state, command="serve provider probe persist"):
+    with _provider_scope_write_lock(state, scope, command="serve provider probe persist"):
         data, providers = _read_providers_table(config_path)
         current = providers.get(alias)
         if not isinstance(current, dict):
@@ -823,7 +1011,7 @@ def _persist_probe_result_if_current(
             if value is not None:
                 updated_provider[field_name] = value
         providers[alias] = updated_provider
-        write_config_data(config_path, data)
+        _write_scoped_config_data(config_path, data, scope=scope)
         _append_provider_audit_event(
             state,
             event_type="provider_probe",
@@ -872,7 +1060,8 @@ async def create_provider(request: Request) -> JSONResponse:
     except _ProviderFieldError as exc:
         return _error(str(exc), status=422)
 
-    config_path = _config_path(state)
+    scope = body.scope
+    config_path = _config_path(state, scope)
 
     def _persist() -> tuple[
         bool,
@@ -880,11 +1069,11 @@ async def create_provider(request: Request) -> JSONResponse:
         list[dict[str, object]],
         SecurityConfig | None,
     ]:
-        with serve_repo_write_lock(state, command="serve provider create"):
+        with _provider_scope_write_lock(state, scope, command="serve provider create"):
             data, providers = _read_providers_table(config_path)
             if body.alias in providers:
                 return False, None, [], None
-            security_config = _security_config_from_data(data)
+            security_config = _security_config_for_provider_scope(state, scope, data)
             previous_config_data = deepcopy(data)
             previous_config_exists = config_path.exists()
             normalized_base_url = _normalize_and_validate_base_url(
@@ -892,14 +1081,22 @@ async def create_provider(request: Request) -> JSONResponse:
                 provider_class=body.provider_class,
                 data=data,
             )
-            env_path = state.state_dir / ".env"
+            env_path = _env_path(state, scope)
             if plain_api_key is not None:
                 repo_env = load_repo_env_file(env_path)
                 api_key_env = _provider_key_env_name(
                     body.alias,
                     providers,
-                    occupied_env_names=_occupied_provider_key_env_names(repo_env),
-                    owned_repo_env_names=_owned_repo_env_names(repo_env),
+                    occupied_env_names=_occupied_provider_key_env_names_for_scope(
+                        scope,
+                        repo_env,
+                        saved_global_value=plain_api_key,
+                    ),
+                    owned_repo_env_names=_owned_provider_env_names_for_scope(
+                        scope,
+                        repo_env,
+                        saved_global_value=plain_api_key,
+                    ),
                 )
             else:
                 repo_env = {}
@@ -911,11 +1108,17 @@ async def create_provider(request: Request) -> JSONResponse:
             attempted_repo_env_value: str | None = None
             config_committed = False
             if plain_api_key is not None:
-                write_repo_env_var(env_path, api_key_env, plain_api_key)
+                _write_scoped_provider_env_var(
+                    env_path,
+                    api_key_env,
+                    plain_api_key,
+                    scope=scope,
+                )
                 _apply_saved_repo_env_value(
                     api_key_env,
                     plain_api_key,
                     previous_repo_env=repo_env,
+                    scope=scope,
                 )
                 attempted_repo_env_value = plain_api_key
             try:
@@ -933,7 +1136,7 @@ async def create_provider(request: Request) -> JSONResponse:
                     new_provider["model_limits_name"] = model_limits_name
                 warnings = _apply_max_output_policy(new_provider)
                 providers[body.alias] = new_provider
-                write_config_data(config_path, data)
+                _write_scoped_config_data(config_path, data, scope=scope)
                 config_committed = True
                 _append_provider_audit_event(
                     state,
@@ -951,12 +1154,14 @@ async def create_provider(request: Request) -> JSONResponse:
                             previous_repo_env=repo_env,
                             previous_process_value=previous_process_value,
                             previous_process_value_exists=previous_process_value_exists,
+                            scope=scope,
                         )
                 if config_committed:
                     _restore_config_snapshot_best_effort(
                         config_path,
                         previous_config_data,
                         existed=previous_config_exists,
+                        scope=scope,
                     )
                 raise
             return True, dict(new_provider), warnings, security_config
@@ -974,7 +1179,7 @@ async def create_provider(request: Request) -> JSONResponse:
     if not created or persisted is None:
         return _error("provider_alias_conflict", status=409)
 
-    summary = _build_summary(state, body.alias, persisted)
+    summary = _build_summary(state, body.alias, persisted, scope=scope)
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
     verification = await to_thread.run_sync(
@@ -1015,14 +1220,12 @@ async def get_provider_model_limits(request: Request) -> JSONResponse:
     if alias_error is not None:
         return alias_error
 
-    config_path = _config_path(state)
-
     def _load_provider() -> dict[str, Any] | None:
-        _data, providers = _read_providers_table(config_path)
-        raw_provider = providers.get(alias)
-        if not isinstance(raw_provider, dict):
+        loaded = _load_effective_provider_for_read(state, alias)
+        if loaded is None:
             return None
-        return dict(cast("dict[str, Any]", raw_provider))
+        provider_data, _data, _scope = loaded
+        return provider_data
 
     try:
         provider_data = await to_thread.run_sync(_load_provider)
@@ -1098,8 +1301,9 @@ async def update_provider(request: Request) -> JSONResponse:
     except ValidationError as exc:
         return _validation_error(exc)
 
+    scope = body.scope
     fields_set = set(body.model_fields_set)
-    update_payload = body.model_dump(exclude_none=True)
+    update_payload = body.model_dump(exclude_none=True, exclude={"scope"})
     if "model_limits_name" in update_payload:
         try:
             update_payload["model_limits_name"] = _clean_optional_provider_text(
@@ -1142,7 +1346,7 @@ async def update_provider(request: Request) -> JSONResponse:
     ):
         return _error("at_least_one_field_required", status=422)
 
-    config_path = _config_path(state)
+    config_path = _config_path(state, scope)
 
     def _persist() -> tuple[
         bool,
@@ -1150,7 +1354,7 @@ async def update_provider(request: Request) -> JSONResponse:
         list[dict[str, object]],
         SecurityConfig | None,
     ]:
-        with serve_repo_write_lock(state, command="serve provider update"):
+        with _provider_scope_write_lock(state, scope, command="serve provider update"):
             data, providers = _read_providers_table(config_path)
             existing = providers.get(alias)
             if not isinstance(existing, dict):
@@ -1159,7 +1363,7 @@ async def update_provider(request: Request) -> JSONResponse:
             previous_config_exists = config_path.exists()
             existing_typed = cast("dict[str, Any]", existing)
             updated_provider: dict[str, Any] = dict(existing_typed)
-            env_path = state.state_dir / ".env"
+            env_path = _env_path(state, scope)
             repo_env: Mapping[str, str] = {}
             repo_env_loaded = False
             api_key_env_for_rollback: str | None = None
@@ -1175,17 +1379,31 @@ async def update_provider(request: Request) -> JSONResponse:
                     alias,
                     providers,
                     existing_provider=existing_typed,
-                    occupied_env_names=_occupied_provider_key_env_names(repo_env),
-                    owned_repo_env_names=_owned_repo_env_names(repo_env),
+                    occupied_env_names=_occupied_provider_key_env_names_for_scope(
+                        scope,
+                        repo_env,
+                        saved_global_value=plain_api_key,
+                    ),
+                    owned_repo_env_names=_owned_provider_env_names_for_scope(
+                        scope,
+                        repo_env,
+                        saved_global_value=plain_api_key,
+                    ),
                 )
                 update_payload["api_key_env"] = api_key_env
                 previous_process_value = os.environ.get(api_key_env)
                 previous_process_value_exists = api_key_env in os.environ
-                write_repo_env_var(env_path, api_key_env, plain_api_key)
+                _write_scoped_provider_env_var(
+                    env_path,
+                    api_key_env,
+                    plain_api_key,
+                    scope=scope,
+                )
                 _apply_saved_repo_env_value(
                     api_key_env,
                     plain_api_key,
                     previous_repo_env=repo_env,
+                    scope=scope,
                 )
                 api_key_env_for_rollback = api_key_env
                 attempted_repo_env_value = plain_api_key
@@ -1200,6 +1418,7 @@ async def update_provider(request: Request) -> JSONResponse:
                     repo_env=repo_env,
                     providers=providers,
                     alias=alias,
+                    scope=scope,
                 )
             try:
                 safe_update = {
@@ -1234,7 +1453,7 @@ async def update_provider(request: Request) -> JSONResponse:
                     clear_provider_probe_fields(updated_provider)
                 warnings = _apply_max_output_policy(updated_provider)
                 providers[alias] = updated_provider
-                write_config_data(config_path, data)
+                _write_scoped_config_data(config_path, data, scope=scope)
                 config_committed = True
                 _append_provider_audit_event(
                     state,
@@ -1252,21 +1471,33 @@ async def update_provider(request: Request) -> JSONResponse:
                             previous_repo_env=repo_env,
                             previous_process_value=previous_process_value,
                             previous_process_value_exists=previous_process_value_exists,
+                            scope=scope,
                         )
                 if legacy_env_name_for_restore is not None:
                     _restore_repo_env_value_best_effort(
                         env_path,
                         legacy_env_name_for_restore,
                         previous_repo_env=repo_env,
+                        scope=scope,
                     )
                 if config_committed:
                     _restore_config_snapshot_best_effort(
                         config_path,
                         previous_config_data,
                         existed=previous_config_exists,
+                        scope=scope,
                     )
                 raise
-            return True, dict(updated_provider), warnings, _security_config_from_data(data)
+            return (
+                True,
+                dict(updated_provider),
+                warnings,
+                _security_config_for_provider_scope(
+                    state,
+                    scope,
+                    data,
+                ),
+            )
 
     try:
         updated, persisted, warnings, security_config = await to_thread.run_sync(_persist)
@@ -1281,7 +1512,7 @@ async def update_provider(request: Request) -> JSONResponse:
     if not updated or persisted is None:
         return _error("provider_not_found", status=404)
 
-    summary = _build_summary(state, alias, persisted)
+    summary = _build_summary(state, alias, persisted, scope=scope)
     if summary is None:
         return _error("provider_summary_unavailable", status=500)
     verification = await to_thread.run_sync(
@@ -1320,10 +1551,28 @@ async def delete_provider(request: Request) -> JSONResponse:
     if alias_error is not None:
         return alias_error
 
-    config_path = _config_path(state)
+    try:
+        raw_body = await request.body()
+    except Exception:
+        return _error("invalid_json", status=400)
+    scope: ProviderScope = "repo"
+    if raw_body.strip():
+        try:
+            raw_payload = cast("object", json.loads(raw_body.decode("utf-8")))
+        except Exception:
+            return _error("invalid_json", status=400)
+        if not isinstance(raw_payload, dict):
+            return _error("body_must_be_object", status=400)
+        payload = cast("dict[str, object]", raw_payload)
+        try:
+            scope = _validate_provider_scope(payload.get("scope", "repo"))
+        except _ProviderFieldError as exc:
+            return _error(str(exc), status=422)
+
+    config_path = _config_path(state, scope)
 
     def _persist() -> tuple[bool, dict[str, Any] | None]:
-        with serve_repo_write_lock(state, command="serve provider delete"):
+        with _provider_scope_write_lock(state, scope, command="serve provider delete"):
             data, providers = _read_providers_table(config_path)
             existing = providers.get(alias)
             if not isinstance(existing, dict):
@@ -1331,7 +1580,7 @@ async def delete_provider(request: Request) -> JSONResponse:
             previous_config_data = deepcopy(data)
             previous_config_exists = config_path.exists()
             existing_typed = cast("dict[str, Any]", existing)
-            env_path = state.state_dir / ".env"
+            env_path = _env_path(state, scope)
             repo_env = load_repo_env_file(env_path)
             api_key_env = existing_typed.get("api_key_env")
             env_name_for_restore: str | None = None
@@ -1344,9 +1593,14 @@ async def delete_provider(request: Request) -> JSONResponse:
                     and api_key_env in repo_env
                     and api_key_env not in _provider_key_env_names_in_use(providers)
                 ):
-                    _remove_owned_repo_env_value(env_path, api_key_env, repo_env=repo_env)
+                    _remove_owned_repo_env_value(
+                        env_path,
+                        api_key_env,
+                        repo_env=repo_env,
+                        scope=scope,
+                    )
                     env_name_for_restore = api_key_env
-                write_config_data(config_path, data)
+                _write_scoped_config_data(config_path, data, scope=scope)
                 config_committed = True
                 _append_provider_audit_event(
                     state,
@@ -1360,12 +1614,14 @@ async def delete_provider(request: Request) -> JSONResponse:
                         env_path,
                         env_name_for_restore,
                         previous_repo_env=repo_env,
+                        scope=scope,
                     )
                 if config_committed:
                     _restore_config_snapshot_best_effort(
                         config_path,
                         previous_config_data,
                         existed=previous_config_exists,
+                        scope=scope,
                     )
                 raise
             return True, dict(existing_typed)
@@ -1401,6 +1657,23 @@ async def probe_provider_route(request: Request) -> JSONResponse:
     if alias_error is not None:
         return alias_error
 
+    try:
+        raw_body = await request.body()
+    except Exception:
+        return _error("invalid_json", status=400)
+    if raw_body.strip():
+        try:
+            raw_payload = cast("object", json.loads(raw_body.decode("utf-8")))
+        except Exception:
+            return _error("invalid_json", status=400)
+        try:
+            body = ProviderProbeRequest.model_validate(raw_payload)
+        except ValidationError as exc:
+            return _validation_error(exc)
+    else:
+        body = ProviderProbeRequest()
+    scope = body.scope
+
     runner = state.task_runner
     if runner is None:
         return error_response(
@@ -1409,15 +1682,17 @@ async def probe_provider_route(request: Request) -> JSONResponse:
             status=503,
         )
 
-    config_path = _config_path(state)
+    config_path = _config_path(state, scope)
+    repo_config_path = _config_path(state, "repo")
 
     def _load_provider() -> tuple[dict[str, Any], SecurityConfig] | None:
-        data, providers = _read_providers_table(config_path)
+        _data, providers = _read_providers_table(config_path)
         candidate = providers.get(alias)
         if not isinstance(candidate, dict):
             return None
         candidate_typed = cast("dict[str, Any]", candidate)
-        return dict(candidate_typed), _security_config_from_data(data)
+        repo_data = read_config_data(repo_config_path) if repo_config_path.exists() else {}
+        return dict(candidate_typed), _security_config_from_data(repo_data)
 
     try:
         loaded = await to_thread.run_sync(_load_provider)
@@ -1474,6 +1749,7 @@ async def probe_provider_route(request: Request) -> JSONResponse:
             lambda: _persist_probe_result_if_current(
                 state=state,
                 config_path=config_path,
+                scope=scope,
                 alias=alias,
                 expected_fingerprint=start_fingerprint,
                 report=report,
@@ -1670,15 +1946,14 @@ async def fetch_provider_models(request: Request) -> JSONResponse:
     require_write_token(request)
     alias = request.path_params["alias"]
     state = serve_state(request)
-    config_path = _config_path(state)
 
     def _load() -> tuple[dict[str, Any], tuple[str, ...]] | None:
-        data, providers = _read_providers_table(config_path)
-        raw = providers.get(alias)
-        if not isinstance(raw, dict):
+        loaded = _load_effective_provider_for_read(state, alias)
+        if loaded is None:
             return None
+        provider_data, data, _scope = loaded
         allowed_local_hosts = (*_provider_allowed_local_hosts(data), *_DEFAULT_LOCAL_HOSTS)
-        return dict(cast("dict[str, Any]", raw)), allowed_local_hosts
+        return provider_data, allowed_local_hosts
 
     try:
         loaded = await to_thread.run_sync(_load)
@@ -1725,7 +2000,6 @@ async def save_provider_models(request: Request) -> JSONResponse:
     require_write_token(request)
     alias = request.path_params["alias"]
     state = serve_state(request)
-    config_path = _config_path(state)
 
     try:
         body = await request.json()
@@ -1734,6 +2008,11 @@ async def save_provider_models(request: Request) -> JSONResponse:
     if not isinstance(body, dict):
         return _error("expected JSON object", status=400)
     body_data = cast("dict[str, object]", body)
+    try:
+        scope = _validate_provider_scope(body_data.get("scope", "repo"))
+    except _ProviderFieldError as exc:
+        return _error(str(exc), status=422)
+    config_path = _config_path(state, scope)
     models = body_data.get("models")
     if not isinstance(models, list):
         return _error("models must be a list of non-empty strings", status=400)
@@ -1746,13 +2025,13 @@ async def save_provider_models(request: Request) -> JSONResponse:
     cleaned = list(dict.fromkeys(cast("str", item).strip() for item in model_items))
 
     def _persist() -> dict[str, Any] | None:
-        with serve_repo_write_lock(state, command="serve save-provider-models"):
+        with _provider_scope_write_lock(state, scope, command="serve save-provider-models"):
             data, providers = _read_providers_table(config_path)
             raw = providers.get(alias)
             if not isinstance(raw, dict):
                 return None
             raw["available_models"] = tuple(cleaned)
-            write_config_data(config_path, data)
+            _write_scoped_config_data(config_path, data, scope=scope)
             return dict(cast("dict[str, Any]", raw))
 
     try:
@@ -1762,7 +2041,7 @@ async def save_provider_models(request: Request) -> JSONResponse:
     if result is None:
         return _error("provider_not_found", status=404)
 
-    summary = provider_summary_from_mapping(alias, result)
+    summary = provider_summary_from_mapping(alias, result, scope=scope)
     if summary is None:
         return _error("failed to build summary", status=500)
     return JSONResponse(summary.model_dump(mode="json"))

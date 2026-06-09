@@ -592,6 +592,18 @@ def implicit_duplicate_provider_name(
     return None
 
 
+def provider_names_for_auto_default(
+    *,
+    snapshot: Any,
+    providers_table: Mapping[str, Any],
+) -> list[str]:
+    raw_scopes = getattr(snapshot, "provider_scopes", {}) or {}
+    scopes = cast("Mapping[str, object]", raw_scopes)
+    configured_names = sorted(providers_table.keys())
+    repo_names = [name for name in configured_names if str(scopes.get(name, "repo")) == "repo"]
+    return repo_names or configured_names
+
+
 def _privacy_mode_for_explicit_provider_call(
     privacy_mode: str,
     *,
@@ -694,7 +706,10 @@ def _resolve_provider_from_config(
                     f"{role}_provider '{config_provider}' not found in configured providers"
                 )
         if resolved_name is None:
-            configured_names = sorted(providers_table.keys())
+            configured_names = provider_names_for_auto_default(
+                snapshot=snapshot,
+                providers_table=providers_table,
+            )
             if len(configured_names) != 1:
                 resolved_name = implicit_duplicate_provider_name(
                     providers_table=providers_table,
@@ -2036,6 +2051,7 @@ __all__ = [
     "implicit_duplicate_provider_name",
     "is_recoverable_error",
     "is_timeout_or_network_error",
+    "provider_names_for_auto_default",
     "run_learn_pipeline",
     "run_with_retry",
 ]

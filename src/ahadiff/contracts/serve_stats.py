@@ -39,6 +39,8 @@ class ReviewHeatmapResponse(BaseModel):
 class ProviderSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
     alias: str
+    scope: Literal["repo", "global"] = "repo"
+    overrides_global: bool | None = None
     role: str | None = None
     provider_class: str
     provider_kind: str

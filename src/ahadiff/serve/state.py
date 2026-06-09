@@ -32,6 +32,7 @@ class ServeState:
     thread_write_lock: ThreadLock | None = None
     started_at: float = 0.0
     task_runner: TaskRunner | None = None
+    global_config_root: Path | None = None
 
     @property
     def runs_dir(self) -> Path:
@@ -40,6 +41,15 @@ class ServeState:
     @property
     def review_db_path(self) -> Path:
         return self.state_dir / "review.sqlite"
+
+    def provider_scope_dir(self, scope: Literal["repo", "global"]) -> Path:
+        if scope == "repo":
+            return self.state_dir
+        if self.global_config_root is not None:
+            return self.global_config_root
+        from ahadiff.core.paths import global_config_dir
+
+        return global_config_dir()
 
     def with_runtime_lock(self) -> ServeState:
         if (

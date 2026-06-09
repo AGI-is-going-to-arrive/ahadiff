@@ -15,11 +15,13 @@ from starlette.testclient import TestClient
 from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.run_source import ProviderCapabilities, ProviderConfig
 from ahadiff.core import atomic_replace as atomic_replace_module
+from ahadiff.core import config as config_module
 from ahadiff.core.config import (
     apply_repo_env_file,
     iter_resolved_settings,
     load_config,
     load_repo_env_file,
+    read_config_data,
     resolve_provider_api_key,
     write_repo_env_var,
 )
@@ -35,9 +37,19 @@ if TYPE_CHECKING:
 _AUTH = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
 
 
-def _client(state_dir: Path) -> TestClient:
-    app = create_app(ServeState(state_dir=state_dir, token="test-token"))
+def _client(state_dir: Path, *, global_config_root: Path | None = None) -> TestClient:
+    app = create_app(
+        ServeState(
+            state_dir=state_dir,
+            token="test-token",
+            global_config_root=global_config_root,
+        )
+    )
     return TestClient(app, base_url="http://localhost:8765")
+
+
+def _capture_current_env_as_original_ambient(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config_module, "_original_ambient_env", dict(os.environ))
 
 
 def _provider_payload(**overrides: Any) -> dict[str, object]:
@@ -424,6 +436,7 @@ def test_provider_create_with_plain_api_key_stores_env_reference_and_verifies(
 
     assert response.status_code == 201
     payload = response.json()
+    assert payload["provider"]["scope"] == "repo"
     assert payload["provider"]["api_key_env"] == "AHADIFF_DEMO_KEY"
     assert payload["provider"]["key_status"] == "configured"
     assert payload["verification"] == {
@@ -452,6 +465,158 @@ def test_provider_create_with_plain_api_key_stores_env_reference_and_verifies(
     assert raw_key not in json.dumps(client.get("/api/config", headers=_AUTH).json())
     assert raw_key not in json.dumps(client.get("/api/doctor", headers=_AUTH).json())
     assert raw_key not in (state_dir / "audit.jsonl").read_text(encoding="utf-8")
+
+
+def test_provider_create_global_scope_writes_global_config_and_env_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    client = _client(state_dir, global_config_root=global_dir)
+    raw_key = "sk-global-create-secret-1234567890"
+
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    _capture_current_env_as_original_ambient(monkeypatch)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None, scope="global"),
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["provider"]["scope"] == "global"
+    assert payload["provider"]["api_key_env"] == "AHADIFF_DEMO_KEY"
+    assert read_config_data(global_dir / "config.toml")["providers"]["demo"]["api_key_env"] == (
+        "AHADIFF_DEMO_KEY"
+    )
+    assert load_repo_env_file(global_dir / ".env") == {"AHADIFF_DEMO_KEY": raw_key}
+    assert (global_dir / ".gitignore").read_text(encoding="utf-8").splitlines() == [
+        "# AhaDiff global provider secrets — auto-generated; do not commit secrets",
+        ".env",
+        ".env.*",
+    ]
+    assert not (state_dir / "config.toml").exists()
+    assert not (state_dir / ".env").exists()
+    assert raw_key not in (global_dir / "config.toml").read_text(encoding="utf-8")
+
+
+def test_provider_create_global_scope_plain_key_avoids_true_ambient_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    monkeypatch.setenv("AHADIFF_DEMO_KEY", "ambient-secret")
+    _capture_current_env_as_original_ambient(monkeypatch)
+    client = _client(state_dir, global_config_root=global_dir)
+    raw_key = "sk-global-ambient-collision-1234567890"
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None, scope="global"),
+    )
+
+    assert response.status_code == 201
+    allocated_env = response.json()["provider"]["api_key_env"]
+    assert allocated_env != "AHADIFF_DEMO_KEY"
+    assert load_repo_env_file(global_dir / ".env") == {allocated_env: raw_key}
+    assert os.environ["AHADIFF_DEMO_KEY"] == "ambient-secret"
+    assert resolve_provider_api_key(allocated_env) == raw_key
+
+
+def test_provider_create_global_scope_plain_key_avoids_repo_injected_env_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    global_dir = tmp_path / "global-config"
+    (state_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.repo.example.test/v1"\n'
+        'api_key_env = "AHADIFF_DEMO_KEY"\n',
+        encoding="utf-8",
+    )
+    write_repo_env_var(state_dir / ".env", "AHADIFF_DEMO_KEY", "repo-secret")
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    _capture_current_env_as_original_ambient(monkeypatch)
+    apply_repo_env_file(state_dir / ".env")
+    client = _client(state_dir, global_config_root=global_dir)
+    raw_key = "sk-global-repo-env-collision-1234567890"
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None, scope="global"),
+    )
+
+    assert response.status_code == 201
+    allocated_env = response.json()["provider"]["api_key_env"]
+    assert allocated_env != "AHADIFF_DEMO_KEY"
+    assert load_repo_env_file(global_dir / ".env") == {allocated_env: raw_key}
+    assert load_repo_env_file(state_dir / ".env") == {"AHADIFF_DEMO_KEY": "repo-secret"}
+    assert resolve_provider_api_key("AHADIFF_DEMO_KEY") == "repo-secret"
+    assert resolve_provider_api_key(allocated_env) == raw_key
+
+
+def test_provider_create_global_scope_plain_key_uses_base_name_without_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    _capture_current_env_as_original_ambient(monkeypatch)
+    client = _client(state_dir, global_config_root=global_dir)
+    raw_key = "sk-global-no-collision-base-1234567890"
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None, scope="global"),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["provider"]["api_key_env"] == "AHADIFF_DEMO_KEY"
+    assert load_repo_env_file(global_dir / ".env") == {"AHADIFF_DEMO_KEY": raw_key}
+    assert resolve_provider_api_key("AHADIFF_DEMO_KEY") == raw_key
+
+
+def test_provider_create_global_scope_plain_key_avoids_late_env_collision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    monkeypatch.delenv("AHADIFF_DEMO_KEY", raising=False)
+    _capture_current_env_as_original_ambient(monkeypatch)
+    client = _client(state_dir, global_config_root=global_dir)
+    raw_key = "sk-global-late-env-collision-1234567890"
+    monkeypatch.setenv("AHADIFF_DEMO_KEY", "late-secret")
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(api_key=raw_key, api_key_env=None, scope="global"),
+    )
+
+    assert response.status_code == 201
+    allocated_env = response.json()["provider"]["api_key_env"]
+    assert allocated_env != "AHADIFF_DEMO_KEY"
+    assert load_repo_env_file(global_dir / ".env") == {allocated_env: raw_key}
+    assert os.environ["AHADIFF_DEMO_KEY"] == "late-secret"
+    assert resolve_provider_api_key(allocated_env) == raw_key
 
 
 def test_provider_create_identifier_shaped_plain_api_key_is_stored_as_repo_env_value(
@@ -1029,6 +1194,35 @@ def test_provider_update_api_key_env_removes_old_owned_repo_env_entry(
     assert "AHADIFF_DEMO_KEY" not in os.environ
 
 
+def test_provider_update_global_scope_writes_global_config_only(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_DEMO_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir, global_config_root=global_dir)
+
+    response = client.put(
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"scope": "global", "model_name": "gpt-5.5"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["provider"]["scope"] == "global"
+    global_config = read_config_data(global_dir / "config.toml")
+    global_providers = cast("dict[str, Any]", global_config["providers"])
+    assert cast("dict[str, Any]", global_providers["demo"])["model_name"] == "gpt-5.5"
+    assert not (state_dir / "config.toml").exists()
+
+
 def test_provider_update_plain_api_key_rolls_back_env_when_config_write_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1527,6 +1721,25 @@ def test_provider_create_rejects_unsafe_api_key_env_before_registry_mutation(
     assert not (state_dir / "config.toml").exists()
 
 
+def test_provider_create_global_scope_rejects_unsafe_api_key_env_before_write(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    client = _client(state_dir, global_config_root=global_dir)
+
+    response = client.post(
+        "/api/providers",
+        headers=_AUTH,
+        json=_provider_payload(scope="global", api_key_env="AWS_SECRET_ACCESS_KEY"),
+    )
+
+    assert response.status_code == 422
+    assert "api_key_env" in response.json()["error"]
+    assert not (global_dir / "config.toml").exists()
+    assert not (state_dir / "config.toml").exists()
+
+
 def test_get_providers_tolerates_corrupt_providers_table(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
@@ -1694,6 +1907,40 @@ def test_provider_delete_removes_unshared_ahadiff_owned_repo_env_entry(
     assert load_repo_env_file(state_dir / ".env") == {"AHADIFF_OTHER_KEY": "keep-this-value"}
     assert "AHADIFF_DEMO_KEY" not in (state_dir / ".env").read_text(encoding="utf-8")
     assert "AHADIFF_DEMO_KEY" not in os.environ
+
+
+def test_provider_delete_global_scope_removes_global_provider_and_env_only(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_DEMO_KEY"\n',
+        encoding="utf-8",
+    )
+    write_repo_env_var(global_dir / ".env", "AHADIFF_DEMO_KEY", "global-secret")
+    client = _client(state_dir, global_config_root=global_dir)
+
+    deleted = client.request(
+        "DELETE",
+        "/api/providers/demo",
+        headers=_AUTH,
+        json={"scope": "global"},
+    )
+
+    assert deleted.status_code == 200
+    global_config = read_config_data(global_dir / "config.toml")
+    global_providers = cast("dict[str, Any]", global_config["providers"])
+    assert "demo" not in global_providers
+    assert load_repo_env_file(global_dir / ".env") == {}
+    assert not (state_dir / "config.toml").exists()
+    assert not (state_dir / ".env").exists()
 
 
 def test_provider_delete_does_not_clobber_user_exported_matching_env_name(
@@ -1928,6 +2175,43 @@ def test_fetch_provider_models_uses_same_hardened_transport(
     assert headers["authorization"] == "Bearer env-key"
 
 
+def test_fetch_provider_models_uses_global_only_provider_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AHADIFF_PROVIDER_API_KEY", "global-env-key")
+    monkeypatch.setattr(
+        routes_provider_module.provider_module,
+        "validate_remote_url",
+        lambda _url: None,
+    )
+    captured = _install_async_client_stub(
+        monkeypatch,
+        lambda url: _models_response(url, model_id="from-global-config"),
+    )
+    client = _client(state_dir, global_config_root=global_dir)
+
+    response = client.get("/api/providers/demo/models", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json() == {"models": ["from-global-config"]}
+    request = captured["requests"][0]
+    headers = {key.lower(): value for key, value in request["headers"].items()}
+    assert request["url"] == "https://api.example.test/v1/models"
+    assert headers["authorization"] == "Bearer global-env-key"
+
+
 def test_fetch_provider_models_rejects_unsafe_repo_api_key_env_without_request(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2051,6 +2335,37 @@ def test_save_provider_models_survives_config_reload(tmp_path: Path) -> None:
     assert snapshot.values["providers"]["demo"]["available_models"] == tuple(expected_models)
 
 
+def test_save_provider_models_global_scope_writes_global_config_only(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir, global_config_root=global_dir)
+
+    saved = client.put(
+        "/api/providers/demo/models",
+        headers=_AUTH,
+        json={"scope": "global", "models": ["gpt-5.5", "gpt-5.5", "gpt-5.4-mini"]},
+    )
+
+    assert saved.status_code == 200
+    assert saved.json()["scope"] == "global"
+    global_provider = cast(
+        "dict[str, Any]",
+        cast("dict[str, Any]", read_config_data(global_dir / "config.toml")["providers"])["demo"],
+    )
+    assert global_provider["available_models"] == ["gpt-5.5", "gpt-5.4-mini"]
+    assert not (state_dir / "config.toml").exists()
+
+
 def test_get_provider_model_limits_returns_registry_metadata(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
@@ -2077,6 +2392,29 @@ def test_get_provider_model_limits_returns_registry_metadata(tmp_path: Path) -> 
     assert payload["confidence"] == "high"
     assert payload["thinking"]["supported"] is False
     assert "hint_key" not in payload["thinking"]
+
+
+def test_get_provider_model_limits_uses_global_only_provider_scope(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.demo]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.4-mini"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir, global_config_root=global_dir)
+
+    response = client.get("/api/providers/demo/model-limits", headers=_AUTH)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["alias"] == "demo"
+    assert payload["provider_class"] == "openai"
+    assert payload["model_name"] == "gpt-5.4-mini"
 
 
 def test_get_provider_model_limits_returns_404_for_unknown_alias(tmp_path: Path) -> None:

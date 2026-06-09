@@ -834,6 +834,7 @@ export interface ProviderCreateInput {
   max_output_tokens?: number | null;
   thinking_level?: string | null;
   model_limits_name?: string | null;
+  scope?: 'repo' | 'global';
 }
 
 export interface ProviderUpdateInput {
@@ -846,6 +847,7 @@ export interface ProviderUpdateInput {
   max_output_tokens?: number | null;
   thinking_level?: string | null;
   model_limits_name?: string | null;
+  scope?: 'repo' | 'global';
 }
 
 /** Save-time connectivity probe result. Never carries the plaintext key. */

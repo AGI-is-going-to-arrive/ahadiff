@@ -80,14 +80,15 @@ export interface DraftFields {
   max_output_tokens: string;
   thinking_level: string;
   model_limits_name: string;
+  scope: 'repo' | 'global';
 }
 
 export interface ProviderCardProps {
   provider: ProviderSummary;
   isNew?: boolean;
   onSave: (alias: string, data: ProviderUpdateInput | ProviderCreateInput) => Promise<ProviderMutationResponse | void>;
-  onDelete: (alias: string) => Promise<void>;
-  onProbe: (alias: string) => Promise<string | null>;
+  onDelete: (alias: string, scope?: 'repo' | 'global') => Promise<void>;
+  onProbe: (alias: string, scope?: 'repo' | 'global') => Promise<string | null>;
   onRefresh?: () => void;
   onCancelNew?: () => void;
 }
@@ -101,6 +102,7 @@ const DEFAULT_DRAFT: DraftFields = {
   max_output_tokens: '',
   thinking_level: 'none',
   model_limits_name: '',
+  scope: 'repo',
 };
 
 interface ProviderExample {
@@ -299,6 +301,7 @@ function toDraft(p: ProviderSummary): DraftFields {
     max_output_tokens: p.max_output_tokens != null ? String(p.max_output_tokens) : '',
     thinking_level: p.thinking_level ?? 'none',
     model_limits_name: p.model_limits_name ?? '',
+    scope: p.scope ?? 'repo',
   };
 }
 
@@ -320,6 +323,7 @@ export function buildProviderUpdatePayload(
     max_output_tokens: maxOutput,
     thinking_level: thinkingLevel,
     model_limits_name: modelLimitsName,
+    scope: draft.scope,
   };
 
   if (draft.provider_class !== provider.provider_class) {
@@ -459,6 +463,7 @@ export default function ProviderCard({
           max_output_tokens: maxOutput,
           thinking_level: thinkingLevel,
           model_limits_name: modelLimitsName,
+          scope: draft.scope,
         };
         result = await onSave(draft.alias.trim(), payload);
       } else {
@@ -496,7 +501,7 @@ export default function ProviderCard({
     setDeleting(true);
     setDeleteError(null);
     try {
-      await onDelete(provider.alias);
+      await onDelete(provider.alias, provider.scope);
     } catch {
       setDeleteError(providerActionError(t, 'Settings_page.provider_delete_failed'));
       setDeleting(false);
@@ -510,7 +515,7 @@ export default function ProviderCard({
     setProbeStatus('running');
     setProbeError(null);
     try {
-      const taskId = await onProbe(provider.alias);
+      const taskId = await onProbe(provider.alias, provider.scope);
       if (!isCurrentProbe(requestId)) return;
       if (taskId) {
         setProbeTaskId(taskId);
@@ -559,7 +564,7 @@ export default function ProviderCard({
     if (isNew) return;
     setSavingModels(true);
     try {
-      await saveProviderModels(provider.alias, [...selectedModels]);
+      await saveProviderModels(provider.alias, [...selectedModels], { scope: provider.scope });
       setRemoteModels(null);
     } catch {
       // keep panel open on error
@@ -784,6 +789,13 @@ export function ProviderDetailView({
           <Field label={t('Settings_page.provider_thinking_label')} value={t(`Settings_page.provider_thinking_level_${provider.thinking_level}` as MessageKey)} mono />
         )}
       </dl>
+
+      {provider.scope === 'global' && (
+        <div className="provider-card__scope-info">
+          <span>{t('Settings_page.provider_scope_global_badge')}</span>
+          {t('Settings_page.provider_scope_global_hint_override')}
+        </div>
+      )}
 
       {provider.probed && (
         <div className="provider-card__probe-results">
@@ -1213,6 +1225,47 @@ export function ProviderEditForm({
       </div>
 
       <div className="provider-card__form-row">
+        <span className="provider-card__form-label" id={`provider-scope-label-${isNew ? 'new' : draft.alias}`}>
+          {t('Settings_page.provider_scope_label')}
+        </span>
+        <div
+          className="provider-card__scope-segmented"
+          role="radiogroup"
+          aria-labelledby={`provider-scope-label-${isNew ? 'new' : draft.alias}`}
+          aria-describedby={`provider-scope-hint-${isNew ? 'new' : draft.alias}`}
+        >
+          <label className={`provider-card__scope-option${draft.scope === 'repo' ? ' is-active' : ''}`}>
+            <input
+              type="radio"
+              name={`provider-scope-${isNew ? 'new' : draft.alias}`}
+              value="repo"
+              checked={draft.scope === 'repo'}
+              onChange={() => setField('scope', 'repo')}
+              className="provider-card__scope-radio"
+            />
+            <span>{t('Settings_page.provider_scope_repo')}</span>
+          </label>
+          <label className={`provider-card__scope-option${draft.scope === 'global' ? ' is-active' : ''}`}>
+            <input
+              type="radio"
+              name={`provider-scope-${isNew ? 'new' : draft.alias}`}
+              value="global"
+              checked={draft.scope === 'global'}
+              onChange={() => setField('scope', 'global')}
+              className="provider-card__scope-radio"
+            />
+            <span>{t('Settings_page.provider_scope_global')}</span>
+          </label>
+        </div>
+        <p
+          id={`provider-scope-hint-${isNew ? 'new' : draft.alias}`}
+          className="provider-card__hint"
+        >
+          {t('Settings_page.provider_scope_hint')}
+        </p>
+      </div>
+
+      <div className="provider-card__form-row">
         <label
           className="provider-card__form-label"
           htmlFor={`provider-model-${isNew ? 'new' : draft.alias}`}
@@ -1299,7 +1352,11 @@ export function ProviderEditForm({
           id={`provider-apikey-hint-${isNew ? 'new' : draft.alias}`}
           className="provider-card__hint"
         >
-          {t('Settings_page.provider_api_key_hint')}
+          {t('Settings_page.provider_api_key_hint', {
+            location: draft.scope === 'global'
+              ? t('Settings_page.provider_api_key_location_global')
+              : t('Settings_page.provider_api_key_location_repo')
+          })}
         </p>
       </div>
 

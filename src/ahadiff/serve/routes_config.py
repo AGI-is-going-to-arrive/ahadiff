@@ -356,7 +356,8 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
     if cfg is not None:
         for attr in ("repo_unknown_keys", "global_unknown_keys"):
             unknown_keys.extend(str(item) for item in getattr(cfg, attr, ()) or ())
-        sensitive_keys.extend(str(item) for item in getattr(cfg, "repo_sensitive_keys", ()) or ())
+        for attr in ("repo_sensitive_keys", "global_sensitive_keys"):
+            sensitive_keys.extend(str(item) for item in getattr(cfg, attr, ()) or ())
         precedence_conflicts.extend(
             str(item) for item in getattr(cfg, "precedence_conflicts", ()) or ()
         )

@@ -816,13 +816,13 @@ function ProviderTab({
     }
   };
 
-  const handleProviderDelete = async (alias: string) => {
-    await deleteProvider(alias);
+  const handleProviderDelete = async (alias: string, scope?: 'repo' | 'global') => {
+    await deleteProvider(alias, { scope });
     onSaved();
   };
 
-  const handleProviderProbe = async (alias: string): Promise<string | null> => {
-    const res = await probeProvider(alias);
+  const handleProviderProbe = async (alias: string, scope?: 'repo' | 'global'): Promise<string | null> => {
+    const res = await probeProvider(alias, undefined, { scope });
     return res.task_id ?? null;
   };
 

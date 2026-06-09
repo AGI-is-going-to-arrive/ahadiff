@@ -170,6 +170,81 @@ def test_resolve_provider_keeps_distinct_implicit_aliases_ambiguous() -> None:
         )
 
 
+def test_resolve_provider_prefers_single_repo_provider_over_global_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["providers"] = {
+        "repo": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "http://127.0.0.1:8318",
+            "api_key_env": "AHADIFF_REPO_KEY",
+        },
+        "global": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "http://127.0.0.1:9321",
+            "api_key_env": "AHADIFF_GLOBAL_KEY",
+        },
+    }
+    snapshot.provider_scopes = {"repo": "repo", "global": "global"}
+    monkeypatch.setenv("AHADIFF_REPO_KEY", "repo-key")
+    monkeypatch.setenv("AHADIFF_GLOBAL_KEY", "global-key")
+
+    provider_config, api_key, transport_target, explicit = _resolve_provider_from_config(
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.base_url == "http://127.0.0.1:8318"
+    assert api_key == "repo-key"
+    assert transport_target == "local"
+    assert explicit is False
+
+
+def test_resolve_provider_uses_single_global_provider_when_repo_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshot = _FakeConfigSnapshot()
+    snapshot.values["providers"] = {
+        "global": {
+            "provider_class": "openai",
+            "model_name": "gpt-5.4-mini",
+            "base_url": "http://127.0.0.1:9321",
+            "api_key_env": "AHADIFF_GLOBAL_KEY",
+        }
+    }
+    snapshot.provider_scopes = {"global": "global"}
+    monkeypatch.setenv("AHADIFF_GLOBAL_KEY", "global-key")
+
+    provider_config, api_key, transport_target, explicit = _resolve_provider_from_config(
+        snapshot=snapshot,
+        operation_label="lesson generation",
+        provider_name=None,
+        provider_class="openai",
+        base_url=None,
+        model=None,
+        api_key_env="AHADIFF_PROVIDER_API_KEY",
+        privacy_mode="strict_local",
+        local_hosts=("127.0.0.1",),
+        strict_local_hosts=("127.0.0.1",),
+    )
+
+    assert provider_config.base_url == "http://127.0.0.1:9321"
+    assert api_key == "global-key"
+    assert transport_target == "local"
+    assert explicit is False
+
+
 def test_resolve_provider_missing_remote_key_mentions_repo_env_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -621,6 +696,7 @@ class _FakeConfigSnapshot:
             "lang": "en",
         }
         self.resolved: dict[str, ResolvedSetting] = {}
+        self.provider_scopes: dict[str, str] = {}
 
 
 @dataclass(frozen=True)

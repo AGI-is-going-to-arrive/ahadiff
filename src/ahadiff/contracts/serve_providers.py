@@ -16,6 +16,7 @@ ProviderAlias = Annotated[
     Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$"),
 ]
 ProviderMaxOutputTokens = Annotated[StrictInt, Field(ge=1, le=1_000_000)]
+ProviderScope = Literal["repo", "global"]
 
 
 def _empty_provider_warnings() -> list[dict[str, object]]:
@@ -26,6 +27,7 @@ class ProviderCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     alias: ProviderAlias
+    scope: ProviderScope = "repo"
     provider_class: ProviderClass
     model_name: str = Field(min_length=1, max_length=200)
     base_url: str = Field(min_length=1, max_length=2048)
@@ -39,6 +41,7 @@ class ProviderCreateRequest(BaseModel):
 class ProviderUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    scope: ProviderScope = "repo"
     provider_class: ProviderClass | None = None
     model_name: str | None = Field(default=None, min_length=1, max_length=200)
     base_url: str | None = Field(default=None, min_length=1, max_length=2048)
@@ -103,6 +106,7 @@ class ProviderDeleteResponse(BaseModel):
 class ProviderProbeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    scope: ProviderScope = "repo"
     force: bool = False
 
 
@@ -124,5 +128,6 @@ __all__ = [
     "ProviderMutationResponse",
     "ProviderProbeRequest",
     "ProviderProbeSubmitResponse",
+    "ProviderScope",
     "ProviderUpdateRequest",
 ]

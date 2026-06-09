@@ -1003,6 +1003,8 @@ export const providerSummarySchema = z
     probed_rpm: z.number().int().positive().nullable().optional(),
     probe_timestamp: z.string().nullable().optional(),
     available_models: z.array(z.string()).default([]),
+    scope: z.enum(['repo', 'global']).optional(),
+    overrides_global: z.boolean().optional(),
   })
   .strip();
 
@@ -1039,6 +1041,7 @@ export const providerCreateRequestSchema = z
     max_output_tokens: z.number().int().positive().nullable().optional(),
     thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
     model_limits_name: z.string().min(1).nullable().optional(),
+    scope: z.enum(['repo', 'global']).optional(),
   })
   .strict();
 
@@ -1052,6 +1055,7 @@ export const providerUpdateRequestSchema = z
     max_output_tokens: z.number().int().positive().nullable().optional(),
     thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
     model_limits_name: z.string().min(1).nullable().optional(),
+    scope: z.enum(['repo', 'global']).optional(),
   })
   .strict();
 

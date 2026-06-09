@@ -33,6 +33,10 @@ _STATE_GITIGNORE_TEXT = (
     "*.log\n"
 )
 _STATE_GITIGNORE_PATTERNS = (".env", ".env.*", "audit.private.jsonl", "*.lock", "*.log")
+_GLOBAL_CONFIG_GITIGNORE_TEXT = (
+    "# AhaDiff global provider secrets — auto-generated; do not commit secrets\n.env\n.env.*\n"
+)
+_GLOBAL_CONFIG_GITIGNORE_PATTERNS = (".env", ".env.*")
 _WINDOWS_RESERVED_DEVICE_NAMES = {
     "CON",
     "PRN",
@@ -310,7 +314,41 @@ def ensure_state_gitignore(state_dir: Path) -> Path:
     return gitignore_path
 
 
-def _ensure_existing_state_gitignore_patterns(gitignore_path: Path) -> None:
+def ensure_global_config_gitignore(config_dir: Path) -> Path:
+    validate_state_dir_path(config_dir)
+    gitignore_path = config_dir / ".gitignore"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(gitignore_path), flags, 0o644)
+    except FileExistsError:
+        _ensure_existing_state_gitignore_patterns(
+            gitignore_path,
+            patterns=_GLOBAL_CONFIG_GITIGNORE_PATTERNS,
+        )
+        return gitignore_path
+    except OSError as exc:
+        if exc.errno == errno.EEXIST:
+            _ensure_existing_state_gitignore_patterns(
+                gitignore_path,
+                patterns=_GLOBAL_CONFIG_GITIGNORE_PATTERNS,
+            )
+            return gitignore_path
+        raise StorageError(f"failed to create global config gitignore: {gitignore_path}") from exc
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            handle.write(_GLOBAL_CONFIG_GITIGNORE_TEXT)
+    finally:
+        if fd != -1:
+            os.close(fd)
+    return gitignore_path
+
+
+def _ensure_existing_state_gitignore_patterns(
+    gitignore_path: Path,
+    *,
+    patterns: tuple[str, ...] = _STATE_GITIGNORE_PATTERNS,
+) -> None:
     expected_stat = _existing_state_gitignore_regular_stat(gitignore_path)
     if expected_stat is None:
         return
@@ -337,7 +375,7 @@ def _ensure_existing_state_gitignore_patterns(gitignore_path: Path) -> None:
         except UnicodeDecodeError:
             return
         existing_lines = set(text.splitlines())
-        missing = [line for line in _STATE_GITIGNORE_PATTERNS if line not in existing_lines]
+        missing = [line for line in patterns if line not in existing_lines]
         if not missing:
             return
         prefix = "" if not text or text.endswith("\n") else "\n"
@@ -449,6 +487,7 @@ __all__ = [
     "PathWarning",
     "atomic_write_state_text",
     "audit_log_path",
+    "ensure_global_config_gitignore",
     "ensure_state_gitignore",
     "ensure_state_parent_dir",
     "assert_local_repo_path",

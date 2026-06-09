@@ -8,13 +8,16 @@ import re
 import stat
 import tempfile
 import tomllib
+import warnings
 from collections.abc import Mapping
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Any, TypeGuard, cast, get_args
 from urllib.parse import unquote_plus, urlencode, urlsplit, urlunsplit
+
+import portalocker
 
 from ahadiff.contracts import ProviderCapabilityOverride, ProviderClass, ThinkingLevel
 from ahadiff.i18n import normalize_locale_preference
@@ -22,10 +25,12 @@ from ahadiff.i18n import normalize_locale_preference
 from .atomic_replace import replace_with_retry
 from .errors import ConfigError, InputError, StorageError
 from .paths import (
+    ensure_global_config_gitignore,
     ensure_state_parent_dir,
     find_repo_root,
     find_workspace_root,
     global_config_dir,
+    is_network_path,
     validate_state_path_no_symlinks,
 )
 
@@ -147,6 +152,11 @@ _SECRET_VALUE_PATTERNS = (
 )
 _CONFIG_SECRET_MASK = "********"
 _TOML_BARE_KEY_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+_GLOBAL_CONFIG_LOCK_FILENAME = ".global.lock"
+_original_ambient_env: dict[str, str] | None = None
+_GLOBAL_ENV_APPLIED_VALUES: dict[str, str] = {}
+_REPO_ENV_APPLIED_VALUES: dict[str, str] = {}
+_WARNED_UNSAFE_GLOBAL_PROVIDER_ENV_KEYS: set[tuple[str, str, str]] = set()
 
 
 @dataclass(frozen=True)
@@ -172,6 +182,9 @@ class ConfigSnapshot:
     repo_unknown_keys: tuple[str, ...]
     global_unknown_keys: tuple[str, ...]
     repo_sensitive_keys: tuple[str, ...]
+    global_sensitive_keys: tuple[str, ...]
+    provider_scopes: dict[str, str]
+    provider_overrides_global: tuple[str, ...]
     precedence_conflicts: tuple[ConfigConflict, ...]
 
 
@@ -772,7 +785,99 @@ def write_default_config(config_path: Path, *, overwrite: bool = False) -> Path:
     return write_config_data(config_path, DEFAULT_CONFIG)
 
 
-def write_config_data(config_path: Path, data: Mapping[str, Any]) -> Path:
+@contextmanager
+def global_config_write_lock(config_dir: Path | None = None) -> Any:
+    target_dir = global_config_dir() if config_dir is None else config_dir
+    _validate_global_write_dir(target_dir)
+    validate_state_path_no_symlinks(target_dir, allow_missing_leaf=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    validate_state_path_no_symlinks(target_dir, allow_missing_leaf=False)
+    lock_path = target_dir / _GLOBAL_CONFIG_LOCK_FILENAME
+    handle = _open_global_config_lock(lock_path)
+    try:
+        portalocker.lock(handle, portalocker.LOCK_EX)
+        yield
+    finally:
+        try:
+            portalocker.unlock(handle)
+        finally:
+            handle.close()
+
+
+def _validate_global_write_dir(target_dir: Path) -> None:
+    if is_network_path(target_dir):
+        raise StorageError(
+            "global config directory is on a network/UNC path; secrets won't be stored there. "
+            "Use per-repo scope or an ambient AHADIFF_<ALIAS>_KEY env var."
+        )
+
+
+def _validate_global_lock_stat(path_stat: os.stat_result) -> None:
+    if _repo_env_stat_has_windows_reparse_point(path_stat):
+        raise StorageError("global config lock must not be a Windows reparse point or junction")
+    if stat.S_ISLNK(path_stat.st_mode):
+        raise StorageError("global config lock must not be a symlink")
+    if not stat.S_ISREG(path_stat.st_mode):
+        raise StorageError("global config lock must be a regular file")
+    if getattr(path_stat, "st_nlink", 1) > 1:
+        raise StorageError("global config lock must not be a hardlink")
+
+
+def _open_global_config_lock(lock_path: Path) -> Any:
+    expected_stat: os.stat_result | None
+    try:
+        expected_stat = lock_path.lstat()
+    except FileNotFoundError:
+        expected_stat = None
+    except OSError as exc:
+        raise StorageError(f"global config lock is unreadable: {lock_path}") from exc
+    if expected_stat is not None:
+        _validate_global_lock_stat(expected_stat)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(lock_path), flags, 0o600)
+    except OSError as exc:
+        raise StorageError(f"global config lock is unreadable: {lock_path}") from exc
+    try:
+        opened_stat = os.fstat(fd)
+        try:
+            current_stat = lock_path.lstat()
+        except FileNotFoundError as exc:
+            raise StorageError("global config lock changed during open") from exc
+        except OSError as exc:
+            raise StorageError(f"global config lock is unreadable: {lock_path}") from exc
+        _validate_global_lock_stat(opened_stat)
+        _validate_global_lock_stat(current_stat)
+        if expected_stat is not None and (
+            opened_stat.st_dev,
+            opened_stat.st_ino,
+        ) != (
+            expected_stat.st_dev,
+            expected_stat.st_ino,
+        ):
+            raise StorageError("global config lock changed during open")
+        if (opened_stat.st_dev, opened_stat.st_ino) != (
+            current_stat.st_dev,
+            current_stat.st_ino,
+        ):
+            raise StorageError("global config lock changed during open")
+        handle = os.fdopen(fd, "r+", encoding="utf-8")
+        fd = -1
+        return handle
+    finally:
+        if fd != -1:
+            os.close(fd)
+
+
+def _is_current_global_config_path(config_path: Path) -> bool:
+    try:
+        expected = global_config_dir() / "config.toml"
+    except StorageError:
+        return False
+    return config_path.resolve(strict=False) == expected.resolve(strict=False)
+
+
+def _write_config_data_unlocked(config_path: Path, data: Mapping[str, Any]) -> Path:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = _render_toml(data)
     with tempfile.NamedTemporaryFile(
@@ -787,6 +892,18 @@ def write_config_data(config_path: Path, data: Mapping[str, Any]) -> Path:
         temp_path = handle.name
     replace_with_retry(Path(temp_path), config_path)
     return config_path
+
+
+def write_config_data(
+    config_path: Path,
+    data: Mapping[str, Any],
+    *,
+    lock_global: bool = True,
+) -> Path:
+    if lock_global and _is_current_global_config_path(config_path):
+        with global_config_write_lock(config_path.parent):
+            return _write_config_data_unlocked(config_path, data)
+    return _write_config_data_unlocked(config_path, data)
 
 
 def _render_repo_env_value(value: str) -> str:
@@ -891,9 +1008,17 @@ def _render_repo_env_lines(lines: list[str]) -> str:
     return rendered
 
 
-def _write_repo_env_lines_atomic(env_path: Path, lines: list[str]) -> None:
+def _write_provider_env_lines_atomic(
+    env_path: Path,
+    lines: list[str],
+    *,
+    global_env: bool = False,
+) -> None:
     try:
         ensure_state_parent_dir(env_path)
+        if global_env:
+            _validate_global_write_dir(env_path.parent)
+            ensure_global_config_gitignore(env_path.parent)
         _validate_existing_repo_env_file(env_path)
     except (InputError, StorageError) as exc:
         raise _repo_env_config_error(exc) from exc
@@ -914,6 +1039,8 @@ def _write_repo_env_lines_atomic(env_path: Path, lines: list[str]) -> None:
                 os.fchmod(handle.fileno(), 0o600)
             except (AttributeError, OSError, NotImplementedError):
                 temp_path.chmod(0o600)
+            # On Windows this mode is advisory; global .env confidentiality
+            # relies on the user's per-profile APPDATA ACL.
         try:
             validate_state_path_no_symlinks(temp_path, allow_missing_leaf=False)
             _validate_existing_repo_env_file(env_path)
@@ -928,7 +1055,13 @@ def _write_repo_env_lines_atomic(env_path: Path, lines: list[str]) -> None:
         raise
 
 
-def write_repo_env_var(env_path: Path, name: str, value: str) -> None:
+def write_provider_env_var(
+    env_path: Path,
+    name: str,
+    value: str,
+    *,
+    global_env: bool = False,
+) -> None:
     if not _ENV_VAR_REFERENCE_PATTERN.fullmatch(name):
         raise ConfigError("repo env var name must be a valid environment variable identifier")
     rendered_assignment = f"{name}={_render_repo_env_value(value)}"
@@ -945,10 +1078,48 @@ def write_repo_env_var(env_path: Path, name: str, value: str) -> None:
         retained_lines.append(line)
     if not replaced:
         retained_lines.append(rendered_assignment)
-    _write_repo_env_lines_atomic(env_path, retained_lines)
+    _write_provider_env_lines_atomic(env_path, retained_lines, global_env=global_env)
 
 
-def remove_repo_env_var(env_path: Path, name: str) -> bool:
+def write_repo_env_var(env_path: Path, name: str, value: str) -> None:
+    write_provider_env_var(env_path, name, value)
+
+
+def _validate_global_provider_env_name(name: str) -> None:
+    if not _ENV_VAR_REFERENCE_PATTERN.fullmatch(name):
+        raise ConfigError(
+            "global provider api_key_env must be a valid environment variable identifier"
+        )
+    try:
+        validate_repo_api_key_env_name(name)
+    except ConfigError as exc:
+        raise ConfigError(f"global provider api_key_env: {exc}") from exc
+    if name in _REPO_ENV_BLOCKED_NAMES:
+        raise ConfigError("global provider api_key_env must not use reserved AhaDiff env names")
+
+
+def write_global_env_var(
+    name: str,
+    value: str,
+    *,
+    config_dir: Path | None = None,
+    lock: bool = True,
+) -> None:
+    _validate_global_provider_env_name(name)
+    target_dir = global_config_dir() if config_dir is None else config_dir
+    if lock:
+        with global_config_write_lock(target_dir):
+            write_provider_env_var(target_dir / ".env", name, value, global_env=True)
+        return
+    write_provider_env_var(target_dir / ".env", name, value, global_env=True)
+
+
+def remove_provider_env_var(
+    env_path: Path,
+    name: str,
+    *,
+    global_env: bool = False,
+) -> bool:
     if not _ENV_VAR_REFERENCE_PATTERN.fullmatch(name):
         raise ConfigError("repo env var name must be a valid environment variable identifier")
     text = _read_repo_env_text_no_follow(env_path)
@@ -964,8 +1135,26 @@ def remove_repo_env_var(env_path: Path, name: str) -> bool:
         retained_lines.append(line)
     if not removed:
         return False
-    _write_repo_env_lines_atomic(env_path, retained_lines)
+    _write_provider_env_lines_atomic(env_path, retained_lines, global_env=global_env)
     return True
+
+
+def remove_repo_env_var(env_path: Path, name: str) -> bool:
+    return remove_provider_env_var(env_path, name)
+
+
+def remove_global_env_var(
+    name: str,
+    *,
+    config_dir: Path | None = None,
+    lock: bool = True,
+) -> bool:
+    _validate_global_provider_env_name(name)
+    target_dir = global_config_dir() if config_dir is None else config_dir
+    if lock:
+        with global_config_write_lock(target_dir):
+            return remove_provider_env_var(target_dir / ".env", name, global_env=True)
+    return remove_provider_env_var(target_dir / ".env", name, global_env=True)
 
 
 def _strip_repo_env_comment(value: str) -> str:
@@ -1038,6 +1227,11 @@ def load_repo_env_file(env_path: Path) -> dict[str, str]:
     return loaded
 
 
+def load_global_env_file(*, config_dir: Path | None = None) -> dict[str, str]:
+    target_dir = global_config_dir() if config_dir is None else config_dir
+    return load_repo_env_file(target_dir / ".env")
+
+
 def _is_repo_env_provider_api_key_name(name: str) -> bool:
     try:
         validate_repo_api_key_env_name(name)
@@ -1046,12 +1240,82 @@ def _is_repo_env_provider_api_key_name(name: str) -> bool:
     return name not in _REPO_ENV_BLOCKED_NAMES
 
 
+def _ensure_original_ambient_env_snapshot() -> Mapping[str, str]:
+    global _original_ambient_env
+    if _original_ambient_env is None:
+        _original_ambient_env = dict(os.environ)
+    return _original_ambient_env
+
+
+def original_ambient_provider_key_env_names() -> set[str]:
+    snapshot = _ensure_original_ambient_env_snapshot()
+    return {
+        name
+        for name in snapshot
+        if name.startswith("AHADIFF_")
+        and name.endswith("_KEY")
+        and _is_repo_env_provider_api_key_name(name)
+    }
+
+
+def is_global_env_applied_value(name: str) -> bool:
+    value = _GLOBAL_ENV_APPLIED_VALUES.get(name)
+    return value is not None and os.environ.get(name) == value
+
+
+def is_repo_env_applied_value(name: str) -> bool:
+    value = _REPO_ENV_APPLIED_VALUES.get(name)
+    return value is not None and os.environ.get(name) == value
+
+
+def _clear_global_env_applied_value(name: str) -> None:
+    _GLOBAL_ENV_APPLIED_VALUES.pop(name, None)
+
+
+def _clear_repo_env_applied_value(name: str) -> None:
+    _REPO_ENV_APPLIED_VALUES.pop(name, None)
+
+
+def _remember_global_env_applied_value(name: str, value: str) -> None:
+    _GLOBAL_ENV_APPLIED_VALUES[name] = value
+
+
+def _remember_repo_env_applied_value(name: str, value: str) -> None:
+    _REPO_ENV_APPLIED_VALUES[name] = value
+
+
 def apply_repo_env_file(env_path: Path) -> None:
+    _ensure_original_ambient_env_snapshot()
     for name, value in load_repo_env_file(env_path).items():
         if not _is_repo_env_provider_api_key_name(name):
             continue
-        if name not in os.environ:
+        if (
+            name not in os.environ
+            or is_global_env_applied_value(name)
+            or is_repo_env_applied_value(name)
+        ):
             os.environ[name] = value
+            _clear_global_env_applied_value(name)
+            _remember_repo_env_applied_value(name, value)
+
+
+def apply_global_env_file(*, config_dir: Path | None = None) -> None:
+    _ensure_original_ambient_env_snapshot()
+    try:
+        loaded = load_global_env_file(config_dir=config_dir)
+    except StorageError:
+        return
+    for name, value in loaded.items():
+        if not _is_repo_env_provider_api_key_name(name):
+            continue
+        if (
+            name not in os.environ
+            or is_global_env_applied_value(name)
+            or is_repo_env_applied_value(name)
+        ):
+            os.environ[name] = value
+            _clear_repo_env_applied_value(name)
+            _remember_global_env_applied_value(name, value)
 
 
 def _collect_env_overrides(env: Mapping[str, str]) -> dict[str, Scalar]:
@@ -1158,10 +1422,23 @@ def _validate_provider_dynamic_field(key: str, field_name: str, value: Scalar) -
         raise ConfigError(f"{key} expects http or https URL, got {base_url!r}")
 
 
+def _warn_unsafe_global_provider_api_key_env(path: Path, key: str, value: str, error: str) -> None:
+    warning_key = (str(path), key, value)
+    if warning_key in _WARNED_UNSAFE_GLOBAL_PROVIDER_ENV_KEYS:
+        return
+    _WARNED_UNSAFE_GLOBAL_PROVIDER_ENV_KEYS.add(warning_key)
+    warnings.warn(
+        f"{path}: unsafe global provider api_key_env {key}={value!r} skipped: {error}",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+
+
 def _flatten_config_file(
     path: Path,
     *,
     validate_repo_provider_env: bool = False,
+    warn_skip_invalid_provider_env: bool = False,
 ) -> tuple[dict[str, Scalar], dict[str, Scalar], tuple[str, ...]]:
     data = _read_toml(path)
     flattened = _flatten_mapping(data)
@@ -1194,7 +1471,18 @@ def _flatten_config_file(
                 and dynamic_field == "api_key_env"
                 and _ENV_VAR_NAME_PATTERN.fullmatch(str(coerced))
             ):
-                validate_repo_api_key_env_name(str(coerced))
+                try:
+                    validate_repo_api_key_env_name(str(coerced))
+                except ConfigError as exc:
+                    if warn_skip_invalid_provider_env:
+                        _warn_unsafe_global_provider_api_key_env(
+                            path,
+                            key,
+                            str(coerced),
+                            str(exc),
+                        )
+                        continue
+                    raise
             normalized[key] = coerced
             continue
         model_pricing_field = _dynamic_model_pricing_field(key)
@@ -1255,6 +1543,28 @@ def _dynamic_model_pricing_field(key: str) -> str | None:
         if key.startswith(prefix) and key[len(prefix) :] != "":
             return field_name
     return None
+
+
+def _provider_alias_from_dynamic_key(key: str) -> str | None:
+    parts = key.split(".")
+    if len(parts) < 3 or parts[0] != "providers":
+        return None
+    if _dynamic_provider_field(key) is not None:
+        alias = ".".join(parts[1:-1])
+        return alias or None
+    if _dynamic_provider_capability_override(tuple(parts)) is not None:
+        alias = ".".join(parts[1:-2])
+        return alias or None
+    return None
+
+
+def _provider_aliases_from_values(values: Mapping[str, Scalar]) -> set[str]:
+    aliases: set[str] = set()
+    for key in values:
+        alias = _provider_alias_from_dynamic_key(key)
+        if alias is not None:
+            aliases.add(alias)
+    return aliases
 
 
 _SENSITIVE_KEY_FALSE_POSITIVES = re.compile(
@@ -1359,9 +1669,20 @@ def _load_config_snapshot(
         repo_path,
         validate_repo_provider_env=True,
     )
-    _, global_values, global_unknown = _flatten_config_file(global_path)
+    global_flattened, global_values, global_unknown = _flatten_config_file(
+        global_path,
+        validate_repo_provider_env=True,
+        warn_skip_invalid_provider_env=True,
+    )
     cli_values = _normalize_cli_overrides(cli_overrides)
     env_values = _collect_env_overrides(env_map)
+    repo_provider_aliases = _provider_aliases_from_values(repo_values)
+    global_provider_aliases = _provider_aliases_from_values(global_values)
+    provider_scopes = {
+        alias: "repo" if alias in repo_provider_aliases else "global"
+        for alias in sorted(repo_provider_aliases | global_provider_aliases)
+    }
+    provider_overrides_global = tuple(sorted(repo_provider_aliases & global_provider_aliases))
 
     layers: dict[str, dict[str, Scalar]] = {
         "env": env_values,
@@ -1413,6 +1734,9 @@ def _load_config_snapshot(
         repo_unknown_keys=repo_unknown,
         global_unknown_keys=global_unknown,
         repo_sensitive_keys=_repo_sensitive_keys(repo_flattened),
+        global_sensitive_keys=_repo_sensitive_keys(global_flattened),
+        provider_scopes=provider_scopes,
+        provider_overrides_global=provider_overrides_global,
         precedence_conflicts=tuple(precedence_conflicts),
     )
 
@@ -1682,10 +2006,15 @@ __all__ = [
     "PricingSettings",
     "ResolvedSetting",
     "SecurityConfig",
+    "apply_global_env_file",
     "apply_repo_env_file",
     "clear_provider_probe_fields",
+    "global_config_write_lock",
+    "is_global_env_applied_value",
+    "is_repo_env_applied_value",
     "iter_resolved_settings",
     "load_config",
+    "load_global_env_file",
     "load_repo_env_file",
     "read_config_data",
     "load_workspace_pricing_settings",
@@ -1695,8 +2024,11 @@ __all__ = [
     "local_hosts_for_privacy_mode",
     "mask_provider_base_url_for_display",
     "normalize_provider_base_url",
+    "original_ambient_provider_key_env_names",
     "parse_provider_query_pairs",
     "provider_core_fingerprint",
+    "remove_global_env_var",
+    "remove_provider_env_var",
     "remove_repo_env_var",
     "resolve_effective",
     "resolve_provider_api_key",
@@ -1705,5 +2037,7 @@ __all__ = [
     "validate_repo_api_key_env_name",
     "write_config_data",
     "write_default_config",
+    "write_global_env_var",
+    "write_provider_env_var",
     "write_repo_env_var",
 ]
