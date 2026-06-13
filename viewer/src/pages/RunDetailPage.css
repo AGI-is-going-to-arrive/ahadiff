@@ -401,6 +401,73 @@
   margin-bottom: var(--sp-5);
 }
 
+.run-detail__advisory-artifacts {
+  margin: 0 0 var(--sp-5);
+  padding: var(--sp-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.run-detail__advisory-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.run-detail__advisory-note {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.run-detail__advisory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.run-detail__advisory-card {
+  padding: var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  background: var(--elevated);
+}
+
+.run-detail__advisory-card-title {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-strong);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.run-detail__advisory-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.run-detail__advisory-metrics div {
+  min-width: 0;
+}
+
+.run-detail__advisory-metrics dt {
+  color: var(--muted);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.run-detail__advisory-metrics dd {
+  margin: var(--sp-0-5) 0 0;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
 .run-detail__artifact-link {
   display: inline-flex;
   align-items: center;
@@ -593,6 +660,15 @@
   .run-detail__artifact-link {
     border-color: LinkText;
   }
+  .run-detail__advisory-artifacts,
+  .run-detail__advisory-card {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+  .run-detail__advisory-note,
+  .run-detail__advisory-metrics dt {
+    color: CanvasText;
+  }
   .run-detail__judge-failure {
     border: 1px solid CanvasText;
     border-left: 3px solid Highlight;
@@ -627,5 +703,13 @@
   }
   .run-detail__judge-failure {
     padding: var(--sp-3);
+  }
+  .run-detail__advisory-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .run-detail__advisory-grid,
+  .run-detail__advisory-metrics {
+    grid-template-columns: 1fr;
   }
 }

@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import portalocker
 import pytest
 
 if TYPE_CHECKING:
@@ -157,3 +158,27 @@ def test_register_repo_wraps_oserror_as_storage_error(
 
     with pytest.raises(StorageError, match="failed to update repo registry"):
         register_repo(repo, state)
+
+
+def test_register_repo_lock_contention_becomes_storage_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    state = repo / ".ahadiff"
+    state.mkdir(parents=True)
+    lock_flags: list[int] = []
+
+    def busy_lock(_handle: object, flags: int) -> None:
+        lock_flags.append(flags)
+        if flags & portalocker.LOCK_NB:
+            raise portalocker.AlreadyLocked()
+        raise AssertionError("registry lock must be acquired with LOCK_NB")
+
+    monkeypatch.setattr("ahadiff.core.registry.portalocker.lock", busy_lock)
+
+    with pytest.raises(StorageError, match="failed to update repo registry"):
+        register_repo(repo, state)
+
+    assert lock_flags
+    assert all(flags & portalocker.LOCK_NB for flags in lock_flags)

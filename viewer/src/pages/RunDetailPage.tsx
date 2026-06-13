@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { useParams, Link } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import ScoreBreakdown from '../components/ScoreBreakdown';
@@ -7,6 +14,7 @@ import {
   getRun,
   getRunScore,
   getRunConcepts,
+  getRunDistractorGate,
   getRunSpecAlignment,
   getRunGraphifySignoff,
   getRunJudgeFailure,
@@ -16,6 +24,7 @@ import { scorePayloadSchema } from '../api/schemas';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import type {
   DegradedFlag,
+  DistractorGateReport,
   GraphifySignoffArtifact,
   JudgeFailure,
   RunDetail,
@@ -84,6 +93,13 @@ type JudgeFailureLoadState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'loaded'; artifact: JudgeFailure }
+  | { status: 'missing' }
+  | { status: 'error' };
+
+type DistractorGateLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'loaded'; artifact: DistractorGateReport }
   | { status: 'missing' }
   | { status: 'error' };
 
@@ -248,15 +264,21 @@ export default function RunDetailPage() {
     useState<GraphifySignoffLoadState>({ status: 'idle' });
   const [judgeFailureState, setJudgeFailureState] =
     useState<JudgeFailureLoadState>({ status: 'idle' });
+  const [distractorGateState, setDistractorGateState] =
+    useState<DistractorGateLoadState>({ status: 'idle' });
   const conceptsAbortRef = useRef<AbortController | null>(null);
   const specAbortRef = useRef<AbortController | null>(null);
   const graphifyAbortRef = useRef<AbortController | null>(null);
   const judgeFailureAbortRef = useRef<AbortController | null>(null);
+  const distractorGateAbortRef = useRef<AbortController | null>(null);
+  const currentRunIdRef = useRef(runId);
+  currentRunIdRef.current = runId;
 
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
     judgeFailureAbortRef.current?.abort();
+    distractorGateAbortRef.current?.abort();
     setLoading(true);
     setError(null);
     setRun(null);
@@ -268,6 +290,7 @@ export default function RunDetailPage() {
     setSpecAlignmentState({ status: 'idle' });
     setGraphifySignoffState({ status: 'idle' });
     setJudgeFailureState({ status: 'idle' });
+    setDistractorGateState({ status: 'idle' });
 
     Promise.allSettled([
       getRun(runId),
@@ -430,11 +453,50 @@ export default function RunDetailPage() {
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'artifacts') {
+      distractorGateAbortRef.current?.abort();
+      setDistractorGateState((current) =>
+        current.status === 'loading' ? { status: 'idle' } : current,
+      );
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (
+      activeTab !== 'artifacts' ||
+      !runId ||
+      !run?.artifacts.includes('quiz/distractor_gate.json')
+    ) {
+      return;
+    }
+    if (distractorGateState.status !== 'idle') return;
+    distractorGateAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    distractorGateAbortRef.current = ctrl;
+    const requestRunId = runId;
+    setDistractorGateState({ status: 'loading' });
+    getRunDistractorGate(runId, { signal: ctrl.signal })
+      .then((artifact) => {
+        if (ctrl.signal.aborted || currentRunIdRef.current !== requestRunId) return;
+        setDistractorGateState({ status: 'loaded', artifact });
+      })
+      .catch((err: unknown) => {
+        if (ctrl.signal.aborted || currentRunIdRef.current !== requestRunId) return;
+        if (err instanceof ApiError && err.status === 404) {
+          setDistractorGateState({ status: 'missing' });
+        } else {
+          setDistractorGateState({ status: 'error' });
+        }
+      });
+  }, [activeTab, runId, run, distractorGateState.status]);
+
   useEffect(() => () => {
     conceptsAbortRef.current?.abort();
     specAbortRef.current?.abort();
     graphifyAbortRef.current?.abort();
     judgeFailureAbortRef.current?.abort();
+    distractorGateAbortRef.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -513,6 +575,7 @@ export default function RunDetailPage() {
   const hasConcepts = run.artifacts.includes('concepts.jsonl');
   const hasSpecAlignment = run.artifacts.includes('spec_alignment.json');
   const hasGraphifySignoff = run.artifacts.includes('graphify_signoff.json');
+  const hasDistractorGate = run.artifacts.includes('quiz/distractor_gate.json');
   const visibleTabs = TABS.filter((tab) => tab !== 'concepts' || hasConcepts);
   const links = artifactLinks(run.artifacts, runId, t);
   const degradedFlags = activeDegradedFlags(run.degraded_flags);
@@ -786,7 +849,15 @@ export default function RunDetailPage() {
         hidden={activeTab !== 'artifacts'}
       >
         {activeTab === 'artifacts' && (
-          <ArtifactsPanel run={run} runId={runId} links={links} t={t} />
+          <>
+            <ArtifactsPanel run={run} runId={runId} links={links} t={t} />
+            <AdvisoryArtifactsPanel
+              t={t}
+              hasDistractorGate={hasDistractorGate}
+              distractorGateState={distractorGateState}
+              onRetryDistractorGate={() => setDistractorGateState({ status: 'idle' })}
+            />
+          </>
         )}
       </section>
       </div>
@@ -1213,8 +1284,8 @@ function SpecSemanticReviewPanel({
 }
 
 const ARTIFACT_GROUPS: { key: string; patterns: string[] }[] = [
-  { key: 'learning', patterns: ['lesson', 'walkthrough', 'quiz', 'misconception'] },
-  { key: 'eval', patterns: ['score', 'judge', 'claims', 'eval', 'spec_alignment'] },
+  { key: 'learning', patterns: ['lesson', 'walkthrough', 'quiz', 'misconception', 'distractor'] },
+  { key: 'eval', patterns: ['score', 'judge', 'claims', 'eval', 'spec_alignment', 'entailment'] },
   { key: 'graph', patterns: ['concepts', 'graphify', 'graph'] },
 ];
 
@@ -1273,7 +1344,7 @@ function ArtifactsPanel({
           if (!items || items.length === 0) return null;
           return (
             <div key={groupKey} className="run-detail__artifact-section">
-              <h3 className="run-detail__artifact-section-title">{t(groupLabelKeys[groupKey])}</h3>
+              <h2 className="run-detail__artifact-section-title">{t(groupLabelKeys[groupKey])}</h2>
               <ul className="run-detail__artifact-list">
                 {items.map((a) => (
                   <li key={a} className="run-detail__artifact-item">
@@ -1285,6 +1356,122 @@ function ArtifactsPanel({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function AdvisoryArtifactsPanel({
+  t,
+  hasDistractorGate,
+  distractorGateState,
+  onRetryDistractorGate,
+}: {
+  t: TranslateFn;
+  hasDistractorGate: boolean;
+  distractorGateState: DistractorGateLoadState;
+  onRetryDistractorGate: () => void;
+}) {
+  if (!hasDistractorGate) return null;
+  return (
+    <section className="run-detail__advisory-artifacts" aria-labelledby="run-detail-advisory-title">
+      <div className="run-detail__advisory-head">
+        <h2 id="run-detail-advisory-title" className="run-detail__spec-title">
+          {t('RunDetail.advisory_artifacts_title')}
+        </h2>
+        <span className="run-detail__advisory-note">
+          {t('RunDetail.advisory_artifacts_note')}
+        </span>
+      </div>
+      <div className="run-detail__advisory-grid">
+        <DistractorGateAdvisoryCard
+          t={t}
+          state={distractorGateState}
+          onRetry={onRetryDistractorGate}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DistractorGateAdvisoryCard({
+  t,
+  state,
+  onRetry,
+}: {
+  t: TranslateFn;
+  state: DistractorGateLoadState;
+  onRetry: () => void;
+}) {
+  if (state.status === 'idle' || state.status === 'loading') {
+    return (
+      <AdvisoryCardShell title={t('RunDetail.distractor_gate_title')}>
+        <div role="status" aria-live="polite" className="run-detail__loading">
+          <span className="loading-spinner" />
+          {t('RunDetail.distractor_gate_loading')}
+        </div>
+      </AdvisoryCardShell>
+    );
+  }
+  if (state.status === 'missing') {
+    return (
+      <AdvisoryCardShell title={t('RunDetail.distractor_gate_title')}>
+        <p className="run-detail__empty">{t('RunDetail.distractor_gate_missing')}</p>
+      </AdvisoryCardShell>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <AdvisoryCardShell title={t('RunDetail.distractor_gate_title')}>
+        <div role="alert" className="run-detail__error">
+          {t('RunDetail.distractor_gate_load_failed')}
+          <button type="button" className="retry-btn" onClick={onRetry}>
+            {t('Error.retry')}
+          </button>
+        </div>
+      </AdvisoryCardShell>
+    );
+  }
+  const artifact = state.artifact;
+  return (
+    <AdvisoryCardShell title={t('RunDetail.distractor_gate_title')}>
+      <dl className="run-detail__advisory-metrics">
+        <Metric
+          label={t('RunDetail.distractor_gate_questions')}
+          value={t('RunDetail.count_questions', {
+            count: String(artifact.questions_checked),
+          })}
+        />
+        <Metric
+          label={t('RunDetail.distractor_gate_findings')}
+          value={t('RunDetail.count_findings', {
+            count: String(artifact.findings.length),
+          })}
+        />
+      </dl>
+    </AdvisoryCardShell>
+  );
+}
+
+function AdvisoryCardShell({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <article className="run-detail__advisory-card">
+      <h3 className="run-detail__advisory-card-title">{title}</h3>
+      {children}
+    </article>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   );
 }

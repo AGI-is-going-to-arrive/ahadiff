@@ -1035,8 +1035,16 @@ def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Pat
     run_path = _write_run(state_dir, "run-1", finalized=False, content_lang="zh-CN")
     concepts_content = '{"term_key":"retry-loop","display_name":"Retry loop"}\n'
     (run_path / "concepts.jsonl").write_text(concepts_content, encoding="utf-8")
+    (run_path / "entailment.jsonl").write_text(
+        '{"claim_id":"claim-1","predicate":"call_name_added","outcome":"supported"}\n',
+        encoding="utf-8",
+    )
     (run_path / "quiz" / "misconception_cards.jsonl").write_text(
         '{"concept":"retry","misconception":"x","correction":"y","evidence_ref":"src/app.py:1","severity":"low","safety_tags":[],"run_id":"run-1"}\n',
+        encoding="utf-8",
+    )
+    (run_path / "quiz" / "distractor_gate.json").write_text(
+        '{"schema":"ahadiff.quiz_distractor_gate","questions_checked":1,"findings":[]}\n',
         encoding="utf-8",
     )
     _finalize_run(run_path, "run-1")
@@ -1050,6 +1058,7 @@ def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Pat
         ("/api/run/run-1/misconceptions", "misconceptions"),
         ("/api/run/run-1/diff", "diff"),
         ("/api/run/run-1/concepts", "concepts"),
+        ("/api/run/run-1/distractor-gate", "distractor_gate"),
     )
 
     for route, artifact_type in routes:
@@ -1062,6 +1071,29 @@ def test_artifact_envelopes_include_content_lang_from_run_metadata(tmp_path: Pat
 
     detail = client.get("/api/run/run-1").json()
     assert "quiz/misconception_cards.jsonl" in detail["artifacts"]
+    assert "entailment.jsonl" not in detail["artifacts"]
+    assert "quiz/distractor_gate.json" in detail["artifacts"]
+
+
+def test_entailment_shadow_is_not_exposed_as_generic_run_artifact(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    initialize_review_db(state_dir / "review.sqlite")
+    run_path = _write_run(state_dir, "run-1", finalized=False)
+    (run_path / "entailment.jsonl").write_text(
+        '{"schema":"ahadiff.entailment_shadow","schema_version":1,"run_id":"run-1","claim_id":"claim-1","mode":"shadow","applicability":"applicable","outcome":"supported","predicate":"call_name_added","file":"src/app.py","side":"new","start":1,"end":1,"reason":"call_name_added","confidence":"medium"}\n',
+        encoding="utf-8",
+    )
+    _finalize_run(run_path, "run-1")
+    sync_result_event(state_dir / "review.sqlite", _event("run-1"))
+    client = _client(state_dir)
+
+    detail = client.get("/api/run/run-1").json()
+    response = client.get("/api/run/run-1/entailment")
+
+    assert "entailment.jsonl" not in routes_runs_module._ALLOWED_ARTIFACTS  # pyright: ignore[reportPrivateUsage]
+    assert "entailment" not in routes_runs_module._ARTIFACT_PATHS  # pyright: ignore[reportPrivateUsage]
+    assert "entailment.jsonl" not in detail["artifacts"]
+    assert response.status_code == 404
 
 
 def test_misconceptions_route_returns_404_when_artifact_is_missing(tmp_path: Path) -> None:
@@ -1084,6 +1116,7 @@ def test_misconceptions_route_returns_404_when_artifact_is_missing(tmp_path: Pat
         ("/api/run/run-1/lesson?level=full", "lesson/lesson.full.md"),
         ("/api/run/run-1/claims", "claims.jsonl"),
         ("/api/run/run-1/quiz", "quiz/quiz.jsonl"),
+        ("/api/run/run-1/distractor-gate", "quiz/distractor_gate.json"),
     ],
 )
 def test_learning_artifact_routes_return_404_when_artifact_is_missing(
@@ -1094,7 +1127,11 @@ def test_learning_artifact_routes_return_404_when_artifact_is_missing(
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
     run_path = _write_run(state_dir, "run-1", finalized=False)
-    (run_path / relative_path).unlink()
+    artifact_path = run_path / relative_path
+    if not artifact_path.exists():
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("placeholder\n", encoding="utf-8")
+    artifact_path.unlink()
     _finalize_run(run_path, "run-1")
     sync_result_event(state_dir / "review.sqlite", _event("run-1"))
     client = _client(state_dir)

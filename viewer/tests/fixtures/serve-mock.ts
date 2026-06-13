@@ -289,7 +289,8 @@ export async function installServeMock(page: Page): Promise<void> {
             'judge.json',
             'concepts.jsonl',
             'spec_alignment.json',
-              'graphify_signoff.json',
+            'graphify_signoff.json',
+            'quiz/distractor_gate.json',
             ];
       return route.fulfill({
         status: 200,
@@ -376,6 +377,40 @@ export async function installServeMock(page: Page): Promise<void> {
           content_lang: 'en',
         }),
       }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/distractor-gate$/.test(url.pathname),
+    (route) => {
+      const runId = new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run';
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          run_id: runId,
+          artifact_type: 'distractor_gate',
+          content: JSON.stringify({
+            schema: 'ahadiff.quiz_distractor_gate',
+            schema_version: 1,
+            run_id: runId,
+            mode: 'advisory',
+            questions_checked: 2,
+            findings: [
+              {
+                question_id: 'quiz_1',
+                rule: 'D1_duplicate_choice_text',
+                severity: 'advisory',
+                would_block: false,
+                would_block_locked_reason: 'no_historical_fp_fixture',
+                message: 'Duplicate choice text detected.',
+                evidence: { choice_labels: ['A', 'B'] },
+              },
+            ],
+            summary: { would_block: 0, advisory: 1 },
+          }),
+          content_lang: 'en',
+        }),
+      });
+    },
   );
   await page.route(
     (url) => /^\/api\/run\/[^/]+\/score$/.test(url.pathname),

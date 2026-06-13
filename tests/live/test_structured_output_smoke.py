@@ -83,6 +83,7 @@ _CASES: tuple[StructuredLiveCase, ...] = (
         ),
         schema_name="claim_candidates.v1",
         smoke_kind="claims",
+        privacy_mode="redacted_remote",
     ),
     StructuredLiveCase(
         name="gemini_quiz",
@@ -204,6 +205,7 @@ def _request(case: StructuredLiveCase, *, model: str) -> ProviderRequest:
             'The claim text field must be named "text", not "claim".'
         )
     prompt = f"{prompt}\n\nDiff:\n{diff}"
+    redacted_payload_text = prompt if case.privacy_mode == "redacted_remote" else None
     return ProviderRequest(
         prompt_name=f"live.structured.{case.name}",
         prompt_fingerprint="phase7.2",
@@ -214,6 +216,8 @@ def _request(case: StructuredLiveCase, *, model: str) -> ProviderRequest:
         diff_content=diff,
         source_ref=f"phase7.2-{case.name}",
         privacy_mode=case.privacy_mode,
+        redacted_payload_text=redacted_payload_text,
+        redaction_config="live_structured_output_fixture",
         max_output_tokens=case.max_output_tokens,
         temperature=0,
         **structured_request_kwargs(

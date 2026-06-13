@@ -5,6 +5,7 @@ import json
 import os
 import stat
 import tempfile
+import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -19,6 +20,8 @@ from ahadiff.core.paths import global_config_dir
 
 _REGISTRY_FILENAME = "registry.json"
 _REGISTRY_LOCK_FILENAME = "registry.lock"
+_REGISTRY_LOCK_TIMEOUT_SECONDS = 0.5
+_REGISTRY_LOCK_POLL_SECONDS = 0.05
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
 
@@ -46,12 +49,30 @@ def _registry_lock() -> Any:
     lock_path = _registry_lock_path()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     handle = lock_path.open("a+", encoding="utf-8")
+    locked = False
     try:
-        portalocker.lock(handle, portalocker.LOCK_EX)
+        deadline = time.monotonic() + _REGISTRY_LOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                portalocker.lock(handle, portalocker.LOCK_EX | portalocker.LOCK_NB)
+                locked = True
+                break
+            except portalocker.AlreadyLocked as exc:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        errno.ETIMEDOUT,
+                        "registry lock timed out",
+                        str(lock_path),
+                    ) from exc
+                time.sleep(min(_REGISTRY_LOCK_POLL_SECONDS, remaining))
+            except portalocker.exceptions.LockException as exc:
+                raise OSError(errno.EACCES, f"registry lock failed: {exc}", str(lock_path)) from exc
         yield
     finally:
         try:
-            portalocker.unlock(handle)
+            if locked:
+                portalocker.unlock(handle)
         finally:
             handle.close()
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 from typing import TYPE_CHECKING, Any, cast
 
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ahadiff.llm.schemas import ProviderRequest
+    from ahadiff.quiz.distractor_gate import DistractorGateReport
 
 _RUNNER = CliRunner()
 
@@ -719,6 +721,107 @@ def test_generate_quiz_from_run_writes_expected_artifact(
         "Generating misconception cards (2/2)",
     ]
     assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
+
+
+def test_quiz_generator_writes_distractor_gate_without_changing_quiz_jsonl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_gate")
+    fake_provider = _FakeQuizProvider()
+    original_gate_writer = quiz_generator_module.write_distractor_gate_report
+    quiz_bytes_at_gate_write: list[tuple[bytes, bytes]] = []
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    def capturing_gate_writer(path: Path, report: DistractorGateReport) -> Path:
+        quiz_path = run_path / "quiz" / "quiz.jsonl"
+        before = quiz_path.read_bytes()
+        result = original_gate_writer(path, report)
+        after = quiz_path.read_bytes()
+        quiz_bytes_at_gate_write.append((before, after))
+        return result
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+    monkeypatch.setattr(
+        "ahadiff.quiz.generator.write_distractor_gate_report",
+        capturing_gate_writer,
+    )
+
+    artifacts, questions = generate_quiz_from_run(
+        run_id="run_quiz_gate",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+    )
+
+    quiz_before = artifacts.quiz_path.read_bytes()
+    assert artifacts.distractor_gate_path is not None
+    report_payload = json.loads(artifacts.distractor_gate_path.read_text(encoding="utf-8"))
+    assert report_payload["schema"] == "ahadiff.quiz_distractor_gate"
+    assert report_payload["mode"] == "advisory"
+    assert report_payload["run_id"] == "run_quiz_gate"
+    assert report_payload["questions_checked"] == len(questions)
+    assert len(quiz_bytes_at_gate_write) == 1
+    assert quiz_bytes_at_gate_write[0][0] == quiz_before
+    assert quiz_bytes_at_gate_write[0][1] == quiz_before
+    assert (
+        hashlib.sha256(artifacts.quiz_path.read_bytes()).hexdigest()
+        == hashlib.sha256(quiz_before).hexdigest()
+    )
+
+
+def test_quiz_generation_continues_when_distractor_gate_report_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_gate_write_fail")
+    fake_provider = _FakeQuizProvider()
+
+    def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    def fail_report_write(*args: object, **kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+    monkeypatch.setattr(
+        "ahadiff.quiz.generator.write_distractor_gate_report",
+        fail_report_write,
+    )
+    caplog.set_level(logging.WARNING, logger="ahadiff.quiz.generator")
+
+    artifacts, questions = generate_quiz_from_run(
+        run_id="run_quiz_gate_write_fail",
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+    )
+
+    assert len(questions) == 3
+    assert artifacts.quiz_path.exists()
+    assert len(load_quiz_questions(artifacts.quiz_path)) == 3
+    assert artifacts.distractor_gate_path is not None
+    assert not artifacts.distractor_gate_path.exists()
+    assert "distractor gate report write failed: OSError" in caplog.text
 
 
 def test_quiz_generation_attaches_structured_schema_metadata_for_both_prompts(

@@ -7,6 +7,7 @@ import {
   conceptGraphResponseSchema,
   demoLearnPreviewResponseSchema,
   demoQuizPreviewSchema,
+  distractorGateReportSchema,
   freshnessProjectionSchema,
   graphStatusResponseSchema,
   installTargetSchema,
@@ -64,6 +65,67 @@ describe('judge failure schema', () => {
     ).toThrow();
     expect(() =>
       judgeFailureSchema.parse({ ...validFailure, message: '😀'.repeat(2001) }),
+    ).toThrow();
+  });
+});
+
+describe('advisory artifact schemas', () => {
+  it('accepts current distractor gate reports', () => {
+    expect(
+      distractorGateReportSchema.parse({
+        schema: 'ahadiff.quiz_distractor_gate',
+        schema_version: 1,
+        run_id: 'run-1',
+        mode: 'advisory',
+        questions_checked: 2,
+        findings: [
+          {
+            question_id: 'q1',
+            rule: 'D1_duplicate_choice_text',
+            severity: 'advisory',
+            would_block: false,
+            would_block_locked_reason: 'no_historical_fp_fixture',
+            message: 'Duplicate choice text detected.',
+            evidence: { choice_labels: ['A', 'B'] },
+          },
+        ],
+        summary: { would_block: 0, advisory: 1 },
+      }),
+    ).toMatchObject({ questions_checked: 2 });
+  });
+
+  it('keeps advisory artifact schemas strict and bounded', () => {
+    expect(() =>
+      distractorGateReportSchema.parse({
+        schema: 'ahadiff.quiz_distractor_gate',
+        schema_version: 1,
+        questions_checked: 0,
+        findings: [],
+        extra: true,
+      }),
+    ).toThrow();
+  });
+
+  it('rejects distractor diagnostics that try to become blocking gates', () => {
+    expect(() =>
+      distractorGateReportSchema.parse({
+        schema: 'ahadiff.quiz_distractor_gate',
+        schema_version: 1,
+        run_id: 'run-1',
+        mode: 'advisory',
+        questions_checked: 1,
+        findings: [
+          {
+            question_id: 'q1',
+            rule: 'D1_duplicate_choice_text',
+            severity: 'advisory',
+            would_block: true,
+            message: 'Duplicate choice text detected.',
+            evidence: { choice_labels: ['A', 'B'] },
+          },
+        ],
+        summary: { would_block: 1, advisory: 0 },
+      }),
     ).toThrow();
   });
 });

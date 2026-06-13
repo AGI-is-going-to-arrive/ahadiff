@@ -163,6 +163,114 @@ test.describe('Run Detail page', () => {
     expect(await fileItems.count()).toBeGreaterThanOrEqual(3);
   });
 
+  test('shows diagnostic advisory artifacts without exposing S1 sidecar', async ({ page }) => {
+    let requestedEntailment = false;
+    await page.route(
+      (url) => /^\/api\/run\/[^/]+\/entailment$/.test(url.pathname),
+      (route) => {
+        requestedEntailment = true;
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'unexpected_entailment_request', status: 500 }),
+        });
+      },
+    );
+
+    await page.goto('/#/run/test-run?tab=artifacts');
+
+    await expect(
+      page.getByRole('heading', { name: /Distractor diagnostic|干扰项诊断/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/2 questions/i)).toBeVisible();
+    await expect(page.getByText(/1 finding/i)).toBeVisible();
+    await expect(
+      page.getByText(/private measurement-only|private shadow-only|私有测量|shadow-only/i),
+    ).toBeVisible();
+    await expect(page.getByText(/Would block|会阻断/i)).toHaveCount(0);
+    await expect(page.locator('.run-detail__artifact-link', { hasText: 'entailment.jsonl' })).toHaveCount(0);
+    expect(requestedEntailment).toBe(false);
+  });
+
+  test('shows advisory schema errors without raw content, paths, or secrets', async ({ page }) => {
+    await page.route(
+      (url) => /^\/api\/run\/[^/]+\/distractor-gate$/.test(url.pathname),
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            run_id: 'test-run',
+            artifact_type: 'distractor_gate',
+            content: JSON.stringify({
+              schema: 'ahadiff.quiz_distractor_gate',
+              schema_version: 1,
+              run_id: 'test-run',
+              mode: 'advisory',
+              questions_checked: 1,
+              findings: [
+                {
+                  question_id: 'q1',
+                  rule: 'D1_duplicate_choice_text',
+                  severity: 'advisory',
+                  would_block: false,
+                  message: 'sk-secret-token /Users/alice/project/secret.py',
+                  evidence: {},
+                  extra: 'must fail strict schema',
+                },
+              ],
+              summary: { would_block: 0, advisory: 1 },
+            }),
+            content_lang: 'en',
+          }),
+        }),
+    );
+
+    await page.goto('/#/run/test-run?tab=artifacts');
+
+    await expect(page.getByRole('alert')).toContainText(
+      /Failed to load distractor diagnostic|加载干扰项诊断失败/i,
+    );
+    await expect(page.getByText('sk-secret-token')).toHaveCount(0);
+    await expect(page.getByText('/Users/alice/project/secret.py')).toHaveCount(0);
+    await expect(page.getByText('ahadiff.quiz_distractor_gate')).toHaveCount(0);
+    await expect(page.getByText('must fail strict schema')).toHaveCount(0);
+  });
+
+  test('shows distractor gate missing state without raw error details', async ({ page }) => {
+    await page.route(
+      (url) => /^\/api\/run\/[^/]+\/distractor-gate$/.test(url.pathname),
+      (route) =>
+        route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'artifact_not_found',
+            error_code: 'RUN_ARTIFACT_NOT_FOUND',
+            status: 404,
+            details: '/Users/alice/private/sk-secret-token',
+          }),
+        }),
+    );
+
+    await page.goto('/#/run/test-run?tab=artifacts');
+
+    await expect(
+      page.getByText(/No distractor diagnostic artifact|没有干扰项诊断产物/i),
+    ).toBeVisible();
+    await expect(page.getByText('/Users/alice/private/sk-secret-token')).toHaveCount(0);
+  });
+
+  test('keeps advisory wording localized after runtime language switch', async ({ page }) => {
+    await page.goto('/#/run/test-run?tab=artifacts');
+    await expect(page.getByText(/private measurement-only/i)).toBeVisible();
+
+    await page.getByRole('button', { name: '简体中文' }).click();
+
+    await expect(page.getByText(/私有测量/)).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+  });
+
   test('tab keyboard navigation works with arrow keys', async ({ page }) => {
     await page.goto('/#/run/test-run');
 
@@ -436,5 +544,104 @@ test.describe('Run Detail page', () => {
 
     await expect(page.getByText(/fresh_provider/)).toBeVisible();
     await expect(page.getByText(/stale_provider/)).toHaveCount(0);
+  });
+
+  test('does not show stale distractor gate payload after quick run switch', async ({ page }) => {
+    let firstGateRequestedResolve: (() => void) | null = null;
+    const firstGateRequested = new Promise<void>((resolve) => {
+      firstGateRequestedResolve = resolve;
+    });
+    const fulfillRun = (runId: string) => ({
+      run_id: runId,
+      source_kind: 'git_ref',
+      source_ref: 'HEAD',
+      content_lang: 'en',
+      capability_level: 2,
+      verdict: 'PASS',
+      overall: 84,
+      status: 'baseline',
+      weakest_dim: 'evidence',
+      created_at: '2026-05-23T00:00:00Z',
+      degraded_flags: {},
+      base_ref: 'HEAD~1',
+      prompt_version: 'abc1234',
+      eval_bundle_version: 'v1',
+      note_json: null,
+      artifacts: ['patch.diff', 'metadata.json', 'claims.jsonl', 'score.json', 'quiz/distractor_gate.json'],
+      graphify_mode: null,
+      graphify_status: null,
+      graphify_notes: null,
+    });
+    const fulfillGate = (runId: string, questions: number, findings: number) => ({
+      run_id: runId,
+      artifact_type: 'distractor_gate',
+      content: JSON.stringify({
+        schema: 'ahadiff.quiz_distractor_gate',
+        schema_version: 1,
+        run_id: runId,
+        mode: 'advisory',
+        questions_checked: questions,
+        findings: Array.from({ length: findings }, (_, index) => ({
+          question_id: `q${index + 1}`,
+          rule: 'D1_duplicate_choice_text',
+          severity: 'advisory',
+          would_block: false,
+          message: 'duplicate choice text',
+          evidence: {},
+        })),
+        summary: { would_block: 0, advisory: findings },
+      }),
+      content_lang: 'en',
+    });
+    await page.route(
+      (url) => url.pathname === '/api/run/stale-gate-run',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(fulfillRun('stale-gate-run')),
+        }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/run/fresh-gate-run',
+      async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(fulfillRun('fresh-gate-run')),
+        });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === '/api/run/stale-gate-run/distractor-gate',
+      async (route) => {
+        firstGateRequestedResolve?.();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(fulfillGate('stale-gate-run', 99, 99)),
+        });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === '/api/run/fresh-gate-run/distractor-gate',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(fulfillGate('fresh-gate-run', 2, 1)),
+        }),
+    );
+
+    await page.goto('/#/run/stale-gate-run?tab=artifacts');
+    await firstGateRequested;
+    await page.goto('/#/run/fresh-gate-run?tab=artifacts');
+
+    await expect(page.getByText(/2 questions/i)).toBeVisible();
+    await expect(page.getByText(/1 finding/i)).toBeVisible();
+    await expect(page.getByText(/99 questions/i)).toHaveCount(0);
+    await expect(page.getByText(/99 findings/i)).toHaveCount(0);
   });
 });

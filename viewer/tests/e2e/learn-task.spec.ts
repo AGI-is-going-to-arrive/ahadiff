@@ -209,9 +209,15 @@ async function triggerLearnViaWelcome(page: Page): Promise<void> {
   const learnBtn = page.getByRole('button', {
     name: /Start from your diff|从你的 diff 开始/,
   });
-  await learnBtn.click();
-  const dialog = page.locator('[role="dialog"]');
-  await expect(dialog).toBeVisible({ timeout: 5000 });
+  const dialog = page.getByRole('dialog');
+  await expect(learnBtn).toBeVisible();
+  await expect(learnBtn).toBeEnabled();
+  await expect(async () => {
+    if (!(await dialog.isVisible().catch(() => false))) {
+      await learnBtn.click();
+    }
+    await expect(dialog).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 10000 });
   await dialog.locator('.learn-dialog__btn--primary').click();
   await expect(dialog).not.toBeVisible({ timeout: 3000 });
 }

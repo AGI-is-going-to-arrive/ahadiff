@@ -61,6 +61,7 @@ _ARTIFACT_PATHS = {
     "claims": "claims.jsonl",
     "concepts": "concepts.jsonl",
     "diff": "patch.diff",
+    "distractor_gate": "quiz/distractor_gate.json",
     "graphify_signoff": "graphify_signoff.json",
     "judge": "judge.json",
     "judge_failure": "judge_failure.json",
@@ -154,6 +155,7 @@ _ALLOWED_ARTIFACTS = frozenset(
         "judge.json",
         "judge_failure.json",
         "patch.diff",
+        "quiz/distractor_gate.json",
         "quiz/misconception_cards.jsonl",
         "quiz/quiz.jsonl",
         "score.json",
@@ -234,6 +236,15 @@ async def get_misconceptions(request: Request) -> JSONResponse:
         request,
         _ARTIFACT_PATHS["misconceptions"],
         "misconceptions",
+        not_found_status_code=404,
+    )
+
+
+async def get_distractor_gate(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request,
+        _ARTIFACT_PATHS["distractor_gate"],
+        "distractor_gate",
         not_found_status_code=404,
     )
 
@@ -1451,6 +1462,7 @@ __all__ = [
     "get_concepts",
     "get_concepts_ledger",
     "get_diff",
+    "get_distractor_gate",
     "get_graphify_signoff",
     "get_judge",
     "get_judge_failure",

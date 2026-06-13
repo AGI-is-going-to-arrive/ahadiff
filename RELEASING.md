@@ -12,6 +12,25 @@ runtime. If you build the wheel before building the viewer, the WebUI is missing
 `ahadiff serve` has nothing to serve. The build order in Section 2 exists to prevent exactly
 this.
 
+## Current v1.3.5 release-candidate boundary
+
+- `1.3.4` is already published on PyPI. Do not rebuild or republish it; bump all declared
+  versions before cutting the next candidate.
+- PyPI publish is **not allowed** until the local gate, remote gate, and explicit maintainer
+  confirmation are all present. A local release candidate can be prepared without publishing.
+- If push is intentionally held back, the release workflow dry run, Linux gate, Windows gate,
+  Remote CI, and Antigravity checks must be recorded as `Unknown/blocked`, not as pass.
+- S1 semantic entailment must be described as private shadow-only / measurement-only. Current
+  sample metrics are `route_hit=76` and `fp_rate=53.95%`, so both enforce and advisory use are
+  blocked.
+- A3 quiz distractor analysis is diagnostic/advisory-only. It is not a blocking gate.
+- The 10-mode learn claim means dry-run capture coverage unless the validation log lists each
+  live LLM command, `run_id`, exit code, and lesson/claims/quiz/card artifacts.
+- Current local note: the v1.3.5 macOS local RC gate and 10-mode live LLM matrix have been
+  recorded in `docs/VALIDATION_AUDIT.zh.md`. Because push is intentionally held back, the
+  release workflow dry run, Linux gate, Windows gate, Remote CI, and Antigravity remain
+  `Unknown/blocked`.
+
 ---
 
 ## 1. Prerequisites
@@ -47,6 +66,33 @@ this.
 
 This is the same sequence CI runs in `gate-linux` (viewer build → wheel build → wheel-content
 check → install smoke). Run it locally before tagging.
+
+For release-candidate closure, also run the repo quality gates around this packaging sequence:
+
+```bash
+uv sync --locked --dev --python python3.12
+uv run pytest tests/unit -q --tb=long
+uv run pytest tests/integration -q --tb=long
+uv run pytest tests/eval -q --tb=long
+uv run ruff check src tests
+uv run ruff format --check src tests
+uv run pyright
+
+cd viewer
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm vitest run
+pnpm build
+AHADIFF_VIEWER_E2E_PORT=5174 pnpm test:e2e
+cd ..
+
+uv build
+python scripts/check_wheel_webui.py dist/*.whl
+git diff --check HEAD
+```
+
+The viewer build appears twice by design: once as the frontend gate and once before the wheel
+content gate, because the wheel must package the current `viewer/dist`.
 
 ### (a) Build the viewer (`viewer/dist`)
 

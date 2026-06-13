@@ -2769,6 +2769,129 @@ def test_graphify_update_imports_before_concepts_with_force(
     assert calls == [("graphify_import", True), ("append_concepts", None)]
 
 
+def test_post_publish_graphify_update_uses_short_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    _patch_learnability(monkeypatch, score=0.7)
+    timeouts: list[int] = []
+
+    def _run_graphify_update(root: Path, *, timeout: int) -> bool:
+        assert root == fake_repo
+        timeouts.append(timeout)
+        return False
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        output_path = fake_repo / ".ahadiff" / "runs" / capture.run_id / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        graphify_cli_available=True,
+        graphify_update_result=False,
+    )
+    monkeypatch.setattr("ahadiff.graphify.cli.run_graphify_update", _run_graphify_update)
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo))
+
+    assert result.status == "keep"
+    assert timeouts, result.warnings
+    assert timeouts[0] <= 15
+    assert not any("graphify refresh skipped" in warning for warning in result.warnings)
+
+
+def test_post_publish_graphify_skips_when_request_disables_graphify(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.run_source.source_kind = "patch_stdin"
+    _patch_learnability(monkeypatch, score=0.7)
+    graphify_calls: list[Path] = []
+
+    def _run_graphify_update(root: Path, **kwargs: object) -> bool:
+        del kwargs
+        graphify_calls.append(root)
+        return False
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        output_path = fake_repo / ".ahadiff" / "runs" / capture.run_id / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        graphify_cli_available=True,
+    )
+    monkeypatch.setattr("ahadiff.graphify.cli.run_graphify_update", _run_graphify_update)
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(
+        LearnRequest(
+            workspace_root=fake_repo,
+            patch="-",
+            patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
+            use_graphify=False,
+        )
+    )
+
+    assert result.status == "keep"
+    assert graphify_calls == []
+
+
+def test_post_publish_graphify_skips_for_non_git_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.run_source.source_kind = "patch_stdin"
+    _patch_learnability(monkeypatch, score=0.7)
+    graphify_calls: list[Path] = []
+
+    def _run_graphify_update(root: Path, **kwargs: object) -> bool:
+        del kwargs
+        graphify_calls.append(root)
+        return False
+
+    def _append_concepts(**kwargs: object) -> Path:
+        del kwargs
+        output_path = fake_repo / ".ahadiff" / "runs" / capture.run_id / "concepts_local.jsonl"
+        output_path.write_text("{}\n", encoding="utf-8")
+        return output_path
+
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        graphify_cli_available=True,
+    )
+    monkeypatch.setattr("ahadiff.graphify.cli.run_graphify_update", _run_graphify_update)
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", _append_concepts)
+
+    result = run_learn_pipeline(
+        LearnRequest(
+            workspace_root=fake_repo,
+            patch="-",
+            patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
+        )
+    )
+
+    assert result.status == "keep"
+    assert graphify_calls == []
+
+
 def test_graphify_missing_cli_without_source_skips_import_silently(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,

@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <title>AhaDiff User Guide</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="description" content="AhaDiff User Guide: turn a git diff into a code-grounded lesson, verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. Local-first by default." />
+<meta name="description" content="AhaDiff User Guide: turn a git diff into a code-grounded lesson, explicit claim states, a quiz, review cards, a concept graph and a quality ratchet. Local-first by default." />
 <meta name="theme-color" content="#FAF8F2" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -937,9 +937,9 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.4</span></div>
+      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.5</span></div>
       <h1>AhaDiff User Guide</h1>
-      <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, a list of verifiable claims, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
+      <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, explicit claim states, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
       <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> English walkthrough (YouTube)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code>. The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
     </div>
 
@@ -1164,10 +1164,10 @@ supports_native_json_schema = false</span></div>
       <div class="g-steps">
         <div class="g-step">
           <h3>Pick a diff source</h3>
-          <p>AhaDiff has 10 capture sources. Pick the tile that matches what you changed.</p>
+          <p>AhaDiff has 10 capture modes. Pick the tile that matches what you changed. Release validation records capture coverage and live LLM lesson runs separately; the v1.3.5 audit lists one live run for each source.</p>
         </div>
         <div class="g-step">
-          <h3>Generate the lesson and evidence</h3>
+          <h3>Generate the lesson and claim states</h3>
           <p>AhaDiff captures the diff, scans for safety issues, and produces claims, lesson, quiz, score and other artifacts.</p>
         </div>
         <div class="g-step">
@@ -1209,7 +1209,8 @@ supports_native_json_schema = false</span></div>
         </div>
       </div>
       <div class="badges" style="justify-content:flex-start">
-        <span class="badge">10 modes &rarr; 8 internal source kinds</span>
+        <span class="badge">10 modes &rarr; capture coverage</span>
+        <span class="badge">v1.3.5 live LLM matrix recorded</span>
         <span class="badge">Path scope: working-tree modes only &middot; repo-relative paths</span>
       </div>
       <div class="g-note">Add <code>--against-spec SPEC.md</code> to any of these to check the diff against a spec; add <code>--spec-semantic-review</code> for the semantic pass.</div>
@@ -1334,7 +1335,7 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/en/en-lesson.png" alt="Lesson: claim status, claim summary, knowledge notes, and the evidence sidebar." />
-        <figcaption class="shot-cap">Lesson: the verified learning note generated from a diff.</figcaption>
+        <figcaption class="shot-cap">Lesson: the claim-state learning note generated from a diff.</figcaption>
         <ol class="shot-legend">
           <li>Header with PASS score, View score details, Mark as Learned.</li>
           <li>Compact / Hint / Full detail-level toggle, top right.</li>
@@ -1350,7 +1351,7 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
           <li>Center code diff with red/green added and removed lines.</li>
           <li>File tabs and Unified / Split view toggle above the diff.</li>
           <li>Right Claim Inspector panel listing per-claim cards.</li>
-          <li>Verified claim badges link the explanation back to code lines.</li>
+          <li>Claim state badges link the explanation back to code lines.</li>
         </ol>
       </figure>
 
@@ -1365,7 +1366,7 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/en/en-quiz.png" alt="Quiz: recall and transfer questions, evidence reveal, and common misconceptions." />
-        <figcaption class="shot-cap">Quiz: active-recall questions drawn from verified claims.</figcaption>
+        <figcaption class="shot-cap">Quiz: active-recall questions drawn from claim states.</figcaption>
         <ol class="shot-legend">
           <li>Single multiple-choice question with A/B/C/D options.</li>
           <li>Guided / Recall / Transfer mode tabs and progress counter.</li>
@@ -1556,7 +1557,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
         <div class="feat-card">
           <h3>Lesson / Claims / Quiz / Score</h3>
           <p>The default pipeline, produced after <code>ahadiff learn</code>.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Which artifacts get created depends on the diff and its learnability. Patch-only captures can use weak diff-anchored claims when symbol-level proof is missing. In Quiz, source evidence stays locked until you answer.</p></div></details>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Which artifacts get created depends on the diff and its learnability. Patch-only captures can use weak diff-anchored claims when symbol-level proof is missing. S1 semantic entailment remains private shadow-only measurement, not semantic proof. In Quiz, source evidence stays locked until you answer.</p></div></details>
         </div>
         <div class="feat-card">
           <h3>Optional LLM judge</h3>
@@ -1729,7 +1730,7 @@ ahadiff config show --resolved</span></div>
         </details>
         <details class="faq-item">
           <summary>What if the lesson gets skipped?</summary>
-          <div class="faq-a"><p>The diff might be too small, learnability might be too low, or there aren't enough verified claims. If you're sure this is the change you want to study, re-run with <code>--force-learn</code>.</p></div>
+          <div class="faq-a"><p>The diff might be too small, learnability might be too low, or there aren't enough usable claim states. If you're sure this is the change you want to study, re-run with <code>--force-learn</code>.</p></div>
         </details>
         <details class="faq-item">
           <summary>How do I change quiz question count?</summary>
@@ -1802,7 +1803,7 @@ ahadiff config show --resolved</span></div>
       <p>Screenshots in this guide are examples only. They carry no real provider credentials, repository contents, or user data.</p>
 
       <h3>Platform support</h3>
-      <p class="g-lead">macOS and Linux are the primary tested platforms. Windows runs the core flows; two features stay POSIX-only.</p>
+      <p class="g-lead">macOS is the current local RC validation platform. Linux, Windows, Remote CI, and Antigravity stay Unknown/blocked for this release candidate until those gates are rerun. Two features stay POSIX-only.</p>
       <div class="cmp-wrap">
         <table class="cmp-table">
           <thead><tr><th>Feature</th><th>macOS &middot; Linux</th><th>Windows</th></tr></thead>
@@ -1818,7 +1819,7 @@ ahadiff config show --resolved</span></div>
       <div class="g-note"><code>--compare-dir</code> needs the secure directory file descriptor available on macOS / Linux only, and fails closed elsewhere. The <code>hooks</code> target uses POSIX shell hooks. Hooks are reminder-only by default; see the Git hooks card for the --auto-learn variant. Rollback restores mode before atomic replace on POSIX, and uses a best-effort mode restore after replace where <code>fchmod</code> is missing.</div>
 
       <h3>Validation snapshot</h3>
-      <p class="g-lead">Local checks recorded for the current docs snapshot. Release and CI status belong in GitHub Actions.</p>
+      <p class="g-lead">Local checks recorded for the current docs snapshot. For v1.3.5 RC, S1 is private shadow-only / measurement-only with <code>route_hit=76</code> and <code>fp_rate=53.95%</code>, so enforce/advisory use is blocked. A3 is diagnostic/advisory-only and not a blocking gate. Release and CI status belong in GitHub Actions.</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>Validated</h3>
@@ -1827,11 +1828,12 @@ ahadiff config show --resolved</span></div>
             <span class="badge">ruff / format / pyright</span>
             <span class="badge"><span class="badge-dot react"></span>viewer Vitest + build</span>
             <span class="badge">i18n parity</span>
-            <span class="badge">local LLM E2E</span>
+            <span class="badge">macOS local RC gate recorded</span>
+            <span class="badge">remote gates Unknown/blocked</span>
           </div>
         </div>
       </div>
-      <div class="g-note">For continuous-integration status, read the GitHub Actions tab of the upstream repository, not this document.</div>
+      <div class="g-note">The 10-mode learn claim in this guide is capture coverage unless the validation audit lists each command, run_id, exit code, and lesson/claims/quiz/card artifacts. The v1.3.5 RC audit lists all 10 live LLM runs; remote gate status still belongs in GitHub Actions, not this document.</div>
     </section>
 
     <!-- ===== Footer ===== -->
@@ -1843,7 +1845,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>Screenshots are committed PNGs served from the docs tree; the workflow animation is CSS. For release status, see GitHub Actions.</p>
-      <div class="footer-version">v1.3.4</div>
+      <div class="footer-version">v1.3.5</div>
     </footer>
   </main>
 </div>

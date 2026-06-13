@@ -3,6 +3,7 @@ import type { ApiFetchOptions } from './client';
 import {
   paginatedRunsResponseSchema,
   parseResponse,
+  distractorGateReportSchema,
   graphifySignoffArtifactSchema,
   judgeFailureSchema,
   ratchetHistoryResponseSchema,
@@ -13,6 +14,7 @@ import {
 } from './schemas';
 import type {
   ArtifactKind,
+  DistractorGateReport,
   GraphifySignoffArtifact,
   JudgeFailure,
   PaginatedRunsResponse,
@@ -93,6 +95,27 @@ export async function getRunJudgeFailure(
   return parseResponse(
     'GET /api/run/{runId}/judge-failure content',
     judgeFailureSchema,
+    parsedContent,
+  );
+}
+
+export async function getRunDistractorGate(
+  runId: string,
+  opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<DistractorGateReport> {
+  const raw = await apiFetch<unknown>(
+    `/api/run/${encodeURIComponent(runId)}/distractor-gate`,
+    opts,
+  );
+  const envelope = parseResponse(
+    'GET /api/run/{runId}/distractor-gate',
+    runArtifactEnvelopeSchema,
+    raw,
+  );
+  const parsedContent = JSON.parse(envelope.content) as unknown;
+  return parseResponse(
+    'GET /api/run/{runId}/distractor-gate content',
+    distractorGateReportSchema,
     parsedContent,
   );
 }

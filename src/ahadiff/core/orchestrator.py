@@ -124,6 +124,16 @@ ProgressCallback = Callable[[int, int, str], None]
 CancelledCheck = Callable[[], bool]
 
 _TOTAL_STEPS = 10
+_POST_FINALIZE_GRAPHIFY_UPDATE_TIMEOUT = 10
+_POST_FINALIZE_GRAPHIFY_SOURCE_KINDS = frozenset(
+    {
+        "git_ref",
+        "git_staged",
+        "git_staged_unstaged",
+        "git_unstaged",
+        "git_since",
+    }
+)
 
 _DEFAULT_MAX_STEP_RETRIES = 2
 _LLM_STEP_MAX_RETRIES = 1
@@ -860,6 +870,7 @@ def _cleanup_lesson_generation_artifacts(
     for target in (
         raw_claims_path,
         claims_output_path,
+        run_path / "entailment.jsonl",
         run_path / "lesson",
         run_path / "quiz",
         run_path / "concepts_local.jsonl",
@@ -1588,6 +1599,33 @@ def run_learn_pipeline(
                     )
                     claims_output_path = run_path / "claims.jsonl"
                     write_verified_claims_jsonl(claims_output_path, verified, overwrite=False)
+                    try:
+                        from ahadiff.claims.entailment_shadow import (
+                            write_entailment_shadow_jsonl,
+                        )
+                        from ahadiff.contracts import ClaimRecord
+
+                        shadow_claims = [
+                            item.record for item in verified if isinstance(item.record, ClaimRecord)
+                        ]
+                        if shadow_claims:
+                            write_entailment_shadow_jsonl(
+                                run_path / "entailment.jsonl",
+                                run_id=capture.run_id,
+                                claims=shadow_claims,
+                                line_maps=line_maps,
+                                before_text_by_path=before_text_by_path,
+                                after_text_by_path=after_text_by_path,
+                            )
+                    except Exception as shadow_error:
+                        log.warning(
+                            "entailment shadow generation failed: %s",
+                            type(shadow_error).__name__,
+                            exc_info=True,
+                        )
+                        learn_warnings.append(
+                            f"entailment shadow generation failed: {type(shadow_error).__name__}"
+                        )
 
                     verified_claim_count = sum(
                         1 for item in verified if item.record.status == "verified"
@@ -1975,25 +2013,36 @@ def run_learn_pipeline(
                         )
                         from ahadiff.graphify.cli import detect_graphify_cli, run_graphify_update
 
-                        graphify_source_path = root / "graphify-out" / "graph.json"
-                        graphify_cli_available = detect_graphify_cli() is not None
-                        graphify_updated = (
-                            run_graphify_update(root) if graphify_cli_available else False
+                        source_kind = str(capture.run_source.source_kind)
+                        graphify_refresh_enabled = (
+                            request.use_graphify is not False
+                            and source_kind in _POST_FINALIZE_GRAPHIFY_SOURCE_KINDS
                         )
-                        if graphify_updated:
-                            graph_max_nodes_import = _effective_graph_max_nodes_import(root)
-                            import_graphify_artifact(
-                                root,
-                                force=True,
-                                max_nodes=graph_max_nodes_import,
+                        if graphify_refresh_enabled:
+                            graphify_source_path = root / "graphify-out" / "graph.json"
+                            graphify_cli_available = detect_graphify_cli() is not None
+                            graphify_updated = (
+                                run_graphify_update(
+                                    root,
+                                    timeout=_POST_FINALIZE_GRAPHIFY_UPDATE_TIMEOUT,
+                                )
+                                if graphify_cli_available
+                                else False
                             )
-                        elif not graphify_cli_available and graphify_source_path.exists():
-                            graph_max_nodes_import = _effective_graph_max_nodes_import(root)
-                            import_graphify_artifact(
-                                root,
-                                force=False,
-                                max_nodes=graph_max_nodes_import,
-                            )
+                            if graphify_updated:
+                                graph_max_nodes_import = _effective_graph_max_nodes_import(root)
+                                import_graphify_artifact(
+                                    root,
+                                    force=True,
+                                    max_nodes=graph_max_nodes_import,
+                                )
+                            elif not graphify_cli_available and graphify_source_path.exists():
+                                graph_max_nodes_import = _effective_graph_max_nodes_import(root)
+                                import_graphify_artifact(
+                                    root,
+                                    force=False,
+                                    max_nodes=graph_max_nodes_import,
+                                )
                     except Exception as graphify_refresh_error:
                         learn_warnings.append(f"graphify refresh skipped: {graphify_refresh_error}")
 

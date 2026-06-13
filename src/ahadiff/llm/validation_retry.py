@@ -66,6 +66,7 @@ def generate_with_validation_retry(
     schema_spec: OutputSchemaSpec,
     parse: Callable[[str], T],
     fallback_parse: Callable[[str], T] | None = None,
+    post_parse_validate: Callable[[Any], None] | None = None,
     max_validation_retries: int,
 ) -> StructuredCallResult[T]:
     if max_validation_retries < 0 or max_validation_retries > _MAX_VALIDATION_RETRIES:
@@ -77,34 +78,53 @@ def generate_with_validation_retry(
     for attempt_index in range(max_validation_retries + 1):
         response = provider.generate(current_request)
         try:
-            return StructuredCallResult(
-                value=parse(response.content),
-                response=response,
-                attempts=attempt_index + 1,
-                validation_errors=tuple(validation_errors),
-            )
+            value = parse(response.content)
         except Exception as exc:
             last_error = exc
+            errors = _errors_from_exception(exc)
             if fallback_parse is not None:
                 try:
-                    return StructuredCallResult(
-                        value=fallback_parse(response.content),
-                        response=response,
-                        attempts=attempt_index + 1,
-                        validation_errors=tuple(validation_errors),
-                    )
+                    value = fallback_parse(response.content)
                 except Exception as fallback_exc:
                     last_error = fallback_exc
-            errors = _errors_from_exception(exc)
-            feedback = build_validation_retry_feedback(
-                schema_id=schema_spec.schema_id,
-                schema_version=schema_spec.schema_version,
-                errors=errors,
-            )
-            validation_errors.append(feedback)
-            if attempt_index >= max_validation_retries:
-                break
-            current_request = _request_with_feedback(current_request, feedback)
+                else:
+                    try:
+                        _run_post_parse_validation(
+                            value,
+                            post_parse_validate=post_parse_validate,
+                        )
+                    except Exception as validation_exc:
+                        last_error = validation_exc
+                        errors = _errors_from_exception(validation_exc)
+                    else:
+                        return StructuredCallResult(
+                            value=value,
+                            response=response,
+                            attempts=attempt_index + 1,
+                            validation_errors=tuple(validation_errors),
+                        )
+        else:
+            try:
+                _run_post_parse_validation(value, post_parse_validate=post_parse_validate)
+            except Exception as validation_exc:
+                last_error = validation_exc
+                errors = _errors_from_exception(validation_exc)
+            else:
+                return StructuredCallResult(
+                    value=value,
+                    response=response,
+                    attempts=attempt_index + 1,
+                    validation_errors=tuple(validation_errors),
+                )
+        feedback = build_validation_retry_feedback(
+            schema_id=schema_spec.schema_id,
+            schema_version=schema_spec.schema_version,
+            errors=errors,
+        )
+        validation_errors.append(feedback)
+        if attempt_index >= max_validation_retries:
+            break
+        current_request = _request_with_feedback(current_request, feedback)
 
     if last_error is not None:
         raise InputError(
@@ -112,6 +132,16 @@ def generate_with_validation_retry(
             f"{max_validation_retries + 1} attempt(s); provider output omitted"
         ) from None
     raise InputError("structured validation retry failed without a parser error")
+
+
+def _run_post_parse_validation(
+    value: object,
+    *,
+    post_parse_validate: Callable[[Any], None] | None,
+) -> None:
+    if post_parse_validate is None:
+        return
+    post_parse_validate(value)
 
 
 def _validation_error_payload(error: Mapping[str, object]) -> dict[str, str]:

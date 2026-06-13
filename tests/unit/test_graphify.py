@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -593,6 +594,74 @@ class TestProjectFreshness:
         for state in FreshnessState:
             result = project_freshness(state)
             assert result in ("fresh", "stale", "unavailable", "disabled")
+
+
+def test_run_graphify_update_timeout_terminates_detached_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import ahadiff.graphify.cli as graphify_cli_module
+
+    events: list[tuple[str, object]] = []
+
+    class _FakeProcess:
+        pid = 12345
+        returncode: int | None = None
+
+        def __init__(self, command: list[str], **kwargs: object) -> None:
+            self.command = command
+            events.append(("command", command))
+            events.append(("kwargs", kwargs))
+
+        def __enter__(self) -> _FakeProcess:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def communicate(self, *, timeout: int | float | None = None) -> tuple[str, str]:
+            events.append(("communicate_timeout", timeout))
+            expired_timeout = 0.0 if timeout is None else float(timeout)
+            raise subprocess.TimeoutExpired(self.command, expired_timeout)
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def kill(self) -> None:
+            events.append(("kill", None))
+            self.returncode = -9
+
+        def terminate(self) -> None:
+            events.append(("terminate", None))
+            self.returncode = -15
+
+    def _fake_popen(command: list[str], **kwargs: object) -> _FakeProcess:
+        return _FakeProcess(command, **kwargs)
+
+    monkeypatch.setattr(graphify_cli_module, "detect_graphify_cli", lambda: "/usr/bin/graphify")
+    monkeypatch.setattr(graphify_cli_module.subprocess, "Popen", _fake_popen)
+    if not sys.platform.startswith("win"):
+
+        def _fake_killpg(pid: int, signum: int) -> None:
+            events.append(("killpg", (pid, signum)))
+
+        monkeypatch.setattr(
+            os,
+            "killpg",
+            _fake_killpg,
+        )
+
+    assert graphify_cli_module.run_graphify_update(tmp_path, timeout=3) is False
+
+    kwargs = next(value for key, value in events if key == "kwargs")
+    assert isinstance(kwargs, dict)
+    if sys.platform.startswith("win"):
+        assert "creationflags" in kwargs
+        assert ("kill", None) in events
+    else:
+        assert kwargs["start_new_session"] is True
+        assert any(key == "killpg" for key, _value in events)
+    assert ("communicate_timeout", 3) in events
 
 
 # ---------------------------------------------------------------------------

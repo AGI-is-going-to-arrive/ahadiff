@@ -629,7 +629,7 @@ export default function ReviewPage() {
             <button
               type="button"
               className="review__summary-toggle"
-              onClick={() => setSummaryOpen(!summaryOpen)}
+              onClick={() => setSummaryOpen((open) => !open)}
               aria-expanded={summaryOpen}
             >
               <span>{t('Review.summary_title')}</span>

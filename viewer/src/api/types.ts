@@ -76,6 +76,7 @@ export type ArtifactKind =
   | 'lesson'
   | 'claims'
   | 'quiz'
+  | 'distractor-gate'
   | 'misconceptions'
   | 'diff'
   | 'concepts'
@@ -112,6 +113,29 @@ export interface RunArtifactEnvelope {
   artifact_type: string;
   content: string;
   content_lang?: string | null;
+}
+
+export interface DistractorGateFinding {
+  question_id: string;
+  rule: string;
+  severity: 'advisory';
+  would_block: false;
+  would_block_locked_reason?: 'no_historical_fp_fixture';
+  message: string;
+  evidence: Record<string, string | number | boolean | string[]>;
+}
+
+export interface DistractorGateReport {
+  schema: 'ahadiff.quiz_distractor_gate';
+  schema_version: number;
+  mode: 'advisory';
+  run_id: string;
+  questions_checked: number;
+  findings: DistractorGateFinding[];
+  summary: {
+    would_block: 0;
+    advisory: number;
+  };
 }
 
 export interface ScoreDimension {

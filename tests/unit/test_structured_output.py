@@ -311,3 +311,39 @@ def test_validation_retry_preserves_fallback_before_retry() -> None:
     assert result.value == {"repaired": "repairable but not strict"}
     assert result.attempts == 1
     assert len(provider.requests) == 1
+
+
+def test_validation_gate_runs_after_fallback_parse_before_return() -> None:
+    provider = _RetryProvider(("fallback-valid-but-gate-fails", '{"ok": true}'))
+    gate_calls: list[object] = []
+
+    def parse(_: str) -> dict[str, bool]:
+        raise ValueError("strict parse failed")
+
+    def fallback_parse(content: str) -> dict[str, str]:
+        return {"payload": content}
+
+    def advisory_gate(value: dict[str, str]) -> None:
+        gate_calls.append(value)
+        if value["payload"] == "fallback-valid-but-gate-fails":
+            raise ValueError("distractor gate failed: provider output omitted")
+
+    result = generate_with_validation_retry(
+        provider=cast("Any", provider),
+        request=_request(),
+        schema_spec=OutputSchemaSpec(
+            schema_id="quiz_generate",
+            schema_version="1",
+            json_schema={"type": "object"},
+            schema_hash="sha256:test",
+        ),
+        parse=parse,
+        fallback_parse=fallback_parse,
+        post_parse_validate=advisory_gate,
+        max_validation_retries=1,
+    )
+
+    assert result.value == {"payload": '{"ok": true}'}
+    assert len(provider.requests) == 2
+    assert gate_calls == [{"payload": "fallback-valid-but-gate-fails"}, {"payload": '{"ok": true}'}]
+    assert "provider output omitted" in provider.requests[1].payload_text

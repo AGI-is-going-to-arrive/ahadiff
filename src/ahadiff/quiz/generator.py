@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import tempfile
 from dataclasses import dataclass, replace
 from importlib.resources import files
@@ -20,7 +21,7 @@ from ahadiff.contracts import (
     ReviewCard,
     compute_runtime_eval_bundle_version,
 )
-from ahadiff.core.errors import InputError
+from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.i18n import prompt_language_instruction
 from ahadiff.lesson.generator import load_redacted_run_bundle
@@ -41,6 +42,7 @@ from ahadiff.llm.structured import schema_spec_for, structured_request_kwargs
 from ahadiff.safety.ignore import AllowlistPolicy
 from ahadiff.safety.redact import redaction_pipeline
 
+from .distractor_gate import build_distractor_gate_report, write_distractor_gate_report
 from .misconception import (
     MisconceptionCard,
     build_misconception_prompt_payload,
@@ -68,6 +70,7 @@ class QuizArtifactPaths:
     quiz_path: Path
     cards_path: Path | None = None
     misconception_path: Path | None = None
+    distractor_gate_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -81,9 +84,11 @@ class _ResolvedAnchor:
 
 
 _PROMPT_FILENAME = "quiz_generate.md"
+log = logging.getLogger(__name__)
 _PROMPT_NAME = "quiz.generate"
 _MISCONCEPTION_PROMPT_NAME = "quiz.misconception_card"
 _MISCONCEPTION_ARTIFACT_NAME = "misconception_cards.jsonl"
+_DISTRACTOR_GATE_ARTIFACT_NAME = "distractor_gate.json"
 _VALID_PRIVACY_MODES = frozenset({"strict_local", "redacted_remote", "explicit_remote"})
 _MAX_RUN_ARTIFACT_TEXT_BYTES = 16 * 1024 * 1024
 _QUIZ_OUTPUT_TOKEN_CAP = 18_000
@@ -171,13 +176,22 @@ def generate_quiz_from_run(
     quiz_dir = run_path / "quiz"
     quiz_path = quiz_dir / "quiz.jsonl"
     misconception_path = quiz_dir / _MISCONCEPTION_ARTIFACT_NAME
+    distractor_gate_path = quiz_dir / _DISTRACTOR_GATE_ARTIFACT_NAME
     write_quiz_questions_jsonl(quiz_path, questions, overwrite=overwrite)
     write_misconception_cards(list(misconception_cards), misconception_path)
+    try:
+        write_distractor_gate_report(
+            distractor_gate_path,
+            build_distractor_gate_report(run_id=run_id, questions=questions),
+        )
+    except (OSError, ValueError, InputError, StorageError) as exc:
+        log.warning("distractor gate report write failed: %s", type(exc).__name__)
     return (
         QuizArtifactPaths(
             quiz_dir=quiz_dir,
             quiz_path=quiz_path,
             misconception_path=misconception_path,
+            distractor_gate_path=distractor_gate_path,
         ),
         questions,
     )

@@ -11,6 +11,7 @@ test.describe('accessibility', () => {
     ['/', 'Dashboard'],
     ['/#/welcome', 'Landing'],
     ['/#/run/test-run/lesson', 'Lesson'],
+    ['/#/run/test-run?tab=artifacts', 'RunDetailArtifacts'],
     ['/#/run/test-run/diff', 'Diff'],
     ['/#/run/test-run/quiz', 'Quiz'],
     ['/#/review', 'Review'],

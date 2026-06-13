@@ -595,6 +595,41 @@ test.describe('media features', () => {
     expect(values.background).toBe(values.expectedBg);
   });
 
+  test('forced-colors active: run detail advisory card visible', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await page.goto('/#/run/test-run?tab=artifacts');
+
+    const card = page.locator('.run-detail__advisory-card').first();
+    await expect(card).toBeVisible();
+    const values = await card.evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.borderColor = 'CanvasText';
+      probe.style.backgroundColor = 'Canvas';
+      document.body.append(probe);
+      const result = {
+        borderColor: getComputedStyle(el).borderTopColor,
+        background: getComputedStyle(el).backgroundColor,
+        expectedBorder: getComputedStyle(probe).borderTopColor,
+        expectedBg: getComputedStyle(probe).backgroundColor,
+      };
+      probe.remove();
+      return result;
+    });
+    expect(values.borderColor).toBe(values.expectedBorder);
+    expect(values.background).toBe(values.expectedBg);
+  });
+
+  test('small viewport: run detail advisory artifacts do not overflow horizontally', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/#/run/test-run?tab=artifacts');
+
+    await expect(page.locator('.run-detail__advisory-artifacts')).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
   test('print emulation: ratchet benchmark transparency grid visible', async ({ page }) => {
     await page.goto('/#/ratchet');
 

@@ -60,6 +60,29 @@ async function activateControlWithKeyboard(page: Page, control: Locator): Promis
   await page.keyboard.press('Enter');
 }
 
+async function expandDetails(summary: Locator, details: Locator): Promise<void> {
+  await expect(summary).toBeVisible();
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const isOpen = await details.evaluate((node) => {
+      return node instanceof HTMLDetailsElement ? node.open : false;
+    });
+    if (isOpen) return;
+
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    try {
+      await expect(details).toHaveJSProperty('open', true, { timeout: 1500 });
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Details did not expand');
+}
+
 async function clickPressedToggle(button: Locator): Promise<void> {
   await expect(button).toBeVisible();
   let lastError: unknown = null;
@@ -1182,13 +1205,14 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.goto('/#/guide');
 
     const accordions = page.locator('.guide-accordion');
-    await expect(accordions.first()).toBeVisible();
+    const firstAccordion = accordions.first();
+    await expect(firstAccordion).toBeVisible();
 
-    const firstSummary = page.locator('.guide-accordion__summary').first();
-    await firstSummary.click();
+    const firstSummary = firstAccordion.locator('.guide-accordion__summary');
+    await expandDetails(firstSummary, firstAccordion);
 
     // After expanding, the body should be visible
-    await expect(page.locator('.guide-accordion__body').first()).toBeVisible();
+    await expect(firstAccordion.locator('.guide-accordion__body')).toBeVisible();
   });
 
   test('Guide — command blocks are present and copyable', async ({ page }) => {

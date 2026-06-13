@@ -98,24 +98,26 @@ def _judge_request(model: str) -> ProviderRequest:
             "+    return 2",
         ]
     )
+    payload_text = (
+        "You are AhaDiff's live LLM judge. Return only JSON with keys "
+        '"verdict" and "rationale". Use verdict PASS if the claim is supported, '
+        "otherwise FAIL.\n\n"
+        f"Diff evidence:\n{diff}\n\n"
+        "Claim: example.py adds answer(), and answer() returns 2."
+    )
     return ProviderRequest(
         prompt_name="live_llm_judge",
         prompt_fingerprint="live-llm-judge-v1",
         prompt_version="live-llm-judge-v1",
         eval_bundle_version="live-eval-bundle-v1",
         model=model,
-        payload_text=(
-            "You are AhaDiff's live LLM judge. Return only JSON with keys "
-            '"verdict" and "rationale". Use verdict PASS if the claim is supported, '
-            "otherwise FAIL.\n\n"
-            f"Diff evidence:\n{diff}\n\n"
-            "Claim: example.py adds answer(), and answer() returns 2."
-        ),
+        payload_text=payload_text,
         diff_content=diff,
         source_ref="live_llm_judge_fixture",
         output_lang="en",
-        privacy_mode="strict_local",
-        redaction_config="none",
+        privacy_mode="redacted_remote",
+        redacted_payload_text=payload_text,
+        redaction_config="live_llm_judge_fixture",
         max_output_tokens=160,
         response_format="json",
     )
@@ -245,7 +247,7 @@ def test_live_spec_semantic_alignment_review_writes_artifact(tmp_path: Path) -> 
                 "source_kind": "patch_file",
                 "capability_level": 3,
                 "degraded_flags": {},
-                "privacy_mode": "explicit_remote",
+                "privacy_mode": "redacted_remote",
             }
         ),
         encoding="utf-8",
@@ -321,7 +323,7 @@ def test_live_spec_semantic_alignment_review_writes_artifact(tmp_path: Path) -> 
                     ),
                     api_key=api_key,
                     security_config=SecurityConfig(),
-                    privacy_mode="explicit_remote",
+                    privacy_mode="redacted_remote",
                     output_lang="en",
                     request_timeout_seconds=90,
                     max_concurrent=1,

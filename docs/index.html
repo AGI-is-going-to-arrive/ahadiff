@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <title>知返 AhaDiff: AI 写完，Diff 教回</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="description" content="Local-first verified diff learning layer. Turn AI-generated git diffs into learning notes with code evidence chains." />
+<meta name="description" content="Local-first diff-anchored learning layer. Turn AI-generated git diffs into learning notes with code evidence chains and explicit claim states." />
 <meta name="theme-color" content="#FAF8F2" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -734,13 +734,13 @@ a.badge { text-decoration: none; }
 <!-- ===== Hero ===== -->
 <section class="hero container" id="hero">
   <div class="b-crown" aria-hidden="true">&Delta;</div>
-  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v1.3.4</span></div>
-  <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">Local-first Verified Diff Learning</span></div>
+  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v1.3.5</span></div>
+  <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">Local-first Diff-Anchored Learning</span></div>
   <h1 class="b-display"><span data-i18n="hero.title.pre">知返 Aha</span><span class="delta shout">Diff</span></h1>
   <p class="hero-tagline" data-i18n="hero.tagline">AI 写完，<span class="b-mark">Diff 教回</span>。</p>
   <p class="hero-tagline-en" data-i18n="hero.tagline_en">Ship with AI. <span class="b-mark">Learn it back.</span></p>
-  <p class="hero-desc" data-i18n="hero.desc">一个 local-first 的 <span class="b-mark">verified diff learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链的学习笔记、概念图谱、主动回忆测验和 SRS 复习卡。</p>
-  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.4 · pip install ahadiff</p>
+  <p class="hero-desc" data-i18n="hero.desc">一个 local-first 的 <span class="b-mark">diff-anchored learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链、claim 状态、概念图谱、主动回忆测验和 SRS 复习卡的学习记录。</p>
+  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.5 · pip install ahadiff</p>
   <div class="hero-ctas">
     <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
@@ -831,14 +831,14 @@ a.badge { text-decoration: none; }
         <div class="step-num">1</div>
         <div class="step-cmd">git diff</div>
         <h3 data-i18n="how.s1.title">捕获变更</h3>
-        <p data-i18n="how.s1.desc">捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 来源。</p>
+        <p data-i18n="how.s1.desc">捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.5 审计已逐项列出 live run。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-1">
         <div class="step-num">2</div>
         <div class="step-cmd">verify</div>
-        <h3 data-i18n="how.s2.title">AI 验证分析</h3>
-        <p data-i18n="how.s2.desc">生成 verified claims，每句解释绑定 file:line 证据。五种状态确保可信度。</p>
+        <h3 data-i18n="how.s2.title">证据链路分析</h3>
+        <p data-i18n="how.s2.desc">生成带 file:line 链接的 claim 状态。S1 语义蕴含仍是私有 shadow-only 测量，不是语义证明。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-2">
@@ -973,7 +973,7 @@ a.badge { text-decoration: none; }
         <div class="arch-num">1</div>
         <div class="arch-layer-name">Diff Capture</div>
         <div class="arch-layer-sub" data-i18n="arch.l1">worktree / range / since / patch / URL / compare</div>
-        <div class="arch-tooltip" data-i18n="arch.l1.tip">10 capture sources, including file and directory compare</div>
+        <div class="arch-tooltip" data-i18n="arch.l1.tip">10 capture modes; v1.3.5 validation records capture and live LLM coverage separately</div>
       </div>
       <div class="arch-layer al-2 reveal reveal-delay-1">
         <div class="arch-num">2</div>
@@ -1056,7 +1056,7 @@ a.badge { text-decoration: none; }
         <div><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
         <div>&nbsp;</div>
         <div><span class="ok">&check; </span><span data-i18n="demo.t1">Captured 3 files, 47 lines changed</span></div>
-        <div><span class="ok">&check; </span><span data-i18n="demo.t2">Generated 12 verified claims</span> <span class="info">(10 verified, 2 weak)</span></div>
+        <div><span class="ok">&check; </span><span data-i18n="demo.t2">Generated 12 claim states</span> <span class="info">(10 verified, 2 weak)</span></div>
         <div><span class="ok">&check; </span><span data-i18n="demo.t3">Created lesson</span> <span class="info">(full/hint/compact)</span></div>
         <div><span class="ok">&check; </span><span data-i18n="demo.t4">Generated 5 quiz questions</span></div>
         <div><span class="ok">&check; </span>Score: <span class="score">86/100</span> (PASS) <span class="info">; weakest: quiz_transfer</span></div>
@@ -1185,7 +1185,7 @@ a.badge { text-decoration: none; }
         </tbody>
       </table>
     </div>
-    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整命令和 10 种捕获来源见使用指南。</p>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整命令和 10 种捕获模式见使用指南；macOS 本地 gate 和 10 种 live LLM 矩阵已记录，远端 gate 仍以验证审计为准。</p>
   </div>
 </section>
 
@@ -1271,7 +1271,7 @@ a.badge { text-decoration: none; }
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
   </div>
   <p data-i18n="footer.credit">Made by the AhaDiff team.</p>
-  <div class="footer-version">v1.3.4</div>
+  <div class="footer-version">v1.3.5</div>
 </footer>
 
 <script>
@@ -1283,19 +1283,19 @@ const T = {
   "nav.features": { zh: "特性", en: "Features" },
   "nav.arch": { zh: "架构", en: "Architecture" },
   "nav.start": { zh: "开始", en: "Start" },
-  "hero.eyebrow": { zh: "Local-first · v1.3.4", en: "Local-first · v1.3.4" },
-  "hero.badge": { zh: "Local-first 验证式 Diff 学习", en: "Local-first Verified Diff Learning" },
+  "hero.eyebrow": { zh: "Local-first · v1.3.5", en: "Local-first · v1.3.5" },
+  "hero.badge": { zh: "Local-first Diff 锚定学习", en: "Local-first Diff-Anchored Learning" },
   "hero.title.pre": { zh: "知返 Aha", en: "Aha" },
   "hero.tagline": { zh: 'AI 写完，<span class="b-mark">Diff 教回</span>。', en: 'Ship with AI. <span class="b-mark">Learn it back.</span>' },
   "hero.tagline_en": { zh: 'Ship with AI. <span class="b-mark">Learn it back.</span>', en: 'AI 写完，<span class="b-mark">Diff 教回</span>。' },
   "hero.desc": {
-    zh: '一个 local-first 的 <span class="b-mark">verified diff learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链的学习笔记、概念图谱、主动回忆测验和 SRS 复习卡。',
-    en: 'A local-first <span class="b-mark">verified diff learning layer</span>. Transforms git diffs from AI coding tools like Claude, Codex, and Cursor into learning notes with code evidence chains, concept graphs, active recall quizzes, and SRS review cards.'
+    zh: '一个 local-first 的 <span class="b-mark">diff-anchored learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链、claim 状态、概念图谱、主动回忆测验和 SRS 复习卡的学习记录。',
+    en: 'A local-first <span class="b-mark">diff-anchored learning layer</span>. Transforms git diffs from AI coding tools like Claude, Codex, and Cursor into learning notes with code evidence chains, claim states, concept graphs, active recall quizzes, and SRS review cards.'
   },
   "quote.core": { zh: "每一行 AI 写的代码，都应该能把学习教回给你。", en: "Every line of AI-written code should teach you something back." },
-  "hero.status": { zh: "v1.3.4 · pip install ahadiff", en: "v1.3.4 · pip install ahadiff" },
+  "hero.status": { zh: "v1.3.5 · pip install ahadiff", en: "v1.3.5 · pip install ahadiff" },
   "hero.cta1": { zh: "开始使用", en: "Get Started" },
-  "hero.insight_title": { zh: "AhaDiff 验证课文", en: "AhaDiff Verified Lesson" },
+  "hero.insight_title": { zh: "AhaDiff 证据链课程", en: "AhaDiff Evidence-Linked Lesson" },
   "hero.claim1": {
     zh: "添加了显式算法固定 (HS256)，防止算法混淆攻击",
     en: "Added explicit algorithm pinning (HS256) to prevent algorithm confusion attacks"
@@ -1337,13 +1337,13 @@ const T = {
   },
   "how.s1.title": { zh: "捕获变更", en: "Capture Changes" },
   "how.s1.desc": {
-    zh: "捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 来源。",
-    en: "Capture 10 diff sources, including worktree, revision ranges, time windows, patch URLs, and file or directory comparisons."
+    zh: "捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.5 审计已逐项列出 live run。",
+    en: "Capture 10 diff modes, including worktree, revision ranges, time windows, patch URLs, and file or directory comparisons; release validation records capture coverage separately from live LLM lesson generation, and the v1.3.5 audit lists each live run."
   },
-  "how.s2.title": { zh: "AI 验证分析", en: "AI Verified Analysis" },
+  "how.s2.title": { zh: "证据链路分析", en: "Evidence-Linked Analysis" },
   "how.s2.desc": {
-    zh: "生成 verified claims，每句解释绑定 file:line 证据。五种状态确保可信度。",
-    en: "Generate verified claims with file:line evidence bindings. Five states ensure trustworthiness."
+    zh: "生成带 file:line 链接的 claim 状态。S1 语义蕴含仍是私有 shadow-only 测量，不是语义证明。",
+    en: "Generate claim states with file:line links. S1 semantic entailment remains private shadow-only measurement, not semantic proof."
   },
   "how.s3.title": { zh: "生成学习材料", en: "Generate Learning Materials" },
   "how.s3.desc": {
@@ -1363,8 +1363,8 @@ const T = {
   },
   "feat.f1.title": { zh: "Verified Claims", en: "Verified Claims" },
   "feat.f1.desc": {
-    zh: "每句解释都链接到 file:line 代码证据。5 种 claim 状态 (verified / weak / not_proven / contradicted / rejected) 确保可信。",
-    en: "Every explanation links to file:line code evidence. 5 claim states (verified / weak / not_proven / contradicted / rejected) ensure trust."
+    zh: "解释会链接到 file:line 代码证据，并显示 5 种 claim 状态 (verified / weak / not_proven / contradicted / rejected)。",
+    en: "Explanations link to file:line code evidence and show 5 claim states (verified / weak / not_proven / contradicted / rejected)."
   },
   "feat.f2.title": { zh: "FSRS 间隔重复", en: "FSRS Spaced Repetition" },
   "feat.f2.desc": {
@@ -1410,7 +1410,7 @@ const T = {
   "arch.l0": { zh: "ClaimStatus / RunSource / EvalBundle / EventLog", en: "ClaimStatus / RunSource / EvalBundle / EventLog" },
   "arch.l0.tip": { zh: "核心契约冻结：不可变类型定义", en: "Core contract freeze: immutable type definitions" },
   "arch.l1": { zh: "worktree / range / since / patch / URL / compare", en: "worktree / range / since / patch / URL / compare" },
-  "arch.l1.tip": { zh: "10 种捕获来源，包含文件和目录对比", en: "10 capture sources, including file and directory compare" },
+  "arch.l1.tip": { zh: "10 种捕获模式；v1.3.5 验证按捕获与 live LLM 分开记录", en: "10 capture modes; v1.3.5 validation records capture and live LLM coverage separately" },
   "arch.l2": { zh: "2a 上下文组装 + 2b 安全门 + 2c 预算", en: "2a Assembly + 2b Safety Gate + 2c Budget" },
   "arch.l2.tip": { zh: "仓库文件、密钥扫描、token 预算", en: "Repo files, secret scan, token budget" },
   "arch.l3": { zh: "prompts/*.md + claim 提取", en: "prompts/*.md + claim extraction" },
@@ -1430,7 +1430,7 @@ const T = {
     en: "Run ahadiff in any git repo for instant learning feedback with evidence chains."
   },
   "demo.t1": { zh: "捕获 3 个文件，47 行变更", en: "Captured 3 files, 47 lines changed" },
-  "demo.t2": { zh: "生成 12 条验证声明", en: "Generated 12 verified claims" },
+  "demo.t2": { zh: "生成 12 条 claim 状态", en: "Generated 12 claim states" },
   "demo.t3": { zh: "创建学习笔记", en: "Created lesson" },
   "demo.t4": { zh: "生成 5 道测验题", en: "Generated 5 quiz questions" },
   "demo.t5": { zh: "正在打开", en: "Opening" },
@@ -1527,7 +1527,7 @@ const T = {
   "cmds.watch": { zh: "工作区变更自动 learn", en: "Auto-learn on working-tree changes" },
   "cmds.hooksauto": { zh: "每次 commit 后后台自动 learn", en: "Background auto-learn after each commit" },
   "cmds.mcp": { zh: "面向 AI 工具的只读 MCP server（7 个工具）", en: "Read-only MCP server for AI tools (7 tools)" },
-  "cmds.footnote": { zh: "完整命令和 10 种捕获来源见使用指南。", en: "See the User Guide for the full command set and all 10 capture sources." },
+  "cmds.footnote": { zh: "完整命令和 10 种捕获模式见使用指南；macOS 本地 gate 和 10 种 live LLM 矩阵已记录，远端 gate 仍以验证审计为准。", en: "See the User Guide for the full command set and all 10 capture modes; the macOS local gate and 10-mode live LLM matrix are recorded, while remote gates remain in the validation audit." },
   "faq.eyebrow": { zh: "常见问题", en: "FAQ" },
   "faq.title": { zh: "你可能会问", en: "You Might Be Wondering" },
   "faq.q1": { zh: "我的代码会被上传吗？", en: "Does my code get uploaded?" },

@@ -128,6 +128,42 @@ export const runArtifactEnvelopeSchema = z.object({
   content_lang: z.string().min(1).nullable().optional(),
 });
 
+const distractorGateEvidenceValueSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.array(z.string()),
+]);
+
+export const distractorGateFindingSchema = z
+  .object({
+    question_id: z.string().min(1),
+    rule: z.string().min(1),
+    severity: z.literal('advisory'),
+    would_block: z.literal(false),
+    would_block_locked_reason: z.literal('no_historical_fp_fixture').optional(),
+    message: z.string().min(1),
+    evidence: z.record(z.string().min(1), distractorGateEvidenceValueSchema),
+  })
+  .strict();
+
+export const distractorGateReportSchema = z
+  .object({
+    schema: z.literal('ahadiff.quiz_distractor_gate'),
+    schema_version: z.number().int().positive(),
+    mode: z.literal('advisory'),
+    run_id: z.string().min(1),
+    questions_checked: z.number().int().nonnegative(),
+    findings: z.array(distractorGateFindingSchema),
+    summary: z
+      .object({
+        would_block: z.literal(0),
+        advisory: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
 /* ─────────────── 3b. ScoreReport payload inside RunArtifactEnvelope.content ─────────────── */
 
 export const scoreDimensionSchema = z
