@@ -136,8 +136,8 @@ ahadiff review           # 复习过去生成的卡片
 - **自动迭代**：`ahadiff improve-run <run_id>` 在已有 run 上重新生成 lesson，仅当确定性评分严格更高时才保留新结果（另存为独立 run，不改动原 run）——任何安装方式（含 `pip`）都可用。另一个 `ahadiff improve` 命令用于调优 AhaDiff 自身的生成 prompt，仅在 AhaDiff 源码 checkout 内可用。
 - **隐私**：三档模式：strict_local、redacted_remote、explicit_remote；默认 strict_local。
 - **i18n**：WebUI 与 prompt 输出语言支持中英文；CLI help 与多数 CLI 诊断仍为英文。
-- **跨平台**：macOS 是当前本地 RC 验证平台；Linux、Windows、Remote CI 和 Antigravity 在本候选版重新跑通前保持 Unknown/blocked。`--compare-dir` 与 `hooks` 安装目标仅支持 macOS/Linux。安装写入和回滚使用 atomic replace；POSIX 会在 replace 前恢复文件 mode，Windows 使用 replace 后的 best-effort mode 恢复。
-- **验证范围**：v1.3.5 release-candidate 的 macOS 本地 gate 和 10 种 live LLM lesson 矩阵已记录在 `docs/VALIDATION_AUDIT.zh.md`。Linux、Windows、Remote CI、Antigravity 和 release workflow dry run 仍为 Unknown/blocked，因此 PyPI publish 仍 blocked。
+- **跨平台**：macOS 是本地 RC 验证平台；v1.3.5 RC 分支已通过远端 Linux、Windows runtime、Backend CI 和 Frontend CI gate。Antigravity 在真实检查跑通前仍为 Unknown/blocked。`--compare-dir` 与 `hooks` 安装目标仅支持 macOS/Linux。安装写入和回滚使用 atomic replace；POSIX 会在 replace 前恢复文件 mode，Windows 使用 replace 后的 best-effort mode 恢复。
+- **验证范围**：v1.3.5 release-candidate 的 macOS 本地 gate、10 种 live LLM lesson 矩阵、release workflow dry run、Backend CI 和 Frontend CI 已记录在 `docs/VALIDATION_AUDIT.zh.md`。PyPI publish 仍 blocked，直到 maintainer 明确确认。
 - **安全**：URL secret 脱敏、provider URL 校验、provider API-key 环境变量校验、输入校验、prompt 注入检测、安全门禁和脱敏后的 judge 失败报告。WebUI 粘贴的 key 以引用方式存储：明文只写入 `.ahadiff/.env`（POSIX `chmod 0600`；Windows 尽力而为），`config.toml` 里只保留引用名，并且 AhaDiff 会确保这些 secret 模式被 Git 忽略（`.ahadiff/.gitignore` 不存在时创建它，已存在时只追加缺失的 secret 行），让 key 文件被正常的 `git add` 忽略（强制 `git add -f` 仍可能覆盖）。
 
 ## 界面截图

@@ -1803,7 +1803,7 @@ ahadiff config show --resolved</span></div>
       <p>本指南里的截图仅为示例。它们不含任何真实 provider 凭证、仓库内容或用户数据。</p>
 
       <h3>平台支持</h3>
-      <p class="g-lead">macOS 是当前本地 RC 验证平台；Linux、Windows、Remote CI 和 Antigravity 在本候选版 gate 重跑前保持 Unknown/blocked。两个功能仅限 POSIX。</p>
+      <p class="g-lead">macOS 是本地 RC 验证平台；v1.3.5 RC 分支已通过远端 Linux、Windows runtime、Backend CI 和 Frontend CI gate。Antigravity 在真实检查跑通前仍为 Unknown/blocked。两个功能仅限 POSIX。</p>
       <div class="cmp-wrap">
         <table class="cmp-table">
           <thead><tr><th>功能</th><th>macOS &middot; Linux</th><th>Windows</th></tr></thead>
@@ -1829,11 +1829,12 @@ ahadiff config show --resolved</span></div>
             <span class="badge"><span class="badge-dot react"></span>viewer Vitest + build</span>
             <span class="badge">i18n parity</span>
             <span class="badge">macOS 本地 RC gate 已记录</span>
-            <span class="badge">远端 gate Unknown/blocked</span>
+            <span class="badge">远端 CI + release dry run 已通过</span>
+            <span class="badge">Antigravity Unknown/blocked</span>
           </div>
         </div>
       </div>
-      <div class="g-note">本指南里的 10 种 learn 口径指捕获覆盖；只有验证审计逐项列出 command、run_id、exit code 和 lesson/claims/quiz/cards 产物时，才可写成 live LLM 课程生成覆盖。v1.3.5 RC 审计已记录 10 种 live LLM run；远端 gate 状态仍以 GitHub Actions 为准，而非本文档。</div>
+      <div class="g-note">本指南里的 10 种 learn 口径指捕获覆盖；只有验证审计逐项列出 command、run_id、exit code 和 lesson/claims/quiz/cards 产物时，才可写成 live LLM 课程生成覆盖。v1.3.5 RC 审计已记录 10 种 live LLM run 和最终远端 workflow ID；PyPI publish 仍需 maintainer 明确确认。</div>
     </section>
 
     <!-- ===== Footer ===== -->

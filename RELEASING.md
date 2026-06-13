@@ -26,10 +26,11 @@ this.
 - A3 quiz distractor analysis is diagnostic/advisory-only. It is not a blocking gate.
 - The 10-mode learn claim means dry-run capture coverage unless the validation log lists each
   live LLM command, `run_id`, exit code, and lesson/claims/quiz/card artifacts.
-- Current local note: the v1.3.5 macOS local RC gate and 10-mode live LLM matrix have been
-  recorded in `docs/VALIDATION_AUDIT.zh.md`. Because push is intentionally held back, the
-  release workflow dry run, Linux gate, Windows gate, Remote CI, and Antigravity remain
-  `Unknown/blocked`.
+- Current v1.3.5 RC note: the macOS local gate, 10-mode live LLM matrix, release workflow dry
+  run, Linux gate, Windows runtime gate, Backend CI, and Frontend CI are recorded in
+  `docs/VALIDATION_AUDIT.zh.md` for branch `release/v1.3.5-rc`. Antigravity remains
+  `Unknown/blocked` until a real Antigravity check is run, and PyPI publish still requires
+  explicit maintainer confirmation.
 
 ---
 
