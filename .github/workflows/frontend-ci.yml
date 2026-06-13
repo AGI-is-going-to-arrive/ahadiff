@@ -53,6 +53,9 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+      - name: Install Chromium for browser-backed unit tests
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Unit tests
         run: pnpm vitest run
 
