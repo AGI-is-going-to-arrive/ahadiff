@@ -31,6 +31,15 @@ and a \`# learn-from-diff\` marker was added.
 the project name instead of a generic greeting.
 \`demo.py:3\` — evidence: line 3 shows the new return value.`;
 
+const SAMPLE_LESSON_ZH = `## 这次改了什么
+
+返回值从 \`"world"\` 改成了 \`"AhaDiff"\`，
+并新增了一个 \`# learn-from-diff\` 标记。
+
+**声明 c007**（已验证）：该函数现在返回
+项目名，而不是通用的问候语。
+\`demo.py:3\` — 证据：第 3 行展示了新的返回值。`;
+
 const STEP_KEYS = ['01', '02', '03', '04', '05'] as const;
 const FEATURE_CARDS = [
   {
@@ -175,7 +184,11 @@ export default function LandingPage() {
     ? `/run/${encodeURIComponent(activeRunId)}${liveLessonMissing ? '' : '/lesson'}`
     : '/';
   const demoDiff = liveDemo ? liveDemo.diff : SAMPLE_DIFF;
-  const demoLesson = liveDemo ? liveDemo.lesson : SAMPLE_LESSON;
+  const demoLesson = liveDemo
+    ? liveDemo.lesson
+    : locale.startsWith('zh')
+      ? SAMPLE_LESSON_ZH
+      : SAMPLE_LESSON;
   const renderedLesson = useMemo(
     () => (demoLesson ? renderMarkdownProse(demoLesson, 'hero-demo') : null),
     [demoLesson],

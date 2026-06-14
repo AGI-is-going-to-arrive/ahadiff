@@ -135,7 +135,7 @@ const PROVIDER_EXAMPLES: Record<string, ProviderExample> = {
   azure: {
     base_url: 'https://{resource}.openai.azure.com',
     model_name: 'gpt-5.5',
-    api_key: 'your Azure OpenAI key',
+    api_key: '<azure-openai-key>',
   },
   newapi: {
     base_url: 'https://api.newapi.com/v1',
@@ -1345,7 +1345,13 @@ export function ProviderEditForm({
           className="provider-card__input"
           value={draft.api_key}
           onChange={(e) => setField('api_key', e.target.value)}
-          placeholder={isNew ? example.api_key : t('Settings_page.provider_api_key_keep_ph')}
+          placeholder={
+            !isNew
+              ? t('Settings_page.provider_api_key_keep_ph')
+              : draft.provider_class === 'ollama'
+                ? t('Settings_page.provider_api_key_optional_ph')
+                : example.api_key
+          }
           aria-describedby={`provider-apikey-hint-${isNew ? 'new' : draft.alias}`}
         />
         <p

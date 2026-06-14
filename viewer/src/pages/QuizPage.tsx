@@ -70,7 +70,6 @@ function isReviewRating(rating: SrsRating): rating is ReviewAnswer {
 }
 
 const PEEKED_REVIEW_RATING_BLOCKLIST = new Set<SrsReviewRating>(['easy', 'good']);
-const PEEKED_REVIEW_RATING_ERROR = 'peeked cards cannot be reviewed as good or easy; use hard or wrong';
 const QUIZ_KINDS = ['guided', 'recall', 'transfer'] as const;
 const QUIZ_KIND_LABEL_KEYS: Record<(typeof QUIZ_KINDS)[number], MessageKey> = {
   guided: 'Quiz.mode_guided',
@@ -282,11 +281,11 @@ export default function QuizPage() {
           ? selectedChoiceLabelFor(currentQuiz, answered[qid]?.answer ?? '')
           : null;
         if (hasChoices(currentQuiz) && selectedChoiceLabel === null) {
-          setSignalError('selected choice is missing');
+          setSignalError(t('Quiz.signal_error_choice_missing'));
           return false;
         }
         if (peekedThisSession && PEEKED_REVIEW_RATING_BLOCKLIST.has(rating)) {
-          setSignalError(PEEKED_REVIEW_RATING_ERROR);
+          setSignalError(t('Quiz.signal_error_peek_rating'));
           return false;
         }
 
@@ -311,7 +310,7 @@ export default function QuizPage() {
       setRated((prev) => ({ ...prev, [qid]: true }));
       return true;
     },
-    [answered, currentQuiz, runId],
+    [answered, currentQuiz, runId, t],
   );
 
   const ratedCount = Object.keys(rated).length;
