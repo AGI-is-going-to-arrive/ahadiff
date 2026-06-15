@@ -272,14 +272,14 @@ def validate_state_path_no_symlinks(path: Path, *, allow_missing_leaf: bool = Tr
     return path
 
 
-def ensure_state_parent_dir(path: Path) -> Path:
+def ensure_state_parent_dir(path: Path, *, require_gitignore: bool = False) -> Path:
     parent = path.parent
     validate_state_path_no_symlinks(parent, allow_missing_leaf=True)
     parent.mkdir(parents=True, exist_ok=True)
     validate_state_path_no_symlinks(parent, allow_missing_leaf=False)
     state_dir = _state_dir_ancestor(parent)
     if state_dir is not None:
-        ensure_state_gitignore(state_dir)
+        ensure_state_gitignore(state_dir, strict=require_gitignore)
     return parent
 
 
@@ -290,18 +290,18 @@ def _state_dir_ancestor(path: Path) -> Path | None:
     )
 
 
-def ensure_state_gitignore(state_dir: Path) -> Path:
+def ensure_state_gitignore(state_dir: Path, *, strict: bool = False) -> Path:
     validate_state_dir_path(state_dir)
     gitignore_path = state_dir / ".gitignore"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(str(gitignore_path), flags, 0o644)
     except FileExistsError:
-        _ensure_existing_state_gitignore_patterns(gitignore_path)
+        _ensure_existing_state_gitignore_patterns(gitignore_path, strict=strict)
         return gitignore_path
     except OSError as exc:
         if exc.errno == errno.EEXIST:
-            _ensure_existing_state_gitignore_patterns(gitignore_path)
+            _ensure_existing_state_gitignore_patterns(gitignore_path, strict=strict)
             return gitignore_path
         raise StorageError(f"failed to create state gitignore: {gitignore_path}") from exc
     try:
@@ -314,7 +314,7 @@ def ensure_state_gitignore(state_dir: Path) -> Path:
     return gitignore_path
 
 
-def ensure_global_config_gitignore(config_dir: Path) -> Path:
+def ensure_global_config_gitignore(config_dir: Path, *, strict: bool = False) -> Path:
     validate_state_dir_path(config_dir)
     gitignore_path = config_dir / ".gitignore"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
@@ -324,6 +324,7 @@ def ensure_global_config_gitignore(config_dir: Path) -> Path:
         _ensure_existing_state_gitignore_patterns(
             gitignore_path,
             patterns=_GLOBAL_CONFIG_GITIGNORE_PATTERNS,
+            strict=strict,
         )
         return gitignore_path
     except OSError as exc:
@@ -331,6 +332,7 @@ def ensure_global_config_gitignore(config_dir: Path) -> Path:
             _ensure_existing_state_gitignore_patterns(
                 gitignore_path,
                 patterns=_GLOBAL_CONFIG_GITIGNORE_PATTERNS,
+                strict=strict,
             )
             return gitignore_path
         raise StorageError(f"failed to create global config gitignore: {gitignore_path}") from exc
@@ -348,31 +350,64 @@ def _ensure_existing_state_gitignore_patterns(
     gitignore_path: Path,
     *,
     patterns: tuple[str, ...] = _STATE_GITIGNORE_PATTERNS,
+    strict: bool = False,
 ) -> None:
     expected_stat = _existing_state_gitignore_regular_stat(gitignore_path)
     if expected_stat is None:
+        _raise_unsafe_state_gitignore(
+            gitignore_path,
+            "must be a regular non-symlink file",
+            strict=strict,
+        )
         return
     flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
     try:
         fd = os.open(str(gitignore_path), flags)
-    except OSError:
+    except OSError as exc:
+        _raise_unsafe_state_gitignore(
+            gitignore_path,
+            "could not be opened safely",
+            strict=strict,
+            cause=exc,
+        )
         return
     try:
         path_stat = os.fstat(fd)
         if not _state_gitignore_stat_is_safe(path_stat):
+            _raise_unsafe_state_gitignore(
+                gitignore_path,
+                "must be a regular non-reparse non-hardlink file",
+                strict=strict,
+            )
             return
         if (path_stat.st_dev, path_stat.st_ino) != (
             expected_stat.st_dev,
             expected_stat.st_ino,
         ):
+            _raise_unsafe_state_gitignore(
+                gitignore_path,
+                "changed during open",
+                strict=strict,
+            )
             return
         try:
             raw_text = os.read(fd, max(path_stat.st_size, 0))
-        except OSError:
+        except OSError as exc:
+            _raise_unsafe_state_gitignore(
+                gitignore_path,
+                "could not be read safely",
+                strict=strict,
+                cause=exc,
+            )
             return
         try:
             text = raw_text.decode("utf-8")
         except UnicodeDecodeError:
+            _raise_unsafe_state_gitignore(
+                gitignore_path,
+                "must be valid UTF-8",
+                strict=strict,
+            )
             return
         existing_lines = set(text.splitlines())
         missing = [line for line in patterns if line not in existing_lines]
@@ -384,6 +419,21 @@ def _ensure_existing_state_gitignore_patterns(
         os.write(fd, append_text.encode("utf-8"))
     finally:
         os.close(fd)
+
+
+def _raise_unsafe_state_gitignore(
+    gitignore_path: Path,
+    reason: str,
+    *,
+    strict: bool,
+    cause: BaseException | None = None,
+) -> None:
+    if not strict:
+        return
+    error = StorageError(f"unsafe state gitignore: {gitignore_path}: {reason}")
+    if cause is not None:
+        raise error from cause
+    raise error
 
 
 def _existing_state_gitignore_regular_stat(gitignore_path: Path) -> os.stat_result | None:

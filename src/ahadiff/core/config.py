@@ -491,7 +491,7 @@ _PROVIDER_BASE_URL_TRIM_SUFFIXES: tuple[str, ...] = (
     "/responses",
 )
 _PROVIDER_BASE_URL_TRIM_CLASSES: frozenset[str] = frozenset(
-    {"openai", "openai_responses", "newapi", "lmstudio"}
+    {"openai", "openai_responses", "newapi", "lmstudio", "openai_compat"}
 )
 _PROVIDER_METADATA_HOSTS = frozenset(
     {"169.254.169.254", "metadata.google.internal", "metadata.azure.com", "fd00:ec2::254"}
@@ -1015,10 +1015,10 @@ def _write_provider_env_lines_atomic(
     global_env: bool = False,
 ) -> None:
     try:
-        ensure_state_parent_dir(env_path)
+        ensure_state_parent_dir(env_path, require_gitignore=True)
         if global_env:
             _validate_global_write_dir(env_path.parent)
-            ensure_global_config_gitignore(env_path.parent)
+            ensure_global_config_gitignore(env_path.parent, strict=True)
         _validate_existing_repo_env_file(env_path)
     except (InputError, StorageError) as exc:
         raise _repo_env_config_error(exc) from exc

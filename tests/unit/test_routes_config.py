@@ -1009,6 +1009,49 @@ def test_get_doctor_sqlite_version_always_pass(tmp_path: Path) -> None:
     assert "SQLite" in checks["sqlite_version"]["message"]
 
 
+def test_get_doctor_sqlite_runtime_gate_reflects_frozen_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    monkeypatch.setattr(routes_config_module.sqlite3, "sqlite_version", "3.51.0")
+    client = _client(state_dir)
+
+    response = client.get("/api/doctor")
+
+    assert response.status_code == 200
+    checks = {c["name"]: c for c in response.json()["checks"]}
+    assert checks["sqlite_runtime_gate"]["status"] == "fail"
+    assert "requires >= 3.51.3" in checks["sqlite_runtime_gate"]["message"]
+    assert "higher version number alone" in checks["sqlite_runtime_gate"]["message"]
+
+
+def test_get_doctor_skips_review_db_quick_check_when_sqlite_gate_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "review.sqlite").write_bytes(b"not sqlite")
+    monkeypatch.setattr(routes_config_module.sqlite3, "sqlite_version", "3.51.0")
+
+    def blocked_connect(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("doctor must not open review.sqlite after gate failure")
+
+    monkeypatch.setattr(routes_config_module, "safe_sqlite_connect", blocked_connect)
+    client = _client(state_dir)
+
+    response = client.get("/api/doctor")
+
+    assert response.status_code == 200
+    checks = {c["name"]: c for c in response.json()["checks"]}
+    assert checks["sqlite_runtime_gate"]["status"] == "fail"
+    assert checks["review_db"]["status"] == "pass"
+    assert checks["review_db_quick_check"]["status"] == "warn"
+    assert "SQLite runtime gate failed" in checks["review_db_quick_check"]["message"]
+
+
 def test_get_doctor_config_valid_pass_when_config_loads(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

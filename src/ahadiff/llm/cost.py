@@ -222,13 +222,43 @@ def resolve_model_limits(
     model_name: str,
     config: ProviderConfig,
 ) -> ResolvedModelLimits:
+    from .deepseek import is_deepseek_base_url, is_deepseek_model_name
     from .model_registry import lookup_model_limits
 
-    registry = lookup_model_limits(
-        provider_class,
-        model_name,
-        getattr(config, "model_limits_name", None),
+    model_limits_name = getattr(config, "model_limits_name", None)
+    normalized_provider_class = provider_class.strip().lower()
+    use_openrouter_registry_first = (
+        normalized_provider_class in {"openai", "openai_compat", "newapi"}
+        and not model_limits_name
+        and _is_openrouter_base_url(config.base_url)
+        and "/" in model_name
     )
+    use_deepseek_registry_first = (
+        normalized_provider_class in {"openai", "openai_compat", "newapi"}
+        and not model_limits_name
+        and is_deepseek_base_url(config.base_url)
+        and is_deepseek_model_name(model_name)
+    )
+    if use_openrouter_registry_first:
+        registry_provider_class = "openrouter"
+    elif use_deepseek_registry_first:
+        registry_provider_class = "deepseek"
+    else:
+        registry_provider_class = provider_class
+    registry = lookup_model_limits(
+        registry_provider_class,
+        model_name,
+        model_limits_name,
+    )
+    if registry is None and use_deepseek_registry_first:
+        for fallback_provider_class in _deepseek_registry_fallback_provider_classes(provider_class):
+            registry = lookup_model_limits(
+                fallback_provider_class,
+                model_name,
+                model_limits_name,
+            )
+            if registry is not None:
+                break
     warnings = list(registry.warnings if registry is not None else ())
     probed_source = getattr(config, "probed_limits_source", None)
     live_context = _positive_int_or_none(getattr(config, "probed_max_context", None))
@@ -318,6 +348,13 @@ def resolve_model_limits(
         max_input_known=_limit_source_is_known(input_source),
         max_output_known=_limit_source_is_known(output_source),
     )
+
+
+def _deepseek_registry_fallback_provider_classes(provider_class: str) -> tuple[str, ...]:
+    normalized = provider_class.strip().lower()
+    if normalized == "openai":
+        return (provider_class, "openai_compat")
+    return (provider_class,)
 
 
 def _resolve_input_limit(

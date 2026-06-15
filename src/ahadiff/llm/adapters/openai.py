@@ -4,12 +4,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 from ahadiff.contracts import ProviderCapabilities
 
+from ..deepseek import is_deepseek_provider_target
 from ..probe_limits import safe_positive_int
 from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import openai_json_schema_format
-from .thinking import reject_unsupported_thinking
+from .thinking import deepseek_chat_thinking_payload, reject_unsupported_thinking
 
 if TYPE_CHECKING:
     import httpx
@@ -46,23 +47,31 @@ def _first_positive_probe_limit(
 class OpenAIChatAdapter(AdapterBase):
     @property
     def capabilities(self) -> ProviderCapabilities:
+        base_capabilities = ProviderCapabilities(
+            supports_stream=True,
+            supports_json_mode=True,
+            supports_json_object_mode=True,
+            supports_native_json_schema=True,
+            supports_schema_name=True,
+            supports_schema_strict_flag=True,
+            supports_tool_use=True,
+            supports_temperature=True,
+            supports_rate_limit_headers=True,
+            supports_context_probe=True,
+            tokenizer_estimation="tiktoken",
+            api_family="openai",
+            api_family_version="v1",
+            provider_kind="openai_chat",
+        )
+        if is_deepseek_provider_target(self.config.base_url, self.config.model_name):
+            base_capabilities = base_capabilities.model_copy(
+                update={
+                    "supports_native_json_schema": False,
+                    "structured_output_notes": ("deepseek-json-schema-unavailable",),
+                }
+            )
         return apply_capability_overrides(
-            ProviderCapabilities(
-                supports_stream=True,
-                supports_json_mode=True,
-                supports_json_object_mode=True,
-                supports_native_json_schema=True,
-                supports_schema_name=True,
-                supports_schema_strict_flag=True,
-                supports_tool_use=True,
-                supports_temperature=True,
-                supports_rate_limit_headers=True,
-                supports_context_probe=True,
-                tokenizer_estimation="tiktoken",
-                api_family="openai",
-                api_family_version="v1",
-                provider_kind="openai_chat",
-            ),
+            base_capabilities,
             self.config.capability_overrides,
         )
 
@@ -72,7 +81,12 @@ class OpenAIChatAdapter(AdapterBase):
         *,
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
-        reject_unsupported_thinking(self.config.provider_class, request.thinking_level)
+        reject_unsupported_thinking(
+            self.config.provider_class,
+            request.thinking_level,
+            model_name=request.model,
+            base_url=self.config.base_url,
+        )
         headers = {"content-type": "application/json"}
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
@@ -85,6 +99,14 @@ class OpenAIChatAdapter(AdapterBase):
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             payload["max_tokens"] = request.max_output_tokens
+        deepseek_thinking = deepseek_chat_thinking_payload(
+            self.config.provider_class,
+            request.model,
+            self.config.base_url,
+            request.thinking_level,
+        )
+        if deepseek_thinking is not None:
+            payload.update(deepseek_thinking)
         native_format = openai_json_schema_format(request, capabilities=self.capabilities)
         if native_format is not None:
             payload["response_format"] = native_format
@@ -103,13 +125,16 @@ class OpenAIChatAdapter(AdapterBase):
         message = choice.get("message", {})
         usage = payload.get("usage", {})
         content = str(message.get("content") or "")
-        if not content:
-            content = str(message.get("reasoning_content") or "")
+        reasoning_content_value = message.get("reasoning_content")
+        reasoning_content = (
+            str(reasoning_content_value) if reasoning_content_value is not None else None
+        )
         return ProviderResponse(
             content=content,
             model_id=str(payload.get("model", self.config.model_name)),
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
+            reasoning_content=reasoning_content,
             finish_reason=choice.get("finish_reason"),
             request_id=response.headers.get("x-request-id"),
             raw_json=payload,

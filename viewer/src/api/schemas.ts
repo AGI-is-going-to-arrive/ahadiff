@@ -1040,7 +1040,7 @@ export const providerSummarySchema = z
     probe_timestamp: z.string().nullable().optional(),
     available_models: z.array(z.string()).default([]),
     scope: z.enum(['repo', 'global']).optional(),
-    overrides_global: z.boolean().optional(),
+    overrides_global: z.boolean().nullable().optional(),
   })
   .strip();
 

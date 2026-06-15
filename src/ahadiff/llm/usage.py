@@ -14,7 +14,10 @@ from typing import TYPE_CHECKING
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.paths import is_wsl2_mnt, usage_db_path
-from ahadiff.core.sqlite_util import safe_sqlite_connect
+from ahadiff.core.sqlite_util import (
+    assert_sqlite_runtime_supported,
+    safe_sqlite_connect,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,11 +30,6 @@ _SchemaSignature = tuple[int, int, int]
 _SCHEMA_INITIALIZED: dict[str, _SchemaSignature] = {}
 _SCHEMA_INIT_LOCK = threading.Lock()
 _USAGE_RECOVERY_LOCK = threading.Lock()
-_SQLITE_MIN_VERSION = (3, 51, 3)
-_SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] = {
-    (3, 50): (3, 50, 4),
-    (3, 44): (3, 44, 6),
-}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 log = logging.getLogger(__name__)
 _UsageDbFileSignature = tuple[int, int, int, int]
@@ -718,41 +716,7 @@ def _normalize_usage_time_bound(value: str, option_name: str) -> str:
 
 
 def _assert_sqlite_runtime_supported() -> None:
-    version = sqlite3.sqlite_version_info
-    if _sqlite_version_supported(version):
-        return
-    raise StorageError(
-        f"SQLite runtime {sqlite3.sqlite_version} is below {_sqlite_minimum_text()}; "
-        f"allowed backports are {_sqlite_backports_text()}. {_sqlite_runtime_remedy()}"
-    )
-
-
-def _sqlite_version_supported(version: tuple[int, int, int]) -> bool:
-    if version >= _SQLITE_MIN_VERSION:
-        return True
-    floor = _SQLITE_ALLOWED_BACKPORT_MINIMUMS.get(version[:2])
-    return floor is not None and version >= floor
-
-
-def _sqlite_minimum_text() -> str:
-    return ".".join(str(part) for part in _SQLITE_MIN_VERSION)
-
-
-def _sqlite_backports_text() -> str:
-    return ", ".join(
-        f"{'.'.join(str(part) for part in floor)}+"
-        for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
-    )
-
-
-def _sqlite_runtime_remedy() -> str:
-    return (
-        "Remedy: recreate the environment with a Python build with SQLite >= "
-        f"{_sqlite_minimum_text()} "
-        "(or an allowed backport); current python.org or Homebrew Python builds are "
-        "known options. "
-        f"This process is using Python's standard-library sqlite3 module from {sqlite3.__file__}."
-    )
+    assert_sqlite_runtime_supported()
 
 
 __all__ = [

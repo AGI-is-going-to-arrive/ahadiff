@@ -66,6 +66,7 @@ class ModelLimitsPreviewRequest(BaseModel):
 
     provider_class: ProviderClass
     model_name: str = Field(min_length=1, max_length=200)
+    base_url: str | None = Field(default=None, min_length=1, max_length=2048)
     model_limits_name: str | None = Field(default=None, min_length=1, max_length=200)
 
 

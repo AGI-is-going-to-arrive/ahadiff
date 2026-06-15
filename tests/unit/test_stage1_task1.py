@@ -17,6 +17,7 @@ import ahadiff.git.repo as repo_module
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.core import config as config_module
+from ahadiff.core import sqlite_util as sqlite_util_module
 from ahadiff.core.config import (
     DEFAULT_CONFIG,
     apply_global_env_file,
@@ -1307,10 +1308,43 @@ def test_cli_doctor_exits_non_zero_when_sqlite_gate_fails(
     result = runner.invoke(app(), ["doctor"], catch_exceptions=False)
     assert result.exit_code == 1
     assert "SQLite gate" in result.stdout
+    assert "SQLite gate requirement" in result.stdout
+    assert "higher version number alone" in result.stdout
     assert "does not satisfy the frozen doctor gate" in result.stderr
-    cli_minimum = cli_module._sqlite_gate_minimum_text()  # pyright: ignore[reportPrivateUsage]
-    assert f"Python build with SQLite >= {cli_minimum}" in result.stderr
-    assert "python.org or Homebrew Python" in result.stderr
+    cli_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    assert f"Python environment with SQLite >= {cli_minimum}" in result.stderr
+    assert "CPython's bundled sqlite3.dll is often below this gate" in result.stderr
+    assert "python.org or Homebrew Python" not in result.stderr
+
+
+def test_cli_doctor_sqlite_gate_fail_skips_review_db_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _init_git_repo(repo_root)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "review.sqlite").write_text("not a sqlite db", encoding="utf-8")
+    monkeypatch.setattr(cli_module, "_sqlite_version_tuple", lambda: (3, 42, 0))
+    monkeypatch.setattr(cli_module.sqlite3, "sqlite_version", "3.42.0")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app(),
+        ["doctor", "--repo-root", str(repo_root), "--deep"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "review.sqlite" in result.stdout
+    assert "skipped because SQLite runtime gate failed" in result.stdout
+    assert "Deep SQLite checks skipped because SQLite runtime gate failed" in result.stdout
+    assert "review.sqlite is not a valid SQLite database" not in result.stderr
+    assert "does not satisfy the frozen doctor gate" in result.stderr
+    cli_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    assert f"Python environment with SQLite >= {cli_minimum}" in result.stderr
 
 
 @pytest.mark.parametrize(
@@ -1361,53 +1395,42 @@ def test_sqlite_gate_patch_floor_contract_is_consistent_across_entrypoints(
 
     assert doctor_result.exit_code == 1
     assert backport_text in doctor_result.stdout
-    cli_minimum = cli_module._sqlite_gate_minimum_text()  # pyright: ignore[reportPrivateUsage]
-    usage_minimum = usage_module._sqlite_minimum_text()  # pyright: ignore[reportPrivateUsage]
-    review_minimum = review_database._sqlite_minimum_text()  # pyright: ignore[reportPrivateUsage]
-    assert f"Python build with SQLite >= {cli_minimum}" in doctor_result.stderr
+    cli_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    usage_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    review_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    assert f"Python environment with SQLite >= {cli_minimum}" in doctor_result.stderr
     with pytest.raises(StorageError) as usage_error:
         usage_module.connect_usage_db(usage_path, create_parent=True)
     with pytest.raises(StorageError) as review_error:
         review_database.connect_review_db(review_path, create_parent=True)
     assert backport_text in str(usage_error.value)
     assert backport_text in str(review_error.value)
-    assert f"Python build with SQLite >= {usage_minimum}" in str(usage_error.value)
-    assert f"Python build with SQLite >= {review_minimum}" in str(review_error.value)
+    assert f"Python environment with SQLite >= {usage_minimum}" in str(usage_error.value)
+    assert f"Python environment with SQLite >= {review_minimum}" in str(review_error.value)
 
 
 def test_sqlite_runtime_remedy_sentences_are_golden(monkeypatch: pytest.MonkeyPatch) -> None:
     sqlite_module_path = "/python-build/sqlite3/__init__.py"
     monkeypatch.setattr(cli_module.sqlite3, "__file__", sqlite_module_path)
 
-    cli_minimum = cli_module._sqlite_gate_minimum_text()  # pyright: ignore[reportPrivateUsage]
-    usage_minimum = usage_module._sqlite_minimum_text()  # pyright: ignore[reportPrivateUsage]
-    review_minimum = review_database._sqlite_minimum_text()  # pyright: ignore[reportPrivateUsage]
-    cli_message = cli_module._sqlite_gate_failure_message()  # pyright: ignore[reportPrivateUsage]
+    cli_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    usage_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    review_minimum = sqlite_util_module.sqlite_runtime_minimum_text()
+    cli_message = sqlite_util_module.sqlite_runtime_failure_message()
     cli_remedy = cli_message[cli_message.index("Remedy: ") :]
+    expected_remedy = (
+        "Remedy: use a Python environment with SQLite >= "
+        f"{cli_minimum} (or an allowed backport). "
+        "On Windows, CPython's bundled sqlite3.dll is often below this gate; use "
+        "conda/miniforge, replace DLLs/sqlite3.dll with a compatible SQLite build, or run "
+        "under WSL. On macOS/Linux, use Homebrew, OS packages, conda, or a Python build "
+        "linked against a compatible SQLite. "
+        f"This process is using Python's standard-library sqlite3 module from {sqlite_module_path}."
+    )
 
-    assert (
-        cli_remedy == "Remedy: recreate the environment with a Python build with SQLite >= "
-        f"{cli_minimum} "
-        "(or an allowed backport); current python.org or Homebrew Python builds are "
-        "known options. "
-        f"This process is using Python's standard-library sqlite3 module from {sqlite_module_path}."
-    )
-    assert (
-        usage_module._sqlite_runtime_remedy()  # pyright: ignore[reportPrivateUsage]
-        == "Remedy: recreate the environment with a Python build with SQLite >= "
-        f"{usage_minimum} "
-        "(or an allowed backport); current python.org or Homebrew Python builds are "
-        "known options. "
-        f"This process is using Python's standard-library sqlite3 module from {sqlite_module_path}."
-    )
-    assert (
-        review_database._sqlite_runtime_remedy()  # pyright: ignore[reportPrivateUsage]
-        == "Remedy: recreate the environment with a Python build with SQLite >= "
-        f"{review_minimum} "
-        "(or an allowed backport); current python.org or Homebrew Python builds are "
-        "known options. "
-        f"This process is using Python's standard-library sqlite3 module from {sqlite_module_path}."
-    )
+    assert cli_minimum == usage_minimum == review_minimum
+    assert cli_remedy == expected_remedy
+    assert sqlite_util_module.sqlite_runtime_remedy() == expected_remedy
 
 
 def test_cli_maint_clean_orphans_removes_tmp_runs_and_audit_tmp_files(

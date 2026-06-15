@@ -172,7 +172,7 @@ export interface ProviderSummary {
   probe_timestamp?: string | null;
   available_models?: string[];
   scope?: 'repo' | 'global';
-  overrides_global?: boolean;
+  overrides_global?: boolean | null;
 }
 
 export interface ProvidersResponse {

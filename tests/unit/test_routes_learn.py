@@ -16,10 +16,10 @@ from starlette.testclient import TestClient
 
 from ahadiff.contracts.serve_app import LearnEstimateResponse
 from ahadiff.contracts.serve_runtime import TaskInfoResponse, TaskSubmitResponse
+from ahadiff.core import sqlite_util as sqlite_util_module
 from ahadiff.core.budget import CaptureRecommendation
 from ahadiff.core.orchestrator import LearnRequest, LearnResult
 from ahadiff.core.task_runner import TaskRunner
-from ahadiff.review import database as review_database
 from ahadiff.serve import ServeState, create_app, routes_learn
 
 if TYPE_CHECKING:
@@ -1108,7 +1108,7 @@ def test_post_learn_prechecks_sqlite_runtime_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     submitted = False
-    minimum = review_database._sqlite_minimum_text()  # pyright: ignore[reportPrivateUsage]
+    minimum = sqlite_util_module.sqlite_runtime_minimum_text()
     message = f"SQLite runtime 3.51.0 is below {minimum}"
 
     def fail_sqlite_gate() -> None:

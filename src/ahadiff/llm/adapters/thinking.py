@@ -4,6 +4,11 @@ import re
 from typing import Any
 
 from ahadiff.core.errors import ProviderError
+from ahadiff.llm.deepseek import (
+    is_deepseek_base_url,
+    is_deepseek_reasoning_model_name,
+    is_deepseek_v4_thinking_model_name,
+)
 
 _ACCEPTED_THINKING_LEVELS = ("low", "medium", "high")
 _ANTHROPIC_BUDGETS: dict[str, int] = {
@@ -24,8 +29,21 @@ def normalize_thinking_level(level: str | None) -> str:
     return level.strip().lower() if level else "none"
 
 
-def thinking_policy_for(provider_class: str, model_name: str) -> dict[str, object]:
+def thinking_policy_for(
+    provider_class: str,
+    model_name: str,
+    *,
+    base_url: str | None = None,
+) -> dict[str, object]:
     provider = provider_class.strip().lower()
+    if _is_official_deepseek_v4_thinking_target(provider, model_name, base_url):
+        return _policy(
+            True,
+            "deepseek.thinking",
+            warnings=("deepseek_low_medium_effort_maps_to_high",),
+        )
+    if _is_official_deepseek_reasoning_target(provider, model_name, base_url):
+        return _policy(False, "deepseek.reasoning_content", accepted_levels=())
     if provider == "anthropic":
         if _is_anthropic_adaptive_effort_model(model_name):
             return _policy(
@@ -66,9 +84,36 @@ def _policy(
     }
 
 
-def reject_unsupported_thinking(provider_class: str, level: str | None) -> None:
+def reject_unsupported_thinking(
+    provider_class: str,
+    level: str | None,
+    *,
+    model_name: str = "",
+    base_url: str | None = None,
+) -> None:
     if normalize_thinking_level(level) != "none":
+        policy = thinking_policy_for(provider_class, model_name, base_url=base_url)
+        if bool(policy["supported"]):
+            return
         raise ProviderError(f"{provider_class} does not support thinking_level={level!r}")
+
+
+def deepseek_chat_thinking_payload(
+    provider_class: str,
+    model_name: str,
+    base_url: str,
+    level: str | None,
+) -> dict[str, object] | None:
+    policy = thinking_policy_for(provider_class, model_name, base_url=base_url)
+    if policy["payload_mode"] != "deepseek.thinking":
+        return None
+    effective = normalize_thinking_level(level)
+    if effective == "none":
+        return {"thinking": {"type": "disabled"}}
+    return {
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": _deepseek_reasoning_effort(effective),
+    }
 
 
 def anthropic_budget_tokens(level: str | None) -> int | None:
@@ -106,6 +151,40 @@ def ollama_think_value(level: str | None, model_name: str) -> bool | str:
 
 def _is_ollama_gpt_oss_model(model_name: str) -> bool:
     return "gpt-oss" in model_name.strip().lower()
+
+
+def _is_deepseek_openai_chat_provider(provider_class: str) -> bool:
+    return provider_class in {"openai", "openai_compat"}
+
+
+def _is_official_deepseek_reasoning_target(
+    provider_class: str,
+    model_name: str,
+    base_url: str | None,
+) -> bool:
+    return (
+        _is_deepseek_openai_chat_provider(provider_class)
+        and base_url is not None
+        and is_deepseek_base_url(base_url)
+        and is_deepseek_reasoning_model_name(model_name)
+    )
+
+
+def _is_official_deepseek_v4_thinking_target(
+    provider_class: str,
+    model_name: str,
+    base_url: str | None,
+) -> bool:
+    return (
+        _is_deepseek_openai_chat_provider(provider_class)
+        and base_url is not None
+        and is_deepseek_base_url(base_url)
+        and is_deepseek_v4_thinking_model_name(model_name)
+    )
+
+
+def _deepseek_reasoning_effort(level: str) -> str:
+    return "max" if level == "xhigh" else "high"
 
 
 def _is_anthropic_adaptive_effort_model(model_name: str) -> bool:

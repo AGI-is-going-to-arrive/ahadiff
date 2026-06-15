@@ -36,6 +36,7 @@ from ahadiff.review.database import (
     record_card_review,
     record_card_review_once,
     resolve_sqlite_journal_mode,
+    select_result_tsv_rows_readonly,
     set_card_queue_state,
     sync_result_event,
     upgrade_review_db,
@@ -45,6 +46,49 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 _RUNNER = CliRunner()
+
+
+def _write_minimal_result_events_db(db_path: Path, *, run_id: str) -> None:
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE result_events (
+                event_id TEXT PRIMARY KEY,
+                run_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                source_ref TEXT NOT NULL,
+                base_ref TEXT,
+                prompt_version TEXT NOT NULL,
+                eval_bundle_version TEXT NOT NULL,
+                rubric_version TEXT,
+                overall REAL NOT NULL,
+                verdict TEXT NOT NULL,
+                status TEXT NOT NULL,
+                weakest_dim TEXT NOT NULL,
+                note_json TEXT
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO result_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                f"{run_id}-event",
+                run_id,
+                "targeted_verify",
+                "2026-01-01T00:00:00Z",
+                "HEAD",
+                None,
+                "prompt",
+                "eval",
+                None,
+                1.0,
+                "PASS",
+                "counted",
+                "",
+                None,
+            ),
+        )
 
 
 def _init_git_repo(path: Path) -> None:
@@ -686,6 +730,36 @@ def test_connect_usage_db_wraps_symlink_permission_error(tmp_path: Path) -> None
         usage_module.connect_usage_db(db_path)
 
     assert isinstance(caught.value.__cause__, PermissionError)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")
+def test_select_result_tsv_rows_readonly_rejects_leaf_swap_after_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "review.sqlite"
+    attacker_path = tmp_path / "attacker.sqlite"
+    _write_minimal_result_events_db(db_path, run_id="victim-run")
+    _write_minimal_result_events_db(attacker_path, run_id="swapped-run")
+    real_lstat = review_database_module.os.lstat
+    swapped = False
+
+    def swapping_lstat(path: str | Path) -> os.stat_result:
+        nonlocal swapped
+        resolved = Path(path)
+        stat_result = real_lstat(path)
+        if resolved == db_path and not swapped:
+            db_path.unlink()
+            db_path.symlink_to(attacker_path)
+            swapped = True
+        return stat_result
+
+    monkeypatch.setattr(review_database_module.os, "lstat", swapping_lstat)
+
+    with pytest.raises(StorageError, match=r"review\.sqlite read-only open failed"):
+        select_result_tsv_rows_readonly(db_path)
+
+    assert swapped is True
 
 
 @pytest.mark.skipif(os.name == "nt", reason="symlink creation requires elevated Windows privileges")

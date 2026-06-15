@@ -112,6 +112,7 @@ class ProviderResponse:
     model_id: str
     input_tokens: int
     output_tokens: int
+    reasoning_content: str | None = None
     finish_reason: str | None = None
     request_id: str | None = None
     rate_limits: RateLimitSnapshot | None = None

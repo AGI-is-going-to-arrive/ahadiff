@@ -13,7 +13,12 @@ from starlette.responses import JSONResponse
 from ahadiff.contracts import AhaDiffError, ErrorCode
 from ahadiff.contracts.serve_app import ConfigResponse, ConfigUpdateResponse
 from ahadiff.contracts.serve_doctor import DoctorCheck, DoctorResponse
-from ahadiff.core.sqlite_util import safe_sqlite_connect
+from ahadiff.core.sqlite_util import (
+    safe_sqlite_connect,
+    sqlite_runtime_gate_ok,
+    sqlite_runtime_gate_requirement_message,
+    sqlite_runtime_version_tuple,
+)
 
 from ._errors import error_response
 from .lock import serve_repo_write_lock
@@ -310,6 +315,7 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
     )
 
     sqlite_ver = sqlite3.sqlite_version
+    sqlite_gate_ok = sqlite_runtime_gate_ok(sqlite_runtime_version_tuple())
     checks.append(
         _doctor_check(
             "sqlite_version",
@@ -321,8 +327,10 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
     checks.append(
         _doctor_check(
             "sqlite_runtime_gate",
-            "pass",
-            f"SQLite runtime accepted: {sqlite_ver}",
+            "pass" if sqlite_gate_ok else "fail",
+            f"SQLite runtime accepted: {sqlite_ver}"
+            if sqlite_gate_ok
+            else sqlite_runtime_gate_requirement_message(),
             category="runtime",
         )
     )
@@ -400,7 +408,16 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
             category="storage",
         )
     )
-    if review_db.is_file():
+    if review_db.is_file() and not sqlite_gate_ok:
+        checks.append(
+            _doctor_check(
+                "review_db_quick_check",
+                "warn",
+                "SQLite runtime gate failed; review.sqlite quick_check skipped",
+                category="storage",
+            )
+        )
+    elif review_db.is_file():
         try:
             with safe_sqlite_connect(review_db) as conn:
                 row = conn.execute("PRAGMA quick_check").fetchone()

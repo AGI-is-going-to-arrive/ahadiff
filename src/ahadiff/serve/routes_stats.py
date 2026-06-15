@@ -414,7 +414,7 @@ def _optional_thinking_level(mapping: Mapping[str, object]) -> str | None:
 def _provider_api_family(provider_class: str) -> tuple[str | None, str | None, str]:
     if provider_class == "openai_responses":
         return ("openai", "responses-v1", "openai_responses")
-    if provider_class in {"openai", "newapi", "lmstudio"}:
+    if provider_class in {"openai", "newapi", "lmstudio", "openai_compat"}:
         return ("openai", "chat-v1", provider_class)
     if provider_class == "azure":
         return ("openai", "azure-openai", "azure")

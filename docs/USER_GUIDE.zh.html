@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.5</span></div>
+      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.7</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
       <p class="guide-lead">AhaDiff 把一次 git diff 变成带代码证据的课程、明确的 claim 状态、测验、复习卡、概念图谱和质量棘轮。它默认 local-first：每个仓库自己的 AhaDiff 状态都存在 <code>.ahadiff/</code> 下。</p>
       <div class="start-tip">视频教程：<a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 英文讲解（YouTube）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。安装以 <code>pip install ahadiff</code> 为准；英文讲解已是最新，中文 B 站视频正在同步更新。</div>
@@ -1041,6 +1041,7 @@ ahadiff config show --resolved</span></div>
         <div class="tab-btns" role="tablist" aria-label="Provider 配置">
           <button class="tab-btn" role="tab" id="ptab-openai" aria-controls="ppanel-openai" data-tab="openai">OpenAI（默认）</button>
           <button class="tab-btn" role="tab" id="ptab-gpt55" aria-controls="ppanel-gpt55" data-tab="gpt55">Responses/API 示例</button>
+          <button class="tab-btn" role="tab" id="ptab-deepseek" aria-controls="ppanel-deepseek" data-tab="deepseek">DeepSeek BYOK</button>
           <button class="tab-btn" role="tab" id="ptab-local" aria-controls="ppanel-local" data-tab="local">本地（Ollama / LM Studio）</button>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-openai" aria-labelledby="ptab-openai" data-tab="openai">
@@ -1078,6 +1079,18 @@ ahadiff provider test `
   --api-key-env AHADIFF_PROVIDER_API_KEY `
   --privacy-mode explicit_remote</span></div>
         </div>
+        <div class="tab-panel" role="tabpanel" id="ppanel-deepseek" aria-labelledby="ptab-deepseek" data-tab="deepseek">
+          <p>官方 DeepSeek API 请使用 <code>openai_compat</code>，这样结构化输出会走 JSON object mode。Settings preview 确认支持后，DeepSeek v4 flash/pro 也会显示 Thinking Level 控件；<code>无</code> 会关闭思考，<code>低</code>、<code>中</code>、<code>高</code> 都会映射为 API 的 high effort。</p>
+          <div class="code-block"><span class="cmd">export DEEPSEEK_API_KEY="&lt;your-deepseek-api-key&gt;"
+
+ahadiff provider test \
+  --name deepseek \
+  --provider-class openai_compat \
+  --base-url https://api.deepseek.com \
+  --model deepseek-v4-flash \
+  --api-key-env DEEPSEEK_API_KEY \
+  --privacy-mode explicit_remote</span></div>
+        </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-local" aria-labelledby="ptab-local" data-tab="local">
           <p>指向一个本地的 OpenAI 兼容服务。Ollama 和 LM Studio 各自暴露自己的 base URL。</p>
           <div class="code-block"><span class="cmd">ahadiff provider test \
@@ -1103,7 +1116,7 @@ ahadiff provider test `
       <ul>
         <li>生成一个形如 <code>AHADIFF_&lt;ALIAS&gt;_KEY</code> 的唯一引用名。唯一性会避开你系统环境里已有的变量名，以及 <code>.ahadiff/.env</code> 里已有的名；冲突时加数字后缀（例如 <code>AHADIFF_DEMO_2_KEY</code>）。</li>
         <li>只把明文密钥写入仓库内的 <code>.ahadiff/.env</code> 文件。在 POSIX 上权限为 <code>chmod 0600</code>；在 Windows 上 <code>chmod</code> 不等价于 POSIX owner-only ACL，只是尽力限制（best-effort），并非强隔离。</li>
-        <li>会确保这些 secret 模式（<code>.env</code>、<code>.env.*</code>、<code>audit.private.jsonl</code>、<code>*.lock</code>、<code>*.log</code>）被 Git 忽略：<code>.ahadiff/.gitignore</code> 不存在时会创建它，已存在时只追加缺失的 secret 行（你已有的行会保留）。无论哪种情况，key 文件都会被正常的 <code>git add</code> 忽略（强制 <code>git add -f</code> 仍可能覆盖）。</li>
+        <li>会确保这些 secret 模式（<code>.env</code>、<code>.env.*</code>、<code>audit.private.jsonl</code>、<code>*.lock</code>、<code>*.log</code>）被 Git 忽略：<code>.ahadiff/.gitignore</code> 不存在时会创建它，已存在时只追加缺失的 secret 行（你已有的行会保留）。如果这个 <code>.gitignore</code> 是 symlink、hardlink、reparse point，或无法安全打开，保存会被拒绝，不会写入 key。无论哪种情况，key 文件都会被正常的 <code>git add</code> 忽略（强制 <code>git add -f</code> 仍可能覆盖）。</li>
         <li>在 <code>config.toml</code> 里只存引用名（<code>api_key_env</code> 等于 <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>）；明文绝不写入 <code>config.toml</code>。</li>
         <li>当你在字段里填了 API key 再保存时，会探测 provider 以验证连通性。这是 best-effort：探测失败不阻塞保存，UI 会显示验证结果。更新已有 provider 时如果 key 字段留空，会沿用当前 key 并跳过探测（验证结果为空）。</li>
       </ul>
@@ -1600,7 +1613,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
         <div class="feat-card">
           <h3>Provider 智能配置</h3>
           <p>在 Settings 里保存前预览草稿模型限额。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>provider 卡片按草稿 provider class、model 和可选的 limits profile 预览限额，而不会在每次编辑都做远程探测。它显示是否支持 thinking、低置信度 warning、建议的最大输出，以及保存 API 返回的任何 clamp。生成与评判限额分开展示。</p></div></details>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>provider 卡片按草稿 provider class、model、base URL 和可选的 limits profile 预览限额，而不会在每次编辑都做远程探测。它显示是否支持 thinking、低置信度 warning、建议的最大输出，以及保存 API 返回的任何 clamp。只有检测到官方 DeepSeek API 路由时，DeepSeek v4 flash/pro 才会显示 Thinking Level；<code>无</code> 会关闭思考，<code>低</code>、<code>中</code>、<code>高</code> 会映射为 API 的 high effort。普通 OpenAI-compatible 路由仍以后端 metadata 为准。生成与评判限额分开展示。</p></div></details>
         </div>
         <div class="feat-card">
           <h3>WebUI</h3>
@@ -1648,8 +1661,8 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
       <div class="feat-grid feat-grid--3">
         <div class="feat-card">
           <h3>LLM Provider（自带 BYOK）</h3>
-          <p>知返用你自己配置的 LLM Provider 运行：8 种格式任选，模型自己定，不限定具体型号。在『配置 Provider』里设置。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>使用前设置好 provider、base URL、model 和 API 密钥环境变量。</p></div></details>
+          <p>知返用你自己配置的 LLM Provider 运行：9 种格式任选，模型自己定，不限定具体型号。在『配置 Provider』里设置。</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>使用前设置好 provider、base URL、model 和 API 密钥环境变量。DeepSeek BYOK 使用 <code>openai_compat</code> 和 <code>https://api.deepseek.com</code>；AhaDiff 在这条 route 上使用 JSON object mode，而不是 native JSON schema。</p></div></details>
         </div>
         <div class="feat-card">
           <h3>APKG 导出</h3>
@@ -1846,7 +1859,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>截图是从文档树提供的已提交 PNG；工作流动画用 CSS 实现。发布状态见 GitHub Actions。</p>
-      <div class="footer-version">v1.3.5</div>
+      <div class="footer-version">v1.3.7</div>
     </footer>
   </main>
 </div>

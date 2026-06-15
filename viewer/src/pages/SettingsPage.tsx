@@ -29,7 +29,7 @@ import type {
 } from '../api/types';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { copyToClipboard } from '../utils/clipboard';
-import { mapDoctorMessage } from '../utils/doctor';
+import { isProviderOnlySensitiveCheck, mapDoctorMessage } from '../utils/doctor';
 import { actionLabel, strategyLabel } from '../utils/integrationLabels';
 import '../components/Settings.css';
 import UsagePanel from '../components/UsagePanel';
@@ -469,6 +469,11 @@ function AccountTab({
                   status={status}
                   text={mapDoctorMessage(check, t)}
                   details={detailText}
+                  remedy={
+                    isProviderOnlySensitiveCheck(check)
+                      ? t('Doctor.config_sensitive_remedy')
+                      : undefined
+                  }
                   statusLabel={t(CHECK_STATUS_KEY[check.status])}
                   data-testid={`settings-doctor-check-${check.name}`}
                 />

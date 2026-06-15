@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from ipaddress import IPv4Address
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -13,6 +14,7 @@ from ahadiff.contracts import ProviderCapabilities, ProviderConfig
 from ahadiff.core.config import load_config, read_config_data
 from ahadiff.core.errors import InputError
 from ahadiff.llm import persist_probe_result, probe_provider, schemas
+from ahadiff.llm import provider as provider_module
 from ahadiff.llm.provider import reset_provider_runtime_state
 
 if TYPE_CHECKING:
@@ -29,6 +31,13 @@ def _reset_provider_runtime_state() -> Generator[None, None, None]:  # pyright: 
     reset_provider_runtime_state()
     yield
     reset_provider_runtime_state()
+
+
+def _mock_public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    def resolve_public_ip(_hostname: str) -> list[IPv4Address]:
+        return [IPv4Address("1.1.1.1")]
+
+    monkeypatch.setattr(provider_module, "_resolve_hostname_ips", resolve_public_ip)
 
 
 def test_probe_provider_reads_headers_and_context_probe_and_persists_result(tmp_path: Path) -> None:
@@ -153,7 +162,11 @@ def test_probe_provider_falls_back_when_context_probe_transport_fails(tmp_path: 
     assert report.context_window_source == "fallback"
 
 
-def test_probe_provider_allows_remote_targets_by_default(tmp_path: Path) -> None:
+def test_probe_provider_allows_remote_targets_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_public_dns(monkeypatch)
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
     _init_git_repo(repo_root)

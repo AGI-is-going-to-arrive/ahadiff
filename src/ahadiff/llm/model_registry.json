@@ -493,10 +493,30 @@
       "confidence": "medium"
     },
     {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 384000,
+      "context_policy": "shared_pool",
+      "source": "DEEPSEEK-2026-05-22",
+      "confidence": "high"
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 384000,
+      "context_policy": "shared_pool",
+      "source": "DEEPSEEK-2026-05-22",
+      "confidence": "high"
+    },
+    {
       "provider": "openai_compat",
       "model": "deepseek-v4-flash",
-      "max_context_tokens": 1048576,
-      "max_input_tokens": 1048576,
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
       "max_output_tokens": 384000,
       "context_policy": "shared_pool",
       "source": "DEEPSEEK-2026-05-22",
@@ -505,8 +525,8 @@
     {
       "provider": "openai_compat",
       "model": "deepseek-v4-pro",
-      "max_context_tokens": 1048576,
-      "max_input_tokens": 1048576,
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
       "max_output_tokens": 384000,
       "context_policy": "shared_pool",
       "source": "DEEPSEEK-2026-05-22",
@@ -515,8 +535,8 @@
     {
       "provider": "openai_compat",
       "model": "deepseek-chat",
-      "max_context_tokens": 1048576,
-      "max_input_tokens": 1048576,
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
       "max_output_tokens": 384000,
       "context_policy": "shared_pool",
       "source": "DEEPSEEK-2026-05-22 alias docs",
@@ -525,8 +545,8 @@
     {
       "provider": "openai_compat",
       "model": "deepseek-reasoner",
-      "max_context_tokens": 1048576,
-      "max_input_tokens": 1048576,
+      "max_context_tokens": 1000000,
+      "max_input_tokens": 1000000,
       "max_output_tokens": 384000,
       "context_policy": "shared_pool",
       "source": "DEEPSEEK-2026-05-22 alias docs",

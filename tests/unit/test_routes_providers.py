@@ -2459,6 +2459,38 @@ def test_model_limits_preview_reports_local_runtime_as_unknown_limits(
     }
 
 
+def test_model_limits_preview_reports_deepseek_reasoning_only_for_official_host(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    client = _client(state_dir)
+
+    official = client.post(
+        "/api/providers/model-limits/preview",
+        headers=_AUTH,
+        json={
+            "provider_class": "openai_compat",
+            "model_name": "deepseek-v4-pro",
+            "base_url": "https://api.deepseek.com",
+        },
+    )
+    aggregator = client.post(
+        "/api/providers/model-limits/preview",
+        headers=_AUTH,
+        json={
+            "provider_class": "openai_compat",
+            "model_name": "deepseek-v4-pro",
+            "base_url": "https://aggregator.example/v1",
+        },
+    )
+
+    assert official.status_code == 200
+    assert official.json()["thinking"]["supported"] is True
+    assert official.json()["thinking"]["payload_mode"] == "deepseek.thinking"
+    assert aggregator.status_code == 200
+    assert aggregator.json()["thinking"]["supported"] is False
+
+
 def test_model_limits_preview_reports_split_envelope_and_thinking_support(
     tmp_path: Path,
 ) -> None:

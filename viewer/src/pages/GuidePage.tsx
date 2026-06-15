@@ -123,6 +123,11 @@ function setupCommands(platform: Platform): ReadonlyArray<CommandEntry> {
         `ahadiff provider test --name gpt55 --provider-class openai_responses --base-url ${providerBaseUrlArg(platform)} --model gpt-5.5 --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote`,
       labelKey: 'Guide.setup_provider',
     },
+    {
+      command:
+        'ahadiff provider test --name deepseek --provider-class openai_compat --base-url https://api.deepseek.com --model deepseek-v4-flash --api-key-env AHADIFF_PROVIDER_API_KEY --privacy-mode explicit_remote',
+      labelKey: 'Guide.setup_deepseek',
+    },
     { command: 'ahadiff install --detect', labelKey: 'Guide.setup_install_detect' },
     { command: 'ahadiff install codex --dry-run', labelKey: 'Guide.setup_install_preview' },
     { command: 'ahadiff uninstall codex --dry-run', labelKey: 'Guide.setup_uninstall_preview' },

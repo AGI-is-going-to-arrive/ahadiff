@@ -995,6 +995,42 @@ diff --git a/src/app.py b/src/app.py
     assert raw_payload["symbols"] == ["retry_once"]
 
 
+def test_deepseek_openai_claim_extraction_downgrades_native_schema_to_json_object(
+    tmp_path: Path,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_id = "run_deepseek_openai_claims"
+    run_path = _write_claim_run_artifacts(workspace_root, run_id)
+    captured_payloads: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        captured_payloads.append(payload)
+        assert payload["model"] == "deepseek-v4-flash"
+        return httpx.Response(200, json=_claim_extract_response(run_id))
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        _output_path, candidates = extract_claim_candidates_from_run(
+            run_id=run_id,
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="deepseek-v4-flash",
+                base_url="http://127.0.0.1:8000",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key="test-key",
+            security_config=SecurityConfig(),
+            output_path=run_path / "claims.raw.jsonl",
+            structured_output_mode="native_json_schema",
+            client=client,
+        )
+
+    assert len(candidates) == 1
+    assert captured_payloads[0]["response_format"] == {"type": "json_object"}
+
+
 @pytest.mark.parametrize(
     (
         "provider_max_output_tokens",

@@ -16,7 +16,7 @@ import pytest
 
 import ahadiff.core.orchestrator as orchestrator_module
 from ahadiff.core.config import ResolvedSetting
-from ahadiff.core.errors import AhaDiffError, ConfigError, SafetyError
+from ahadiff.core.errors import AhaDiffError, ConfigError, ProviderError, SafetyError
 from ahadiff.core.orchestrator import (
     LearnRequest,
     LearnResult,
@@ -1652,6 +1652,83 @@ def test_judge_failure_message_preserves_unicode_without_utf16_over_truncation()
     assert len(message) <= 2000
     assert "评审失败" in message
     assert "😀" in message
+
+
+def test_judge_failure_message_preserves_safe_provider_error_message() -> None:
+    message = _bounded_judge_failure_message(
+        ProviderError(
+            "provider request failed (HTTP 400): This response_format type is unavailable now",
+            details={
+                "status_code": 400,
+                "provider_error_message": "This response_format type is unavailable now",
+            },
+        )
+    )
+
+    assert "HTTP 400" in message
+    assert "This response_format type is unavailable now" in message
+    assert "Judge failure details were redacted" not in message
+
+
+def test_judge_failure_message_still_redacts_request_payload_markers() -> None:
+    message = _bounded_judge_failure_message(
+        ProviderError(
+            'provider request failed (HTTP 400): {"messages":[{"content":"diff --git"}]}',
+            details={
+                "status_code": 400,
+                "provider_error_message": '{"messages":[{"content":"diff --git"}]}',
+            },
+        )
+    )
+
+    assert message == (
+        "Judge failure details were redacted because the error included provider payload "
+        "or diff text."
+    )
+
+
+def test_judge_failure_message_redacts_whitespace_request_payload_marker() -> None:
+    message = _bounded_judge_failure_message(
+        ProviderError(
+            'provider request failed (HTTP 400): {"messages" : [{"content":"source"}]}',
+            details={
+                "status_code": 400,
+                "provider_error_message": '{"messages" : [{"content":"source"}]}',
+            },
+        )
+    )
+
+    assert message == (
+        "Judge failure details were redacted because the error included provider payload "
+        "or diff text."
+    )
+
+
+@pytest.mark.parametrize(
+    "provider_message",
+    [
+        "invalid request: prompt=def proprietary_algorithm(): return 'secret source'",
+        "invalid request: messages=[{'content':'def proprietary_algorithm(): pass'}]",
+        "invalid request input=[secret source code here]",
+    ],
+)
+def test_judge_failure_message_redacts_assignment_style_payload_markers(
+    provider_message: str,
+) -> None:
+    message = _bounded_judge_failure_message(
+        ProviderError(
+            f"provider request failed (HTTP 400): {provider_message}",
+            details={
+                "status_code": 400,
+                "provider_error_message": provider_message,
+            },
+        )
+    )
+
+    assert message == (
+        "Judge failure details were redacted because the error included provider payload "
+        "or diff text."
+    )
 
 
 def test_semantic_alignment_failure_warning_survives_persist(

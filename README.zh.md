@@ -37,6 +37,7 @@ AI 写代码越来越快，但人对“到底改了什么”的理解很容易�
 ## 前置条件
 
 - Python 3.11+，且 Python `sqlite3` 运行时需为 SQLite 3.51.3+；补丁回移分支 3.50.4+ / 3.44.6+ 也可接受。可用 `ahadiff doctor` 检查 Python 实际加载的运行时。
+  - **版本号更高不代表通过：** 3.51.0–3.51.2 会被拒（在 3.51 行内但低于 3.51.3，且无回移补丁）。**Windows 用户：** 即使是较新的 Python 构建，其自带的 `sqlite3.dll` 也常低于门槛——可用 conda/miniforge、用兼容的 SQLite 构建替换 `DLLs/sqlite3.dll`、或在 WSL 下运行。可用 `python -c "import sqlite3; print(sqlite3.sqlite_version)"` 查看当前版本。
 - git（需要在 PATH 中）
 - 一个 LLM provider：可以是带 API key 的远端服务（OpenAI / Anthropic / Gemini / Azure / 任意 OpenAI-compatible），也可以是本地服务（LM Studio / Ollama，不需要 key）
 
@@ -44,7 +45,7 @@ AI 写代码越来越快，但人对“到底改了什么”的理解很容易�
 
 ```bash
 pip install ahadiff
-ahadiff --version   # 应输出 ahadiff 1.3.6
+ahadiff --version   # 应输出 ahadiff 1.3.7
 ```
 开箱即带可用的 WebUI，所有默认功能无需任何 extra 即可使用。
 
@@ -83,7 +84,7 @@ ahadiff provider test \
 在 Settings WebUI 里，你直接粘贴明文 API key，而不再填环境变量名。AhaDiff 会这样处理它：
 
 - **明文只写入一个本地文件。** key 写入仓库内的 `.ahadiff/.env`，`config.toml` 里只存一个引用名（`api_key_env` 设为 `AHADIFF_<大写ALIAS>_KEY`，如该名已被占用则加数字后缀，如 `AHADIFF_DEMO_2_KEY`）。明文绝不写入 `config.toml`。
-- **key 文件不进 Git。** AhaDiff 会确保这些 secret 模式（`.env`、`.env.*`、`audit.private.jsonl`、`*.lock`、`*.log`）被 Git 忽略：`.ahadiff/.gitignore` 不存在时会创建它，已存在时只追加缺失的 secret 行（你已有的行会保留）。无论哪种情况，key 文件都会被正常的 `git add` 忽略（强制 `git add -f` 仍可能覆盖）。
+- **key 文件不进 Git。** AhaDiff 会确保这些 secret 模式（`.env`、`.env.*`、`audit.private.jsonl`、`*.lock`、`*.log`）被 Git 忽略：`.ahadiff/.gitignore` 不存在时会创建它，已存在时只追加缺失的 secret 行（你已有的行会保留）。如果 `.ahadiff/.gitignore` 是 symlink、hardlink、reparse point，或无法安全打开，保存会在写入 key 前失败。无论哪种情况，key 文件都会被正常的 `git add` 忽略（强制 `git add -f` 仍可能覆盖）。
 - **文件权限。** POSIX 上文件为 `chmod 0600`。Windows 上该 mode 并非 POSIX owner-only ACL，只是尽力限制（best-effort）——见下方 Windows 说明。
 - **真实 OS 环境变量优先。** `serve` 和 CLI 启动时都会把 `.ahadiff/.env` 加载进进程环境，但系统已存在同名变量时系统值优先、绝不被覆盖。
 - **填了 key 再保存才会跑一次快速 probe。** 当你在字段里填了 API key 再保存时，AhaDiff 会检查 provider 连通性；这是 best-effort，验证失败不阻塞保存，UI 会显示结果。更新已有 provider 时如果 key 字段留空，会沿用当前 key 并跳过 probe（验证结果为空）。
@@ -91,9 +92,9 @@ ahadiff provider test \
 
 **Windows 说明：** 本地 `.ahadiff/.env` 由 NTFS 文件夹权限保护，而非 POSIX `0600`。想要更严格，可把 `api_key_env` 指向一个真实的 OS 环境变量（它优先生效，且绝不会被写入 `.ahadiff/.env`）。静态加密请使用全盘加密，如 BitLocker（macOS 上为 FileVault）。
 
-支持的 provider class：`openai`、`openai_responses`、`gemini`、`anthropic`、`azure`、`newapi`、`lmstudio`、`ollama`。进阶的 OpenAI-compatible 或本地 provider 可以用 `providers.<name>.capability_overrides` 覆盖已知布尔能力，例如是否支持 native JSON schema；未知 key 或非布尔值会被拒绝。NewAPI 默认关闭 `supports_native_json_schema`；如果你的 NewAPI 网关后端真的支持 native JSON schema，可在 provider config 加 `capability_overrides = { supports_native_json_schema = true }`。更多细节见 [使用指南](./docs/USER_GUIDE.zh.html)。
+支持的 provider class：`openai`、`openai_responses`、`gemini`、`anthropic`、`azure`、`newapi`、`openai_compat`、`lmstudio`、`ollama`。OpenAI-compatible 但不应接收 native JSON schema payload 的端点使用 `openai_compat`；DeepSeek BYOK 使用 `base_url = "https://api.deepseek.com"`，模型选 `deepseek-v4-flash` 或 `deepseek-v4-pro`，AhaDiff 会把这条 route 上的 schema-aware 调用降级为 JSON object mode。进阶的 OpenAI-compatible 或本地 provider 可以用 `providers.<name>.capability_overrides` 覆盖已知布尔能力，例如是否支持 native JSON schema；未知 key 或非布尔值会被拒绝。NewAPI 默认关闭 `supports_native_json_schema`；如果你的 NewAPI 网关后端真的支持 native JSON schema，可在 provider config 加 `capability_overrides = { supports_native_json_schema = true }`。更多细节见 [使用指南](./docs/USER_GUIDE.zh.html)。
 
-Settings 的 provider 卡片也能在保存前预览模型上限，只使用当前草稿 provider class、model 和可选 limits profile，不会为了预览去调用远端 provider，也不会读取 API key。`max_output_tokens` 留空就是 Auto；如果用户填写的值超过可信的已知输出上限，保存时会自动收紧并返回 warning。未知、低置信度、route-specific 或 local-runtime 上限只会显示 warning，不会伪装成确定硬上限。
+Settings 的 provider 卡片也能在保存前预览模型上限，只使用当前草稿 provider class、model、base URL 和可选 limits profile，不会为了预览去调用远端 provider，也不会读取 API key。`max_output_tokens` 留空就是 Auto；如果用户填写的值超过可信的已知输出上限，保存时会自动收紧并返回 warning。未知、低置信度、route-specific 或 local-runtime 上限只会显示 warning，不会伪装成确定硬上限。官方 DeepSeek v4 模型会在 preview 确认支持后显示 Thinking Level 控件；对 DeepSeek 而言，`无` 会关闭思考，`低`、`中`、`高` 都会映射为 API 的 high effort。普通 OpenAI-compatible 聚合器不会因为模型名相似就自动获得该控件。
 
 GPT-5.5 有两种内置口径：普通 `openai` 接入按 40 万上下文预算，`openai_responses` / API 接入按 105 万上下文预算。endpoint 如果通过 live probe 上报可信 total context，仍会优先使用 probe 结果。
 
@@ -124,7 +125,7 @@ ahadiff review           # 复习过去生成的卡片
 - **学习**：`ahadiff learn` 支持 10 种 diff 捕获模式：工作区（`--staged --unstaged --include-untracked`）、未暂存（`--unstaged`）、已暂存（`--staged`）、最近一次提交（`--last`，或不带任何捕获参数）、提交/范围（`REVISION`）、时间窗口（`--since`；可选 `--author` 聚焦某个作者，期望恰好命中一个 commit，否则会明确报错）、patch 文件/stdin（`--patch FILE|-`）、patch URL（`--patch-url`）、文件对比（`--compare`）、目录对比（`--compare-dir`，仅 macOS/Linux）。递归目录对比依赖仅 macOS/Linux 提供的安全目录文件描述符。Patch 文件会在 repo root 内解析；外部生成的 patch 请走 stdin。Patch 文件/stdin 和 patch URL 运行没有仓库 symbol index；只有 hunk 证据时，AhaDiff 仍可基于 weak diff-anchored claims 生成 lesson，但不会伪装成 symbol 级证明。发布验证里，10 种模式只表示捕获覆盖；只有逐项记录 run_id 和产物时，才写成 live LLM 课程生成覆盖；v1.3.5 RC 审计已记录 10 种 live LLM run。
 - **证据化 Claims**：lesson 结论会以 claim 状态表示，并在可用时绑定 `file:line` 证据，区分 verified、weak、not proven、contradicted、rejected 等状态。
 - **结构化 LLM 输出**：生成链路会在支持时按 schema 约束 JSON 输出；默认使用 JSON object mode，并带 1 次有界 validation retry；原有 parser、repair 和 degraded 回退仍保留。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。
-- **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。Settings 会按当前草稿 provider class、model 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。
+- **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。Settings 会按当前草稿 provider class、model、base URL 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。
 - **测验与复习**：`ahadiff quiz` 用来测试刚学过的 run，源码证据会在作答后再展示；`ahadiff review` 用间隔重复带回旧卡片。题量默认固定为 3 题，可配置为 1 到 30；开启自适应后会按 diff 大小调整，默认范围是 3-12。
 - **评分**：每次 run 都会得到 8 维确定性评分；配置后也可以启用 advisory LLM judge。没有 spec 的 `spec_alignment` 会显示为 N/A / `0/0`，并从总分里排除；judge 结果不会覆盖 `score.json.verdict`。Diff Coverage 只看可见 `line_map.json` 里的文件和按行数加权的 hunk；hard gate 详情会写明本次 run 使用的自适应 claim-anchor 阈值。如果可选 LLM judge 失败，确定性评分仍会保留，失败信息会以脱敏后的 `judge_failure.json` 保存。
 - **S1 / A3 诊断**：S1 语义蕴含目前只是 private shadow-only / measurement-only。当前 S1 样本指标为 `route_hit=76`、`fp_rate=53.95%`，因此 enforce 和 advisory 均 blocked。A3 quiz distractor 分析仅是 diagnostic/advisory-only，不是阻塞门禁。
@@ -138,7 +139,7 @@ ahadiff review           # 复习过去生成的卡片
 - **i18n**：WebUI 与 prompt 输出语言支持中英文；CLI help 与多数 CLI 诊断仍为英文。
 - **跨平台**：macOS 是本地 RC 验证平台；v1.3.5 RC 分支已通过远端 Linux、Windows runtime、Backend CI 和 Frontend CI gate。Antigravity 在真实检查跑通前仍为 Unknown/blocked。`--compare-dir` 与 `hooks` 安装目标仅支持 macOS/Linux。安装写入和回滚使用 atomic replace；POSIX 会在 replace 前恢复文件 mode，Windows 使用 replace 后的 best-effort mode 恢复。
 - **验证范围**：v1.3.5 release-candidate 的 macOS 本地 gate、10 种 live LLM lesson 矩阵、release workflow dry run、Backend CI 和 Frontend CI 已记录在 `docs/VALIDATION_AUDIT.zh.md`。PyPI publish 仍 blocked，直到 maintainer 明确确认。
-- **安全**：URL secret 脱敏、provider URL 校验、provider API-key 环境变量校验、输入校验、prompt 注入检测、安全门禁和脱敏后的 judge 失败报告。WebUI 粘贴的 key 以引用方式存储：明文只写入 `.ahadiff/.env`（POSIX `chmod 0600`；Windows 尽力而为），`config.toml` 里只保留引用名，并且 AhaDiff 会确保这些 secret 模式被 Git 忽略（`.ahadiff/.gitignore` 不存在时创建它，已存在时只追加缺失的 secret 行），让 key 文件被正常的 `git add` 忽略（强制 `git add -f` 仍可能覆盖）。
+- **安全**：URL secret 脱敏、provider URL 校验、provider API-key 环境变量校验、输入校验、prompt 注入检测、安全门禁和脱敏后的 judge 失败报告。WebUI 粘贴的 key 以引用方式存储：明文只写入 `.ahadiff/.env`（POSIX `chmod 0600`；Windows 尽力而为），`config.toml` 里只保留引用名，并且 AhaDiff 会确保这些 secret 模式被 Git 忽略（`.ahadiff/.gitignore` 不存在时创建它，已存在时只追加缺失的 secret 行）。如果 gitignore 文件不安全，保存会在写入 key 前失败；否则 key 文件会被正常的 `git add` 忽略（强制 `git add -f` 仍可能覆盖）。
 
 ## 界面截图
 

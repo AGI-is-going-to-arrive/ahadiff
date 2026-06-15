@@ -8,6 +8,8 @@ export interface DiagnosticRowProps {
   status: DiagnosticStatus;
   text: string;
   details?: string | null;
+  /** Optional actionable "how to fix" hint, rendered below details. */
+  remedy?: string | null;
   iconAriaLabel?: string;
   /** Optional right-side status badge text, such as "PASS" / "WARN" / "FAIL". */
   statusLabel?: string;
@@ -41,6 +43,7 @@ export function DiagnosticRow({
   status,
   text,
   details,
+  remedy,
   iconAriaLabel,
   statusLabel,
   'data-testid': dataTestId,
@@ -69,6 +72,7 @@ export function DiagnosticRow({
         <span className="sr-only">{resolvedAriaLabel}: </span>
         <span className="diag-row__text">{text}</span>
         {details ? <span className="diag-row__details">{details}</span> : null}
+        {remedy ? <span className="diag-row__remedy">{remedy}</span> : null}
       </div>
       {statusLabel && (
         <span

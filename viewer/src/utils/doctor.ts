@@ -42,3 +42,25 @@ export function mapDoctorMessage(check: DoctorCheck, t: TranslateFn): string {
       return t('Doctor.unknown_check', { name: check.name });
   }
 }
+
+const PROVIDER_API_KEY_ENV_PATTERN = /^providers\..+\.api_key_env$/;
+
+/**
+ * True only when the config_sensitive_keys check is failing AND every reported
+ * sensitive key is a provider `api_key_env` literal. The backend sensitive-key
+ * scan (core/config.py `_is_sensitive_key`) also flags non-provider
+ * secret/password/token keys and secret-looking values, for which the
+ * provider-only "re-enter the key under Settings - Providers" remedy would be
+ * misleading — so we gate that remedy on provider-only failures. Backend
+ * truncates `details.keys` to 20, so if the list was truncated below `count`
+ * we cannot prove every sensitive key is a provider key and stay conservative.
+ */
+export function isProviderOnlySensitiveCheck(check: DoctorCheck): boolean {
+  if (check.name !== 'config_sensitive_keys' || check.status !== 'fail') return false;
+  const details = check.details;
+  if (!details) return false;
+  const keys = Array.isArray(details.keys) ? (details.keys as unknown[]) : [];
+  const count = typeof details.count === 'number' ? details.count : keys.length;
+  if (keys.length === 0 || keys.length !== count) return false;
+  return keys.every((k) => typeof k === 'string' && PROVIDER_API_KEY_ENV_PATTERN.test(k));
+}

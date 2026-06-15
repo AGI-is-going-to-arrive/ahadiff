@@ -168,6 +168,7 @@ def _response_to_json(response: ProviderResponse) -> dict[str, object]:
         "model_id": response.model_id,
         "input_tokens": response.input_tokens,
         "output_tokens": response.output_tokens,
+        "reasoning_content": response.reasoning_content,
         "finish_reason": response.finish_reason,
         "request_id": response.request_id,
         "rate_limits": asdict(response.rate_limits) if response.rate_limits is not None else None,
@@ -242,6 +243,10 @@ def _response_from_json(payload: dict[str, object]) -> ProviderResponse | None:
     raw_json = (
         cast("dict[str, Any]", raw_json_payload) if isinstance(raw_json_payload, dict) else None
     )
+    reasoning_content_payload = payload.get("reasoning_content")
+    reasoning_content = (
+        reasoning_content_payload if isinstance(reasoning_content_payload, str) else None
+    )
     finish_reason = payload.get("finish_reason")
     request_id = payload.get("request_id")
     return ProviderResponse(
@@ -249,6 +254,7 @@ def _response_from_json(payload: dict[str, object]) -> ProviderResponse | None:
         model_id=model_id,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        reasoning_content=reasoning_content,
         finish_reason=finish_reason if isinstance(finish_reason, str) else None,
         request_id=request_id if isinstance(request_id, str) else None,
         rate_limits=rate_limits,

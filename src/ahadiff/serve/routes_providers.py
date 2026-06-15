@@ -792,8 +792,13 @@ def _public_limit_value(value: int | None, *, known: bool) -> int | None:
     return value
 
 
-def _thinking_metadata(provider_class: str, model_name: str) -> dict[str, object]:
-    policy = thinking_policy_for(provider_class, model_name)
+def _thinking_metadata(
+    provider_class: str,
+    model_name: str,
+    *,
+    base_url: str | None,
+) -> dict[str, object]:
+    policy = thinking_policy_for(provider_class, model_name, base_url=base_url)
     supported = bool(policy["supported"])
     return {
         **policy,
@@ -850,7 +855,11 @@ def build_model_limits_response(
             max_output_known=limits.max_output_known,
             raw_warnings=limits.warnings,
         ),
-        thinking=_thinking_metadata(config.provider_class, config.model_name),
+        thinking=_thinking_metadata(
+            config.provider_class,
+            config.model_name,
+            base_url=config.base_url,
+        ),
     )
 
 
@@ -1257,6 +1266,10 @@ async def preview_provider_model_limits(request: Request) -> JSONResponse:
             body.model_limits_name,
             field_name="model_limits_name",
         )
+        preview_base_url = _clean_optional_provider_text(
+            body.base_url,
+            field_name="base_url",
+        )
     except _ProviderFieldError as exc:
         return _error(str(exc), status=422)
 
@@ -1264,6 +1277,8 @@ async def preview_provider_model_limits(request: Request) -> JSONResponse:
         "provider_class": body.provider_class,
         "model_name": body.model_name,
     }
+    if preview_base_url is not None:
+        provider_data["base_url"] = preview_base_url
     if model_limits_name is not None:
         provider_data["model_limits_name"] = model_limits_name
     response = build_model_limits_response(alias=None, provider_data=provider_data)

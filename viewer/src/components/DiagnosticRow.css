@@ -32,6 +32,24 @@
   border-top: 1px solid var(--hair);
 }
 
+/* ---- Remedy hint ----
+   An actionable "how to fix" line rendered under .diag-row__details (whose
+   base style lives in styles/utility.css). Deliberately more prominent than
+   the muted/mono details: a colored editorial rule + soft tint + readable
+   sans body in ink (not gray), so the reader sees the fix, not just the fault. */
+.diag-row__remedy {
+  margin-block-start: 2px;
+  padding: 6px 8px;
+  border-inline-start: 2px solid var(--accent);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--accent-softer);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  line-height: var(--lh-snug);
+  word-break: break-word;
+}
+
 /* ---- Right-side status badge (e.g., PASS/WARN/FAIL) ---- */
 .diag-row__status-badge {
   flex-shrink: 0;
@@ -134,6 +152,11 @@
   .diag-row__status-badge {
     background: Canvas;
     border-color: CanvasText;
+    color: CanvasText;
+  }
+  .diag-row__remedy {
+    border-inline-start-color: LinkText;
+    background: Canvas;
     color: CanvasText;
   }
 }

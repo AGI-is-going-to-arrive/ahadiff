@@ -38,7 +38,7 @@ from ahadiff.core.config import (
     resolve_provider_api_key,
     validate_provider_base_url,
 )
-from ahadiff.core.errors import AhaDiffError, ConfigError
+from ahadiff.core.errors import AhaDiffError, ConfigError, ProviderError
 from ahadiff.core.paths import (
     assert_local_repo_path,
     atomic_write_state_text,
@@ -160,14 +160,19 @@ _JUDGE_FAILURE_PAYLOAD_MARKERS = (
     "diff --git",
     "\n--- a/",
     "\n+++ b/",
+    "--- a/",
+    "+++ b/",
     "request body",
     "request_body",
     "raw request",
-    "provider request",
-    '"messages"',
-    '"input"',
-    '"prompt"',
     "Traceback (most recent call last)",
+)
+_JUDGE_FAILURE_REQUEST_KEY_RE = re.compile(r'"(?:messages|input|prompt)"\s*:', re.IGNORECASE)
+_JUDGE_FAILURE_REQUEST_ASSIGNMENT_RE = re.compile(
+    r"(?<![A-Za-z0-9_])"
+    r"(?:messages|input|prompt)\s*[:=]\s*"
+    r"(?:\[|\{|'|\"|def\b|class\b|diff\s+--git)",
+    re.IGNORECASE,
 )
 _REDACTED_JUDGE_FAILURE_PAYLOAD_MESSAGE = (
     "Judge failure details were redacted because the error included provider payload or diff text."
@@ -1000,11 +1005,10 @@ def _persist_skipped_run(
 
 def _bounded_judge_failure_message(error: Exception) -> str:
     try:
-        raw_message = str(error)
+        raw_message = _preferred_provider_error_message(error) or str(error)
     except Exception:
         raw_message = error.__class__.__name__
-    raw_probe = raw_message.lower()
-    if any(marker.lower() in raw_probe for marker in _JUDGE_FAILURE_PAYLOAD_MARKERS):
+    if _judge_failure_message_has_payload_marker(raw_message):
         return _REDACTED_JUDGE_FAILURE_PAYLOAD_MESSAGE
     try:
         from ahadiff.safety.redact import redaction_pipeline
@@ -1013,6 +1017,25 @@ def _bounded_judge_failure_message(error: Exception) -> str:
     except Exception:
         redacted_message = "judge failure message unavailable after redaction failure"
     return _API_KEY_LIKE_RE.sub("[redacted-secret]", redacted_message)[:2000]
+
+
+def _judge_failure_message_has_payload_marker(message: str) -> bool:
+    if _JUDGE_FAILURE_REQUEST_KEY_RE.search(message) is not None:
+        return True
+    if _JUDGE_FAILURE_REQUEST_ASSIGNMENT_RE.search(message) is not None:
+        return True
+    raw_probe = message.lower()
+    return any(marker.lower() in raw_probe for marker in _JUDGE_FAILURE_PAYLOAD_MARKERS)
+
+
+def _preferred_provider_error_message(error: Exception) -> str | None:
+    if not isinstance(error, ProviderError):
+        return None
+    status_code = error.details.get("status_code")
+    provider_message = error.details.get("provider_error_message")
+    if not isinstance(status_code, int) or not isinstance(provider_message, str):
+        return None
+    return f"provider request failed (HTTP {status_code}): {provider_message}"
 
 
 def _sanitized_judge_failure_exc_info(

@@ -1440,14 +1440,95 @@ def test_gemini_15_and_20_models_are_not_active_registry_rows(model_name: str) -
     assert lookup_model_limits("gemini", f"models/{model_name}") is None
 
 
-@pytest.mark.parametrize("model_name", ["deepseek-chat", "deepseek-reasoner"])
-def test_deepseek_direct_rows_use_one_mib_context(model_name: str) -> None:
+@pytest.mark.parametrize(
+    "model_name",
+    ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+)
+def test_deepseek_direct_rows_use_one_million_token_context(model_name: str) -> None:
     limits = lookup_model_limits("newapi", model_name)
 
     assert limits is not None
-    assert cast("Any", limits).max_context_tokens == 1_048_576
-    assert limits.max_input_tokens == 1_048_576
+    assert cast("Any", limits).max_context_tokens == 1_000_000
+    assert limits.max_input_tokens == 1_000_000
     assert limits.max_output_tokens == 384_000
+
+
+@pytest.mark.parametrize("model_name", ["deepseek-v4-flash", "deepseek-v4-pro"])
+def test_deepseek_provider_rows_use_official_v4_limits(model_name: str) -> None:
+    limits = lookup_model_limits("deepseek", model_name)
+
+    assert limits is not None
+    assert cast("Any", limits).max_context_tokens == 1_000_000
+    assert limits.max_input_tokens == 1_000_000
+    assert limits.max_output_tokens == 384_000
+    assert limits.context_policy == "shared_pool"
+
+
+def test_openai_class_deepseek_endpoint_resolves_deepseek_limits() -> None:
+    limits = resolve_model_limits(
+        "openai",
+        "deepseek-v4-flash",
+        _config(
+            "openai",
+            model_name="deepseek-v4-flash",
+            base_url="https://api.deepseek.com",
+        ),
+    )
+
+    assert limits.max_context_tokens == 1_000_000
+    assert limits.max_input_tokens == 1_000_000
+    assert limits.max_output_tokens == 384_000
+    assert limits.source == "registry"
+    assert limits.context_policy == "shared_pool"
+
+
+@pytest.mark.parametrize("model_name", ["deepseek-chat", "deepseek-reasoner"])
+def test_openai_class_deepseek_endpoint_falls_back_to_alias_registry_limits(
+    model_name: str,
+) -> None:
+    limits = resolve_model_limits(
+        "openai",
+        model_name,
+        _config(
+            "openai",
+            model_name=model_name,
+            base_url="https://api.deepseek.com",
+        ),
+    )
+
+    assert limits.max_context_tokens == 1_000_000
+    assert limits.max_input_tokens == 1_000_000
+    assert limits.max_output_tokens == 384_000
+    assert limits.source == "registry"
+    assert limits.context_policy == "shared_pool"
+
+
+@pytest.mark.parametrize(
+    ("model_name", "expected_context", "expected_output"),
+    [
+        ("deepseek/deepseek-v4-flash:free", 1_048_576, 384_000),
+        ("deepseek/deepseek-v4-pro", 1_048_576, 384_000),
+    ],
+)
+def test_openai_class_openrouter_deepseek_routes_prefer_openrouter_limits(
+    model_name: str,
+    expected_context: int,
+    expected_output: int,
+) -> None:
+    limits = resolve_model_limits(
+        "openai",
+        model_name,
+        _config(
+            "openai",
+            model_name=model_name,
+            base_url="https://openrouter.ai/api/v1",
+        ),
+    )
+
+    assert limits.max_context_tokens == expected_context
+    assert limits.max_output_tokens == expected_output
+    assert limits.source == "registry"
+    assert limits.context_policy == "route_specific"
 
 
 def test_lmstudio_auto_lookup_prefers_local_runtime_over_openai_compat_collision() -> None:

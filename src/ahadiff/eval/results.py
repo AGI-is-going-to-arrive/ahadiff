@@ -184,7 +184,7 @@ def finalized_marker_path(run_path: Path) -> Path:
 
 
 def finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
-    artifact_paths: list[tuple[str, Path, os.stat_result]] = []
+    artifact_paths: list[tuple[str, Path, os.stat_result, str | None]] = []
     total_bytes = 0
     dirs_seen = 0
     stack = [run_path]
@@ -201,7 +201,7 @@ def finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
             path = Path(entry.path)
             relative_path = path.relative_to(run_path).as_posix()
             try:
-                entry_stat = entry.stat(follow_symlinks=False)
+                entry_stat = os.lstat(path)
             except OSError as exc:
                 raise InputError("finalized run artifact is unreadable") from exc
             if stat.S_ISDIR(entry_stat.st_mode):
@@ -231,14 +231,24 @@ def finalized_artifact_digest(run_path: Path) -> tuple[int, str]:
             total_bytes += artifact_size
             if total_bytes > _MAX_FINALIZED_ARTIFACTS_TOTAL_BYTES:
                 raise InputError("finalized run artifacts exceed total size limit")
-            artifact_paths.append((relative_path, path, entry_stat))
+            expected_digest = (
+                _hash_finalized_artifact_file(path, relative_path, entry_stat)
+                if _artifact_stat_has_zero_identity(entry_stat)
+                else None
+            )
+            artifact_paths.append((relative_path, path, entry_stat, expected_digest))
 
     chunks: list[bytes] = []
-    for relative_path, path, entry_stat in sorted(artifact_paths):
+    for relative_path, path, entry_stat, expected_digest in sorted(artifact_paths):
         chunks.append(
             relative_path.encode("utf-8")
             + b"\n"
-            + _hash_finalized_artifact_file(path, relative_path, entry_stat).encode("ascii")
+            + _hash_finalized_artifact_file(
+                path,
+                relative_path,
+                entry_stat,
+                expected_digest=expected_digest,
+            ).encode("ascii")
         )
     return len(chunks), hashlib.sha256(b"\n---\n".join(chunks)).hexdigest()
 
@@ -247,6 +257,8 @@ def _hash_finalized_artifact_file(
     path: Path,
     relative_path: str,
     expected_stat: os.stat_result,
+    *,
+    expected_digest: str | None = None,
 ) -> str:
     try:
         path_stat = os.lstat(path)
@@ -263,7 +275,7 @@ def _hash_finalized_artifact_file(
         path_stat,
         message=f"refusing hardlinked artifact in finalized run: {relative_path}",
     )
-    if (path_stat.st_dev, path_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+    if not _same_artifact_stat_identity(path_stat, expected_stat):
         raise InputError(f"finalized run artifact changed during validation: {relative_path}")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -287,7 +299,7 @@ def _hash_finalized_artifact_file(
             file_stat,
             message=f"refusing hardlinked artifact in finalized run: {relative_path}",
         )
-        if (file_stat.st_dev, file_stat.st_ino) != (expected_stat.st_dev, expected_stat.st_ino):
+        if not _same_artifact_stat_identity(file_stat, expected_stat):
             raise InputError(f"finalized run artifact changed during validation: {relative_path}")
         if file_stat.st_size > _MAX_FINALIZED_ARTIFACT_BYTES:
             raise InputError(f"finalized run artifact exceeds size limit: {relative_path}")
@@ -302,7 +314,10 @@ def _hash_finalized_artifact_file(
             if total_read > _MAX_FINALIZED_ARTIFACT_BYTES:
                 raise InputError(f"finalized run artifact exceeds size limit: {relative_path}")
             digest.update(chunk)
-        return digest.hexdigest()
+        artifact_digest = digest.hexdigest()
+        if expected_digest is not None and artifact_digest != expected_digest:
+            raise InputError(f"finalized run artifact changed during validation: {relative_path}")
+        return artifact_digest
     except InputError:
         raise
     except OSError as exc:
@@ -320,6 +335,34 @@ def _has_windows_reparse_point(path_stat: object) -> bool:
 def _reject_hardlinked_regular_file(path: Path, path_stat: os.stat_result, *, message: str) -> None:
     if stat.S_ISREG(path_stat.st_mode) and getattr(path_stat, "st_nlink", 1) > 1:
         raise InputError(message)
+
+
+def _same_artifact_stat_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    left_identity = (left.st_dev, left.st_ino)
+    right_identity = (right.st_dev, right.st_ino)
+    if 0 not in (*left_identity, *right_identity):
+        return left_identity == right_identity
+    return _artifact_zero_identity_token(left) == _artifact_zero_identity_token(right)
+
+
+def _artifact_stat_has_zero_identity(path_stat: os.stat_result) -> bool:
+    return path_stat.st_dev == 0 or path_stat.st_ino == 0
+
+
+def _artifact_zero_identity_token(path_stat: os.stat_result) -> tuple[int, int, int, int]:
+    return (
+        int(path_stat.st_mode),
+        int(path_stat.st_size),
+        _stat_time_ns(path_stat, "st_mtime_ns", "st_mtime"),
+        _stat_time_ns(path_stat, "st_ctime_ns", "st_ctime"),
+    )
+
+
+def _stat_time_ns(path_stat: os.stat_result, ns_attr: str, seconds_attr: str) -> int:
+    value = getattr(path_stat, ns_attr, None)
+    if value is not None:
+        return int(value)
+    return int(float(getattr(path_stat, seconds_attr)) * 1_000_000_000)
 
 
 def run_state_dir_for_run(run_path: Path) -> Path:

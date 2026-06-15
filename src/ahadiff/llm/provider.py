@@ -14,7 +14,7 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from ipaddress import IPv4Address, IPv6Address, ip_address
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -146,10 +146,15 @@ class _CircuitState:
     opened_until: float = 0.0
 
 
+def _empty_provider_error_details() -> dict[str, Any]:
+    return {}
+
+
 @dataclass
 class _RetryableProviderError(Exception):
     message: str
     retry_after_seconds: float | None = None
+    details: dict[str, Any] = field(default_factory=_empty_provider_error_details)
 
 
 _STATE_LOCK = threading.Lock()
@@ -161,6 +166,96 @@ _PROVIDER_CREDENTIAL_QUERY_KEY_PATTERN = re.compile(
     r"(api[_-]?key|secret|password|token|credential)",
     re.IGNORECASE,
 )
+_PROVIDER_ERROR_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9_])"
+    r"(?:(?:sk|key)-[A-Za-z0-9][A-Za-z0-9._-]{7,}"
+    r"|bearer\s+[A-Za-z0-9][A-Za-z0-9._~+/=-]{11,})",
+    re.IGNORECASE,
+)
+_PROVIDER_ERROR_MESSAGE_CHAR_CAP = 500
+_PROVIDER_ERROR_TEXT_BYTE_CAP = 8192
+_PROVIDER_ERROR_PAYLOAD_MARKERS = (
+    "diff --git",
+    "\n--- a/",
+    "\n+++ b/",
+    "--- a/",
+    "+++ b/",
+    "request body",
+    "request_body",
+    "raw request",
+    "traceback (most recent call last)",
+)
+_PROVIDER_ERROR_REQUEST_KEY_RE = re.compile(r'"(?:messages|input|prompt)"\s*:', re.IGNORECASE)
+_PROVIDER_ERROR_REQUEST_ASSIGNMENT_RE = re.compile(
+    r"(?<![A-Za-z0-9_])"
+    r"(?:messages|input|prompt)\s*[:=]\s*"
+    r"(?:\[|\{|'|\"|def\b|class\b|diff\s+--git)",
+    re.IGNORECASE,
+)
+
+
+def _extract_provider_error_message(raw_body: bytes) -> str | None:
+    if not raw_body:
+        return None
+    raw_text = raw_body[:_PROVIDER_ERROR_TEXT_BYTE_CAP].decode("utf-8", errors="replace").strip()
+    if not raw_text:
+        return None
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return None
+    return _extract_provider_error_message_from_json(payload)
+
+
+def _extract_provider_error_message_from_json(payload: object) -> str | None:
+    if isinstance(payload, str):
+        return payload
+    if not isinstance(payload, dict):
+        return None
+    mapping = cast("dict[str, Any]", payload)
+    error = mapping.get("error")
+    if isinstance(error, dict):
+        error_mapping = cast("dict[str, Any]", error)
+        for key in ("message", "error_description", "detail", "code", "type"):
+            value = error_mapping.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    if isinstance(error, str) and error.strip():
+        return error
+    for key in ("message", "error_description", "detail"):
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _sanitize_provider_error_message(message: str | None) -> str | None:
+    if message is None:
+        return None
+    one_line = " ".join(message.strip().split())
+    if not one_line:
+        return None
+    if _provider_error_message_has_payload_marker(one_line):
+        return None
+    try:
+        from ahadiff.safety.redact import redaction_pipeline
+
+        one_line = redaction_pipeline(one_line).redacted_text
+    except Exception:
+        one_line = "provider error message unavailable after redaction failure"
+    one_line = _PROVIDER_ERROR_SECRET_RE.sub("[redacted-secret]", one_line)
+    if _provider_error_message_has_payload_marker(one_line):
+        return None
+    return one_line[:_PROVIDER_ERROR_MESSAGE_CHAR_CAP]
+
+
+def _provider_error_message_has_payload_marker(message: str) -> bool:
+    probe = message.lower()
+    if _PROVIDER_ERROR_REQUEST_KEY_RE.search(message) is not None:
+        return True
+    if _PROVIDER_ERROR_REQUEST_ASSIGNMENT_RE.search(message) is not None:
+        return True
+    return any(marker in probe for marker in _PROVIDER_ERROR_PAYLOAD_MARKERS)
 
 
 class ManagedProvider:
@@ -385,7 +480,7 @@ class ManagedProvider:
                 except SafetyError:
                     raise
                 except _RetryableProviderError as error:
-                    last_error = ProviderError(error.message)
+                    last_error = ProviderError(error.message, details=error.details)
                     if attempt >= self.retry_attempts:
                         break
                     self.sleep(error.retry_after_seconds or min(2**attempt, 8))
@@ -455,6 +550,8 @@ class ManagedProvider:
                 return final_response
 
         self._record_failure()
+        if isinstance(last_error, ProviderError):
+            raise last_error
         raise ProviderError(str(last_error) if last_error else "provider request failed")
 
     @property
@@ -618,19 +715,38 @@ class ManagedProvider:
             if response.is_redirect:
                 raise ProviderError("provider redirects are not allowed")
             if response.status_code in {401, 403}:
+                message, details = self._provider_http_error_summary(
+                    response,
+                    prefix="provider authentication failed",
+                )
                 raise ProviderError(
-                    f"provider authentication failed (HTTP {response.status_code}). "
-                    "Check your api_key and base_url in config."
+                    f"{message}. Check your api_key and base_url in config.",
+                    details=details,
                 )
             if response.status_code == 429:
                 retry_after = parse_rate_limit_headers(response.headers).retry_after_seconds
-                raise _RetryableProviderError("provider rate limit exceeded", retry_after)
+                message, details = self._provider_http_error_summary(
+                    response,
+                    prefix="provider rate limit exceeded",
+                    retryable=True,
+                )
+                raise _RetryableProviderError(message, retry_after, details)
             if response.status_code in {408, 409} or response.status_code >= 500:
+                message, details = self._provider_http_error_summary(
+                    response,
+                    prefix="provider returned retryable status",
+                    retryable=True,
+                )
                 raise _RetryableProviderError(
-                    f"provider returned retryable status {response.status_code}"
+                    message,
+                    details=details,
                 )
             if response.status_code >= 400:
-                raise ProviderError(f"provider request failed with status {response.status_code}")
+                message, details = self._provider_http_error_summary(
+                    response,
+                    prefix="provider request failed",
+                )
+                raise ProviderError(message, details=details)
             raw_body = self._read_capped_response_body(response)
             # iter_bytes() already decoded content-encoding; strip it
             # to prevent the buffered Response from re-decoding
@@ -648,6 +764,28 @@ class ManagedProvider:
                 request=response.request,
                 extensions=response.extensions,
             )
+
+    def _provider_http_error_summary(
+        self,
+        response: httpx.Response,
+        *,
+        prefix: str,
+        retryable: bool = False,
+    ) -> tuple[str, dict[str, Any]]:
+        status_code = response.status_code
+        details: dict[str, Any] = {"status_code": status_code}
+        if retryable:
+            details["retryable"] = True
+        raw_body = self._read_capped_response_body(response)
+        provider_message = _extract_provider_error_message(raw_body)
+        safe_message = _sanitize_provider_error_message(provider_message)
+        if provider_message is not None and safe_message is None:
+            details["provider_error_redacted"] = True
+        message = f"{prefix} (HTTP {status_code})"
+        if safe_message is not None:
+            details["provider_error_message"] = safe_message
+            message = f"{message}: {safe_message}"
+        return message, details
 
     def _read_capped_response_body(self, response: httpx.Response) -> bytes:
         body = bytearray()
@@ -1047,6 +1185,7 @@ def make_provider(
     from .adapters.newapi import NewAPIAdapter
     from .adapters.ollama import OllamaAdapter
     from .adapters.openai import OpenAIChatAdapter
+    from .adapters.openai_compat import OpenAICompatAdapter
     from .adapters.openai_responses import OpenAIResponsesAdapter
 
     registry: dict[str, type[AdapterBase]] = {
@@ -1057,6 +1196,7 @@ def make_provider(
         "newapi": NewAPIAdapter,
         "ollama": OllamaAdapter,
         "openai": OpenAIChatAdapter,
+        "openai_compat": OpenAICompatAdapter,
         "openai_responses": OpenAIResponsesAdapter,
     }
     try:

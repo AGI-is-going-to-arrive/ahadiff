@@ -19,7 +19,7 @@ import { fetchDbCheck, getDoctor } from '../api/config';
 import { useRunsStore } from '../state/runs-store';
 import type { DbCheckResult, DoctorCheck } from '../api/config';
 import type { RunSummary } from '../api/types';
-import { mapDoctorMessage } from '../utils/doctor';
+import { isProviderOnlySensitiveCheck, mapDoctorMessage } from '../utils/doctor';
 import {
   detectPlatform,
   getEnvVarCommand,
@@ -545,6 +545,11 @@ function DiagnosticsSection({
                   key={check.name}
                   status={check.status as DiagnosticStatus}
                   text={mapDoctorMessage(check, t)}
+                  remedy={
+                    isProviderOnlySensitiveCheck(check)
+                      ? t('Doctor.config_sensitive_remedy')
+                      : undefined
+                  }
                   data-testid="onboarding-doctor-row"
                 />
               ))

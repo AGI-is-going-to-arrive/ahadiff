@@ -87,6 +87,15 @@ describe('provider API schemas', () => {
     }).success).toBe(false);
   });
 
+  it('accepts a provider object where overrides_global is null', () => {
+    const providerWithNullOverrides = {
+      ...fullProvider,
+      overrides_global: null,
+    };
+    const parsed = providerSummarySchema.parse(providerWithNullOverrides);
+    expect(parsed.overrides_global).toBeNull();
+  });
+
   it('validates provider model discovery responses strictly', () => {
     expect(
       providerModelsResponseSchema.parse({ models: ['gpt-5.5', 'gpt-5.4-mini'] }),

@@ -6,6 +6,7 @@ import os
 import sqlite3
 import threading
 from dataclasses import replace
+from ipaddress import IPv4Address
 from typing import TYPE_CHECKING, Any, cast
 
 import httpx
@@ -30,7 +31,7 @@ from ahadiff.llm.adapters.openai import OpenAIChatAdapter
 from ahadiff.llm.adapters.openai_compat import OpenAICompatAdapter
 from ahadiff.llm.adapters.openai_responses import OpenAIResponsesAdapter
 from ahadiff.llm.adapters.thinking import thinking_policy_for
-from ahadiff.llm.cache import build_cache_key
+from ahadiff.llm.cache import build_cache_key, lookup_cached_response, store_cached_response
 from ahadiff.llm.cost import (
     DEFAULT_OPENROUTER_MODELS_URL,
     PricingEntry,
@@ -49,7 +50,7 @@ from ahadiff.llm.provider import (
     reset_provider_runtime_state,
     transport_target_for_base_url,
 )
-from ahadiff.llm.schemas import CacheKeyInput
+from ahadiff.llm.schemas import CacheKeyInput, ProviderResponse
 from ahadiff.llm.usage import UsageRecord
 from ahadiff.safety.redact import redaction_pipeline
 
@@ -71,6 +72,13 @@ def _reset_provider_runtime_state(  # pyright: ignore[reportUnusedFunction]
     yield
     reset_provider_runtime_state()
     reset_openrouter_pricing_cache()
+
+
+def _mock_public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    def resolve_public_ip(_hostname: str) -> list[IPv4Address]:
+        return [IPv4Address("1.1.1.1")]
+
+    monkeypatch.setattr(provider_module, "_resolve_hostname_ips", resolve_public_ip)
 
 
 def _provider_config(
@@ -382,6 +390,7 @@ class _FailingByteStream(httpx.SyncByteStream):
         "newapi",
         "ollama",
         "lmstudio",
+        "openai_compat",
     ],
 )
 def test_make_provider_builds_all_frozen_adapters(provider_class: str) -> None:
@@ -389,6 +398,23 @@ def test_make_provider_builds_all_frozen_adapters(provider_class: str) -> None:
     try:
         adapter_conformance_test(provider)
         assert provider.capabilities.provider_kind
+    finally:
+        provider.close()
+
+
+def test_openai_compat_provider_class_uses_openai_compat_adapter() -> None:
+    config = _provider_config(
+        "openai_compat",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-flash",
+    )
+
+    provider = make_provider(config, api_key="test-key")
+    try:
+        assert isinstance(provider.adapter, OpenAICompatAdapter)
+        assert provider.capabilities.provider_kind == "openai_compat"
+        assert provider.capabilities.supports_json_object_mode is True
+        assert provider.capabilities.supports_native_json_schema is False
     finally:
         provider.close()
 
@@ -482,6 +508,248 @@ def test_openai_chat_uses_native_json_schema_when_requested() -> None:
     }
 
 
+def test_openai_chat_deepseek_target_disables_native_json_schema_by_default() -> None:
+    config = _provider_config(
+        "openai",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-flash",
+    )
+    capabilities = OpenAIChatAdapter(config).capabilities
+
+    assert not capabilities.supports_native_json_schema
+    assert capabilities.supports_json_object_mode
+    assert capabilities.structured_output_notes == ("deepseek-json-schema-unavailable",)
+
+
+def test_openai_chat_deepseek_model_prefix_disables_native_json_schema() -> None:
+    config = _provider_config(
+        "openai",
+        base_url="http://127.0.0.1:8000",
+        model_name="deepseek-v4-pro",
+    )
+
+    assert not OpenAIChatAdapter(config).capabilities.supports_native_json_schema
+
+
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "deepseek/deepseek-v4-flash",
+        "models/deepseek/deepseek-v4-flash",
+        "deepseek/deepseek-v4-flash:free",
+        "models/deepseek/deepseek-v4-flash:free",
+    ],
+)
+def test_openai_chat_deepseek_aggregator_model_prefix_disables_native_json_schema(
+    model_name: str,
+) -> None:
+    config = _provider_config(
+        "openai",
+        base_url="https://openrouter.ai/api",
+        model_name=model_name,
+    )
+
+    assert not OpenAIChatAdapter(config).capabilities.supports_native_json_schema
+
+
+def test_openai_chat_deepseek_explicit_capability_override_can_reenable_native_schema() -> None:
+    config = _provider_config(
+        "openai",
+        base_url="https://api.deepseek.com/v1",
+        model_name="deepseek-v4-flash",
+    ).model_copy(update={"capability_overrides": {"supports_native_json_schema": True}})
+
+    assert OpenAIChatAdapter(config).capabilities.supports_native_json_schema
+
+
+def test_openai_chat_deepseek_structured_request_downgrades_to_json_object() -> None:
+    captured_payloads: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payloads.append(json.loads(request.content.decode("utf-8")))
+        return _openai_success_response(content='{"claims":[]}', model_id="deepseek-v4-flash")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai", model_name="deepseek-v4-flash"),
+        api_key="test-key",
+        workspace_root=None,
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        response = provider.generate(_structured_request(model="deepseek-v4-flash"))
+    finally:
+        provider.close()
+
+    assert captured_payloads[0]["response_format"] == {"type": "json_object"}
+    assert "structured_output_downgraded:native_json_schema_to_json_object" in response.notes
+
+
+def test_openai_compat_deepseek_v4_sends_thinking_params_and_json_object() -> None:
+    adapter = OpenAICompatAdapter(
+        _provider_config(
+            "openai_compat",
+            base_url="https://api.deepseek.com",
+            model_name="deepseek-v4-pro",
+        )
+    )
+
+    _method, _url, _headers, payload = adapter.build_request(
+        _structured_request(model="deepseek-v4-pro", thinking_level="high"),
+        api_key="test-key",
+    )
+
+    assert payload["thinking"] == {"type": "enabled"}
+    assert payload["reasoning_effort"] == "high"
+    assert payload["response_format"] == {"type": "json_object"}
+
+
+def test_openai_compat_deepseek_v4_disables_thinking_when_unset() -> None:
+    adapter = OpenAICompatAdapter(
+        _provider_config(
+            "openai_compat",
+            base_url="https://api.deepseek.com",
+            model_name="deepseek-v4-flash",
+        )
+    )
+
+    _method, _url, _headers, payload = adapter.build_request(
+        _request(model="deepseek-v4-flash"),
+        api_key="test-key",
+    )
+
+    assert payload["thinking"] == {"type": "disabled"}
+    assert "reasoning_effort" not in payload
+
+
+def test_openai_compat_non_deepseek_target_rejects_thinking_level() -> None:
+    adapter = OpenAICompatAdapter(
+        _provider_config(
+            "openai_compat",
+            base_url="https://aggregator.example/v1",
+            model_name="deepseek-v4-pro",
+        )
+    )
+
+    with pytest.raises(ProviderError, match="does not support thinking_level"):
+        adapter.build_request(
+            _request(model="deepseek-v4-pro", thinking_level="high"),
+            api_key="test-key",
+        )
+
+
+def test_openai_chat_preserves_deepseek_reasoning_content() -> None:
+    adapter = OpenAICompatAdapter(
+        _provider_config(
+            "openai_compat",
+            base_url="https://api.deepseek.com",
+            model_name="deepseek-v4-flash",
+        )
+    )
+
+    parsed = adapter.parse_response(
+        httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "message": {
+                            "content": "final answer",
+                            "reasoning_content": "private reasoning trace",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 5},
+            },
+        )
+    )
+
+    assert parsed.content == "final answer"
+    assert parsed.reasoning_content == "private reasoning trace"
+
+
+def test_openai_chat_does_not_promote_reasoning_content_to_final_content() -> None:
+    adapter = OpenAICompatAdapter(
+        _provider_config(
+            "openai_compat",
+            base_url="https://api.deepseek.com",
+            model_name="deepseek-v4-flash",
+        )
+    )
+
+    parsed = adapter.parse_response(
+        httpx.Response(
+            200,
+            json={
+                "model": "deepseek-v4-flash",
+                "choices": [
+                    {
+                        "message": {
+                            "reasoning_content": "private reasoning trace",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 5},
+            },
+        )
+    )
+
+    assert parsed.content == ""
+    assert parsed.reasoning_content == "private reasoning trace"
+
+
+def test_openai_chat_deepseek_aggregator_structured_request_downgrades_to_json_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_public_dns(monkeypatch)
+    captured_payloads: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_payloads.append(json.loads(request.content.decode("utf-8")))
+        return _openai_success_response(
+            content='{"claims":[]}',
+            model_id="deepseek/deepseek-v4-flash",
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config(
+            "openai",
+            base_url="https://openrouter.ai/api",
+            model_name="deepseek/deepseek-v4-flash",
+        ),
+        api_key="test-key",
+        workspace_root=None,
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        provider.generate(
+            _structured_request(
+                model="deepseek/deepseek-v4-flash",
+                privacy_mode="explicit_remote",
+            )
+        )
+    finally:
+        provider.close()
+
+    assert captured_payloads[0]["response_format"] == {"type": "json_object"}
+
+
+def test_openai_chat_non_deepseek_target_keeps_native_json_schema() -> None:
+    config = _provider_config(
+        "openai",
+        base_url="https://api.deepseek.com.evil.test",
+        model_name="gpt-5.4-mini",
+    )
+
+    assert OpenAIChatAdapter(config).capabilities.supports_native_json_schema
+
+
 def test_openai_responses_uses_native_json_schema_when_requested() -> None:
     adapter = OpenAIResponsesAdapter(_provider_config("openai_responses"))
     _method, _url, _headers, payload = adapter.build_request(
@@ -556,6 +824,21 @@ def test_thinking_policy_reports_payload_modes_for_adapter_specific_models() -> 
         "payload_mode": "unsupported",
         "warnings": (),
     }
+    assert thinking_policy_for(
+        "openai_compat",
+        "deepseek-v4-flash",
+        base_url="https://api.deepseek.com",
+    ) == {
+        "supported": True,
+        "accepted_levels": ("low", "medium", "high"),
+        "payload_mode": "deepseek.thinking",
+        "warnings": ("deepseek_low_medium_effort_maps_to_high",),
+    }
+    assert not thinking_policy_for(
+        "openai_compat",
+        "deepseek-v4-flash",
+        base_url="https://aggregator.example/v1",
+    )["supported"]
     assert not thinking_policy_for("newapi", "gpt-oss-20b")["supported"]
     assert not thinking_policy_for("lmstudio", "local-model")["supported"]
     assert (
@@ -866,6 +1149,220 @@ def test_provider_request_rejects_redirect_even_when_client_follows_redirects() 
         provider.close()
 
     assert seen_urls == ["http://127.0.0.1:8000/v1/chat/completions"]
+
+
+def test_provider_http_400_includes_sanitized_provider_error_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "This response_format type is unavailable now",
+                    "param": "messages",
+                }
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+    message = str(exc_info.value)
+    assert "HTTP 400" in message
+    assert "This response_format type is unavailable now" in message
+    assert "messages" not in message
+    assert exc_info.value.details == {
+        "status_code": 400,
+        "provider_error_message": "This response_format type is unavailable now",
+    }
+
+
+def test_provider_http_error_summary_redacts_secret_and_drops_payload_echo() -> None:
+    secret = "sk-deepseek-secret123"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": (
+                        "request body: diff --git a/secret.py b/secret.py "
+                        "--- a/secret.py +++ b/secret.py Traceback "
+                        f"Authorization Bearer {secret}"
+                    )
+                }
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+    message = str(exc_info.value)
+    assert message == "provider request failed (HTTP 400)"
+    assert "diff --git" not in message
+    assert "request body" not in message
+    assert "Traceback" not in message
+    assert secret not in message
+    assert exc_info.value.details == {
+        "status_code": 400,
+        "provider_error_redacted": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("content_type", "body"),
+    [
+        ("text/plain", "def proprietary_algorithm():\n    return 'secret source'"),
+        ("text/html", "<html><body>class InternalStrategy: pass</body></html>"),
+    ],
+)
+def test_provider_http_error_does_not_expose_non_json_error_body(
+    content_type: str,
+    body: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(400, content=body, headers={"content-type": content_type})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+    message = str(exc_info.value)
+    assert message == "provider request failed (HTTP 400)"
+    assert "proprietary_algorithm" not in message
+    assert "InternalStrategy" not in message
+    assert "secret source" not in message
+    assert exc_info.value.details["status_code"] == 400
+
+
+def test_provider_http_error_drops_whitespace_request_payload_echo() -> None:
+    echoed_payload = '{"messages" : [{"content":"def proprietary_algorithm(): pass"}]}'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(400, json={"error": {"message": echoed_payload}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+    message = str(exc_info.value)
+    assert message == "provider request failed (HTTP 400)"
+    assert "messages" not in message
+    assert "proprietary_algorithm" not in message
+    assert exc_info.value.details == {
+        "status_code": 400,
+        "provider_error_redacted": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "echoed_payload",
+    [
+        "invalid request: prompt=def proprietary_algorithm(): return 'secret source'",
+        "invalid request: messages=[{'content':'def proprietary_algorithm(): pass'}]",
+        "invalid request input=[secret source code here]",
+    ],
+)
+def test_provider_http_error_drops_assignment_style_request_payload_echo(
+    echoed_payload: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(400, json={"error": {"message": echoed_payload}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+    message = str(exc_info.value)
+    assert message == "provider request failed (HTTP 400)"
+    assert "prompt=" not in message
+    assert "messages=" not in message
+    assert "input=" not in message
+    assert "proprietary_algorithm" not in message
+    assert "secret source" not in message
+    assert exc_info.value.details == {
+        "status_code": 400,
+        "provider_error_redacted": True,
+    }
+
+
+def test_provider_retryable_http_error_preserves_safe_provider_message() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(500, json={"error": {"message": "temporary upstream outage"}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    provider = make_provider(
+        _provider_config("openai"),
+        api_key="test-key",
+        client=client,
+        retry_attempts=0,
+    )
+    try:
+        with pytest.raises(ProviderError) as exc_info:
+            provider.generate(_request())
+    finally:
+        provider.close()
+
+    assert str(exc_info.value) == (
+        "provider returned retryable status (HTTP 500): temporary upstream outage"
+    )
+    assert exc_info.value.details == {
+        "status_code": 500,
+        "retryable": True,
+        "provider_error_message": "temporary upstream outage",
+    }
 
 
 def test_provider_revalidates_adapter_generated_request_url() -> None:
@@ -1471,6 +1968,43 @@ def test_cache_key_hashes_diff_content_without_embedding_raw_patch() -> None:
     )
     assert len(cache_key) == 64
     assert large_diff not in cache_key
+
+
+def test_cached_provider_response_round_trips_reasoning_content(tmp_path: Path) -> None:
+    parts = CacheKeyInput(
+        diff_content="diff --git a/app.py b/app.py\n+print('hi')",
+        source_ref="HEAD",
+        prompt_name="claim.extract",
+        prompt_fingerprint="prompt-v1",
+        prompt_version="prompt-v1",
+        eval_bundle_version="bundle-v1",
+        provider_class="openai_compat",
+        provider_kind="openai_compat",
+        base_url="https://api.deepseek.com/v1",
+        model_id="deepseek-v4-flash",
+        api_family="openai",
+        api_family_version="v1",
+        output_lang="en",
+        privacy_mode="strict_local",
+        redaction_config="cfg",
+        context_bundle_hash="ctx",
+        request_payload_sha256="payload",
+        thinking_level="high",
+    )
+    response = ProviderResponse(
+        content="final",
+        reasoning_content="reasoning trace",
+        model_id="deepseek-v4-flash",
+        input_tokens=3,
+        output_tokens=5,
+    )
+
+    store_cached_response(tmp_path, parts, response)
+    cached = lookup_cached_response(tmp_path, parts)
+
+    assert cached is not None
+    assert cached.content == "final"
+    assert cached.reasoning_content == "reasoning trace"
 
 
 def test_cache_key_separates_response_format_and_schema_hash() -> None:
@@ -2339,7 +2873,11 @@ def test_workspace_model_pricing_override_updates_audit_cost(tmp_path: Path) -> 
     assert audit["cost_usd"] == 0.0012
 
 
-def test_provider_uses_openrouter_pricing_source_for_cost_audit(tmp_path: Path) -> None:
+def test_provider_uses_openrouter_pricing_source_for_cost_audit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_public_dns(monkeypatch)
     (tmp_path / ".ahadiff").mkdir()
     client = httpx.Client(
         transport=httpx.MockTransport(

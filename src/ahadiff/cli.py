@@ -57,7 +57,14 @@ from .core.paths import (
     validate_run_id,
     validate_state_dir_path,
 )
-from .core.sqlite_util import safe_sqlite_connect
+from .core.sqlite_util import (
+    assert_sqlite_runtime_supported,
+    safe_sqlite_connect,
+    sqlite_runtime_failure_message,
+    sqlite_runtime_gate_ok,
+    sqlite_runtime_gate_requirement_message,
+    sqlite_runtime_version_tuple,
+)
 from .i18n import normalize_locale, resolve_locale
 from .install.usage_hints import get_usage_hint
 from .safety.ignore import resolve_safe_path_from_root
@@ -110,11 +117,6 @@ _INSTALL_TARGET_HELP = (
     "copilot, cursor, gemini, github-action, hooks, opencode, roo, or windsurf. "
     "hooks uses POSIX shell hooks and is not supported on Windows."
 )
-_SQLITE_MIN_VERSION = (3, 51, 3)
-_SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] = {
-    (3, 50): (3, 50, 4),
-    (3, 44): (3, 44, 6),
-}
 
 
 class QuizCountMode(str, Enum):
@@ -271,44 +273,22 @@ def _apply_replay_repo_env_file_from_env() -> None:
 
 
 def _sqlite_version_tuple() -> tuple[int, int, int]:
-    parts = sqlite3.sqlite_version.split(".")
-    major, minor, patch = (int(part) for part in parts[:3])
-    return major, minor, patch
+    return sqlite_runtime_version_tuple()
 
 
 def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
-    if version >= _SQLITE_MIN_VERSION:
-        return True
-    floor = _SQLITE_ALLOWED_BACKPORT_MINIMUMS.get(version[:2])
-    return floor is not None and version >= floor
-
-
-def _sqlite_gate_minimum_text() -> str:
-    return ".".join(str(part) for part in _SQLITE_MIN_VERSION)
-
-
-def _sqlite_gate_backports_text() -> str:
-    return ", ".join(
-        f"{'.'.join(str(part) for part in floor)}+"
-        for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
-    )
+    return sqlite_runtime_gate_ok(version)
 
 
 def _sqlite_gate_failure_message() -> str:
-    return (
-        f"SQLite runtime {sqlite3.sqlite_version} is below {_sqlite_gate_minimum_text()}; "
-        f"allowed backports are {_sqlite_gate_backports_text()}. "
-        "Remedy: recreate the environment with a Python build with SQLite >= "
-        f"{_sqlite_gate_minimum_text()} "
-        "(or an allowed backport); current python.org or Homebrew Python builds are "
-        "known options. "
-        f"This process is using Python's standard-library sqlite3 module from {sqlite3.__file__}."
-    )
+    return sqlite_runtime_failure_message()
 
 
 def _assert_sqlite_runtime_supported_for_learn() -> None:
-    if not _sqlite_gate_ok(_sqlite_version_tuple()):
-        raise AhaDiffError(_sqlite_gate_failure_message())
+    try:
+        assert_sqlite_runtime_supported()
+    except StorageError as exc:
+        raise AhaDiffError(str(exc)) from exc
 
 
 def _handle_cli_error(error: Exception) -> None:
@@ -988,6 +968,9 @@ def doctor_cmd(
         console.print(f"[bold]Repo config[/bold]: {snapshot.repo_config_path}")
         console.print(f"[bold]Global config[/bold]: {snapshot.global_config_path}")
         console.print(f"[bold]SQLite runtime[/bold]: {sqlite3.sqlite_version} ({sqlite3.__file__})")
+        console.print(
+            f"[bold]SQLite gate requirement[/bold]: {sqlite_runtime_gate_requirement_message()}"
+        )
         sqlite_version = _sqlite_version_tuple()
         sqlite_gate_ok = _sqlite_gate_ok(sqlite_version)
         if sqlite_gate_ok:
@@ -1043,7 +1026,13 @@ def doctor_cmd(
             console.print("[green]Sensitive global config keys[/green]: none")
 
         review_path = review_db_path(root)
-        if review_path.exists() or review_path.is_symlink():
+        if not sqlite_gate_ok:
+            console.print(
+                "[yellow]review.sqlite[/yellow]: skipped because SQLite runtime gate failed"
+            )
+            if deep:
+                console.print("Deep SQLite checks skipped because SQLite runtime gate failed")
+        elif review_path.exists() or review_path.is_symlink():
             try:
                 with safe_sqlite_connect(review_path) as connection:
                     quick_check = connection.execute("PRAGMA quick_check").fetchone()

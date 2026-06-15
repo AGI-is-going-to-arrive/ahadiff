@@ -44,6 +44,7 @@ _MODEL_RESOURCE = "model_registry.json"
 _PROVIDER_PREFIXES: dict[str, tuple[str, ...]] = {
     "anthropic": ("anthropic", "claude"),
     "azure": ("azure",),
+    "deepseek": ("deepseek",),
     "gemini": ("gemini", "google", "vertex_ai"),
     "lmstudio": ("lmstudio",),
     "newapi": ("newapi",),

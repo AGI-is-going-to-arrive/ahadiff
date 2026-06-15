@@ -5,6 +5,7 @@ import json
 import os
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -36,6 +37,35 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 _RUNNER = CliRunner()
+
+
+def _zero_identity_stat(path_stat: Any) -> SimpleNamespace:
+    return SimpleNamespace(
+        st_mode=path_stat.st_mode,
+        st_size=path_stat.st_size,
+        st_dev=0,
+        st_ino=0,
+        st_nlink=1,
+        st_mtime=path_stat.st_mtime,
+        st_ctime=path_stat.st_ctime,
+        st_mtime_ns=getattr(path_stat, "st_mtime_ns", int(path_stat.st_mtime * 1_000_000_000)),
+        st_ctime_ns=getattr(path_stat, "st_ctime_ns", int(path_stat.st_ctime * 1_000_000_000)),
+    )
+
+
+def _patch_zero_identity_lstat(
+    monkeypatch: pytest.MonkeyPatch,
+    target_path: Path,
+) -> None:
+    original_lstat = results_module.os.lstat
+
+    def fake_lstat(path: Any) -> Any:
+        path_stat = original_lstat(path)
+        if Path(cast("str | Path", path)) == target_path:
+            return _zero_identity_stat(path_stat)
+        return path_stat
+
+    monkeypatch.setattr(results_module.os, "lstat", fake_lstat)
 
 
 def _write_run_fixture(workspace_root: Path, run_id: str = "run_results") -> Path:
@@ -626,6 +656,64 @@ def test_finalized_artifact_digest_rejects_hardlinked_artifact(tmp_path: Path) -
     os.link(outside_path, artifact_path)
 
     with pytest.raises(InputError, match="hardlinked artifact"):
+        finalized_artifact_digest(run_path)
+
+
+def test_finalized_artifact_digest_allows_zero_inode_lstat_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run_zero_inode"
+    run_path.mkdir()
+    artifact_path = run_path / "artifact.txt"
+    artifact_path.write_text("safe artifact\n", encoding="utf-8")
+    _patch_zero_identity_lstat(monkeypatch, artifact_path)
+
+    artifact_count, checksum = finalized_artifact_digest(run_path)
+
+    assert artifact_count == 1
+    assert len(checksum) == 64
+
+
+def test_finalized_artifact_digest_rejects_replacement_with_zero_inode_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run_zero_inode_swap"
+    run_path.mkdir()
+    artifact_path = run_path / "artifact.txt"
+    artifact_bytes = b"safe-data-01\n"
+    replacement_bytes = b"evil-data-02\n"
+    assert len(artifact_bytes) == len(replacement_bytes)
+    artifact_path.write_bytes(artifact_bytes)
+    outside_path = tmp_path / "outside.txt"
+    outside_path.write_bytes(replacement_bytes)
+    expected_zero_stat = _zero_identity_stat(artifact_path.stat())
+    _patch_zero_identity_lstat(monkeypatch, artifact_path)
+    original_open = results_module.os.open
+    original_fstat = results_module.os.fstat
+    open_count = 0
+    opened_fds: set[int] = set()
+
+    def fake_open(path: Any, flags: int, mode: int = 0o777) -> int:
+        nonlocal open_count
+        if Path(cast("str | Path", path)) == artifact_path:
+            open_count += 1
+            opened_path = artifact_path if open_count == 1 else outside_path
+            fd = original_open(opened_path, flags, mode)
+            opened_fds.add(fd)
+            return fd
+        return original_open(path, flags, mode)
+
+    def fake_fstat(fd: int) -> Any:
+        if fd in opened_fds:
+            return expected_zero_stat
+        return original_fstat(fd)
+
+    monkeypatch.setattr(results_module.os, "open", fake_open)
+    monkeypatch.setattr(results_module.os, "fstat", fake_fstat)
+
+    with pytest.raises(InputError, match="changed during validation"):
         finalized_artifact_digest(run_path)
 
 

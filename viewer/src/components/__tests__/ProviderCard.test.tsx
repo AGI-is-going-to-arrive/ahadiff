@@ -7,10 +7,13 @@ import ProviderCard, {
   providerLimitsSourceLabel,
   providerLimitsWarningMessage,
   providerThinkingHintKey,
+  isThinkingSupportedForDraft,
   shouldShowRecommendedLimitAction,
+  buildModelLimitsPreviewPayload,
   buildProviderUpdatePayload,
   ProviderEditForm,
   PROVIDER_ERROR_KEY_BY_CODE,
+  canSubmitProviderForm,
 } from '../ProviderCard';
 import type { ProviderSummary } from '../../api/config';
 import type { TaskInfoResponse } from '../../api/types';
@@ -198,7 +201,37 @@ describe('ProviderCard', () => {
 
   it('derives thinking hint keys locally instead of rendering backend key names', () => {
     expect(providerThinkingHintKey('gemini')).toBe('Settings_page.provider_thinking_hint_gemini');
+    expect(providerThinkingHintKey('openai_compat')).toBe('Settings_page.provider_thinking_hint_openai_compat');
     expect(providerThinkingHintKey('openai')).toBeNull();
+  });
+
+  it('trusts backend thinking metadata before enabling openai_compat reasoning controls', () => {
+    expect(isThinkingSupportedForDraft('openai_compat', null)).toBe(false);
+    expect(isThinkingSupportedForDraft('openai_compat', { thinking: { supported: false } })).toBe(false);
+    expect(isThinkingSupportedForDraft('openai_compat', { thinking: { supported: true } })).toBe(true);
+    expect(isThinkingSupportedForDraft('gemini', null)).toBe(true);
+    expect(isThinkingSupportedForDraft('gemini', { thinking: { supported: false } })).toBe(false);
+  });
+
+  it('builds model limits preview payload with draft base_url for DeepSeek detection', () => {
+    const payload = buildModelLimitsPreviewPayload({
+      alias: 'deepseek',
+      provider_class: 'openai_compat',
+      model_name: ' deepseek-v4-pro ',
+      base_url: ' https://api.deepseek.com ',
+      api_key: '',
+      max_output_tokens: '',
+      thinking_level: 'none',
+      model_limits_name: '',
+      scope: 'repo',
+    });
+
+    expect(payload).toEqual({
+      provider_class: 'openai_compat',
+      model_name: 'deepseek-v4-pro',
+      base_url: 'https://api.deepseek.com',
+      model_limits_name: null,
+    });
   });
 
   it('only offers recommended output when a manual value differs from the known limit', () => {
@@ -304,6 +337,56 @@ describe('ProviderCard', () => {
 
     expect(html).toContain('verify failed');
     expect(html).toContain('provider_probe_failed');
+  });
+
+  describe('DeepSeek BYOK: openai_compat provider class + hint', () => {
+    const deepseekDraft = {
+      alias: 'deepseek',
+      provider_class: 'openai_compat',
+      model_name: 'deepseek-v4-flash',
+      base_url: 'https://api.deepseek.com',
+      api_key: '',
+      max_output_tokens: '',
+      thinking_level: 'none',
+      model_limits_name: '',
+      scope: 'repo' as const,
+    };
+
+    it('renders openai_compat option and shows the DeepSeek hint when selected', () => {
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={deepseekDraft}
+          setDraft={() => {}}
+          isNew
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+      expect(html).toContain('value="openai_compat"');
+      expect(html).toContain('Settings_page.provider_class_openai_compat');
+      expect(html).toContain('Settings_page.provider_hint_deepseek');
+    });
+
+    it('hides the DeepSeek hint for non openai_compat provider classes', () => {
+      const html = renderToStaticMarkup(
+        <ProviderEditForm
+          draft={{ ...deepseekDraft, provider_class: 'openai' }}
+          setDraft={() => {}}
+          isNew
+          saving={false}
+          saveError={null}
+          onSave={() => {}}
+          onCancel={() => {}}
+          t={(key) => key}
+          locale="en-US"
+        />
+      );
+      expect(html).not.toContain('Settings_page.provider_hint_deepseek');
+    });
   });
 
   describe('M1: max_output_tokens validation', () => {
@@ -465,6 +548,42 @@ describe('ProviderCard', () => {
 
       const payload = buildProviderUpdatePayload(draft, provider);
       expect(payload.max_output_tokens).toBeNull();
+    });
+
+    it('only carries openai_compat thinking_level when backend confirmed support', () => {
+      const provider = makeProvider({
+        provider_class: 'openai_compat',
+        model_name: 'deepseek-v4-flash',
+        base_url: 'https://api.deepseek.com',
+      });
+      const draft = {
+        alias: 'local',
+        provider_class: 'openai_compat',
+        model_name: 'deepseek-v4-flash',
+        base_url: 'https://api.deepseek.com',
+        api_key: '',
+        max_output_tokens: '',
+        thinking_level: 'high',
+        model_limits_name: '',
+        scope: 'repo' as const,
+      };
+
+      expect(buildProviderUpdatePayload(draft, provider).thinking_level).toBeNull();
+      expect(buildProviderUpdatePayload(draft, provider, { thinkingSupported: false }).thinking_level).toBeNull();
+      expect(buildProviderUpdatePayload(draft, provider, { thinkingSupported: true }).thinking_level).toBe('high');
+    });
+
+    it('blocks saving while model limits preview is pending', () => {
+      const ready = {
+        saving: false,
+        aliasInvalid: false,
+        modelInvalid: false,
+        baseInvalid: false,
+        maxOutputInvalid: false,
+      };
+
+      expect(canSubmitProviderForm({ ...ready, modelLimitsLoading: true })).toBe(false);
+      expect(canSubmitProviderForm({ ...ready, modelLimitsLoading: false })).toBe(true);
     });
   });
 

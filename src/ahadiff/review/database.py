@@ -5,7 +5,6 @@ import json
 import math
 import os
 import sqlite3
-import stat
 import tempfile
 import threading
 import time
@@ -16,7 +15,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
-from urllib.parse import quote
 
 from pydantic import ValidationError
 
@@ -30,7 +28,10 @@ from ahadiff.contracts.quiz_choice import (
 from ahadiff.core.errors import InputError, MigrationError, StorageError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import is_wsl2_mnt
-from ahadiff.core.sqlite_util import safe_sqlite_connect
+from ahadiff.core.sqlite_util import (
+    assert_sqlite_runtime_supported,
+    safe_sqlite_connect,
+)
 
 from .scheduler import (
     DEFAULT_DESIRED_RETENTION,
@@ -55,11 +56,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
 CURRENT_SCHEMA_VERSION = 10
-_SQLITE_MIN_VERSION = (3, 51, 3)
-_SQLITE_ALLOWED_BACKPORT_MINIMUMS: dict[tuple[int, int], tuple[int, int, int]] = {
-    (3, 50): (3, 50, 4),
-    (3, 44): (3, 44, 6),
-}
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 _SQLITE_SIDECAR_REMOVE_ATTEMPTS = 5
 _SQLITE_SIDECAR_REMOVE_DELAY_SECONDS = 0.05
@@ -141,10 +137,15 @@ def _connect_review_db_readonly(db_path: Path) -> sqlite3.Connection:
     if not db_path.exists():
         raise InputError(f"review.sqlite does not exist: {db_path}")
     _assert_sqlite_runtime_supported()
-    _reject_readonly_sqlite_path(db_path)
     try:
-        connection = sqlite3.connect(_read_only_immutable_sqlite_uri(db_path), uri=True)
-        connection.row_factory = sqlite3.Row
+        connection = safe_sqlite_connect(
+            db_path,
+            read_only=True,
+            immutable_read_only=True,
+            row_factory=sqlite3.Row,
+            foreign_keys=True,
+            defensive=True,
+        )
     except sqlite3.DatabaseError as exc:
         raise StorageError(f"review.sqlite read-only open failed: {db_path} ({exc})") from exc
     except OSError as exc:
@@ -165,48 +166,6 @@ def _connect_review_db_readonly(db_path: Path) -> sqlite3.Connection:
     except Exception:
         connection.close()
         raise
-
-
-def _read_only_immutable_sqlite_uri(db_path: Path) -> str:
-    path_text = os.path.abspath(os.fspath(db_path)).replace("\\", "/")  # noqa: PTH100
-    if len(path_text) >= 2 and path_text[1] == ":" and path_text[0].isalpha():
-        path_text = f"/{path_text}"
-    return f"file:{quote(path_text, safe='/:')}?mode=ro&immutable=1"
-
-
-def _reject_readonly_sqlite_path(db_path: Path) -> None:
-    absolute = Path(os.path.abspath(os.fspath(db_path)))  # noqa: PTH100
-    if not absolute.anchor:
-        raise InputError("review.sqlite path must be absolute")
-    cursor = Path(absolute.anchor)
-    for part in absolute.parts[1:-1]:
-        cursor = cursor / part
-        try:
-            path_stat = os.lstat(cursor)
-        except FileNotFoundError as exc:
-            raise InputError(f"review DB parent directory does not exist: {cursor}") from exc
-        _reject_readonly_sqlite_stat(path_stat, label="review DB parent", require_regular=False)
-    try:
-        db_stat = os.lstat(absolute)
-    except FileNotFoundError as exc:
-        raise InputError(f"review.sqlite does not exist: {db_path}") from exc
-    _reject_readonly_sqlite_stat(db_stat, label="review.sqlite", require_regular=True)
-
-
-def _reject_readonly_sqlite_stat(
-    path_stat: os.stat_result,
-    *,
-    label: str,
-    require_regular: bool,
-) -> None:
-    if stat.S_ISLNK(path_stat.st_mode):
-        raise InputError(f"{label} must not be a symlink")
-    if bool(getattr(path_stat, "st_file_attributes", 0) & 0x400):
-        raise InputError(f"{label} must not be a Windows reparse point or junction")
-    if require_regular and not stat.S_ISREG(path_stat.st_mode):
-        raise InputError(f"{label} must be a regular file")
-    if require_regular and getattr(path_stat, "st_nlink", 1) > 1:
-        raise InputError(f"{label} must not be a hardlink")
 
 
 def _connect_review_db_maintenance(
@@ -2649,47 +2608,7 @@ def _coerce_float(value: object) -> float:
 
 
 def _assert_sqlite_runtime_supported() -> None:
-    version = _sqlite_version_tuple()
-    if _sqlite_gate_ok(version):
-        return
-    raise StorageError(
-        f"SQLite runtime {sqlite3.sqlite_version} is below {_sqlite_minimum_text()}; "
-        f"allowed backports are {_sqlite_backports_text()}. {_sqlite_runtime_remedy()}"
-    )
-
-
-def _sqlite_version_tuple() -> tuple[int, int, int]:
-    parts = sqlite3.sqlite_version.split(".")
-    major, minor, patch = (int(part) for part in parts[:3])
-    return major, minor, patch
-
-
-def _sqlite_gate_ok(version: tuple[int, int, int]) -> bool:
-    if version >= _SQLITE_MIN_VERSION:
-        return True
-    floor = _SQLITE_ALLOWED_BACKPORT_MINIMUMS.get(version[:2])
-    return floor is not None and version >= floor
-
-
-def _sqlite_minimum_text() -> str:
-    return ".".join(str(part) for part in _SQLITE_MIN_VERSION)
-
-
-def _sqlite_backports_text() -> str:
-    return ", ".join(
-        f"{'.'.join(str(part) for part in floor)}+"
-        for floor in sorted(_SQLITE_ALLOWED_BACKPORT_MINIMUMS.values())
-    )
-
-
-def _sqlite_runtime_remedy() -> str:
-    return (
-        "Remedy: recreate the environment with a Python build with SQLite >= "
-        f"{_sqlite_minimum_text()} "
-        "(or an allowed backport); current python.org or Homebrew Python builds are "
-        "known options. "
-        f"This process is using Python's standard-library sqlite3 module from {sqlite3.__file__}."
-    )
+    assert_sqlite_runtime_supported()
 
 
 # ---------------------------------------------------------------------------

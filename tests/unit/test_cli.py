@@ -13,6 +13,7 @@ from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ProviderConfig
 from ahadiff.core import orchestrator as orchestrator_module
+from ahadiff.core import sqlite_util as sqlite_util_module
 from ahadiff.core.config import (
     DEFAULT_CONFIG,
     ResolvedSetting,
@@ -870,9 +871,9 @@ def test_cli_learn_fails_fast_when_sqlite_runtime_gate_fails(
 
     assert result.exit_code == 1
     assert called is False
-    minimum = cli_module._sqlite_gate_minimum_text()  # pyright: ignore[reportPrivateUsage]
+    minimum = sqlite_util_module.sqlite_runtime_minimum_text()
     assert f"SQLite runtime 3.51.0 is below {minimum}" in result.stderr
-    assert f"Python build with SQLite >= {minimum}" in result.stderr
+    assert f"Python environment with SQLite >= {minimum}" in result.stderr
 
 
 def test_cli_watch_fails_fast_when_sqlite_runtime_gate_fails(
@@ -901,11 +902,11 @@ def test_cli_watch_fails_fast_when_sqlite_runtime_gate_fails(
         catch_exceptions=False,
     )
 
-    minimum = cli_module._sqlite_gate_minimum_text()  # pyright: ignore[reportPrivateUsage]
+    minimum = sqlite_util_module.sqlite_runtime_minimum_text()
     assert result.exit_code == 1
     assert constructed is False
     assert f"SQLite runtime 3.51.0 is below {minimum}" in result.stderr
-    assert f"Python build with SQLite >= {minimum}" in result.stderr
+    assert f"Python environment with SQLite >= {minimum}" in result.stderr
 
 
 def test_verify_existing_score_message_points_to_force(

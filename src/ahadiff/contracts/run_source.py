@@ -30,6 +30,7 @@ ProviderClass: TypeAlias = Literal[
     "newapi",
     "ollama",
     "lmstudio",
+    "openai_compat",
 ]
 TokenizerEstimation: TypeAlias = Literal["tiktoken", "char_div_4", "probe_cached"]
 ThinkingLevel: TypeAlias = Literal["none", "low", "medium", "high"]

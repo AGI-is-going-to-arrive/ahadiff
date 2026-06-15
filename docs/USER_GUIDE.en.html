@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.5</span></div>
+      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.7</span></div>
       <h1>AhaDiff User Guide</h1>
       <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, explicit claim states, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
       <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> English walkthrough (YouTube)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code>. The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
@@ -1041,6 +1041,7 @@ ahadiff config show --resolved</span></div>
         <div class="tab-btns" role="tablist" aria-label="Provider setup">
           <button class="tab-btn" role="tab" id="ptab-openai" aria-controls="ppanel-openai" data-tab="openai">OpenAI (default)</button>
           <button class="tab-btn" role="tab" id="ptab-gpt55" aria-controls="ppanel-gpt55" data-tab="gpt55">Responses/API example</button>
+          <button class="tab-btn" role="tab" id="ptab-deepseek" aria-controls="ppanel-deepseek" data-tab="deepseek">DeepSeek BYOK</button>
           <button class="tab-btn" role="tab" id="ptab-local" aria-controls="ppanel-local" data-tab="local">Local (Ollama / LM Studio)</button>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-openai" aria-labelledby="ptab-openai" data-tab="openai">
@@ -1078,6 +1079,18 @@ ahadiff provider test `
   --api-key-env AHADIFF_PROVIDER_API_KEY `
   --privacy-mode explicit_remote</span></div>
         </div>
+        <div class="tab-panel" role="tabpanel" id="ppanel-deepseek" aria-labelledby="ptab-deepseek" data-tab="deepseek">
+          <p>Use <code>openai_compat</code> for the official DeepSeek API so structured output uses JSON object mode. DeepSeek v4 flash/pro also expose the Thinking Level control after Settings preview confirms support; <code>none</code> disables thinking, while <code>low</code>, <code>medium</code>, and <code>high</code> all map to the API's high effort.</p>
+          <div class="code-block"><span class="cmd">export DEEPSEEK_API_KEY="&lt;your-deepseek-api-key&gt;"
+
+ahadiff provider test \
+  --name deepseek \
+  --provider-class openai_compat \
+  --base-url https://api.deepseek.com \
+  --model deepseek-v4-flash \
+  --api-key-env DEEPSEEK_API_KEY \
+  --privacy-mode explicit_remote</span></div>
+        </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-local" aria-labelledby="ptab-local" data-tab="local">
           <p>Point at a local OpenAI-compatible server. Ollama and LM Studio expose their own base URLs.</p>
           <div class="code-block"><span class="cmd">ahadiff provider test \
@@ -1103,7 +1116,7 @@ ahadiff provider test `
       <ul>
         <li>Generates a unique reference name shaped like <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>. Uniqueness avoids names already in your system environment and names already in <code>.ahadiff/.env</code>, adding a numeric suffix on a clash (for example <code>AHADIFF_DEMO_2_KEY</code>).</li>
         <li>Writes the plaintext key only into the repo-local <code>.ahadiff/.env</code> file. On POSIX the file is <code>chmod 0600</code>; on Windows <code>chmod</code> is not equivalent to a POSIX owner-only ACL, so it is best-effort and not strong isolation.</li>
-        <li>Makes sure the secret patterns (<code>.env</code>, <code>.env.*</code>, <code>audit.private.jsonl</code>, <code>*.lock</code>, and <code>*.log</code>) stay git-ignored: it creates <code>.ahadiff/.gitignore</code> if it is missing, and if you already have one it appends only the missing secret lines (your existing lines are preserved). Either way the key file is ignored by a normal <code>git add</code> (a forced <code>git add -f</code> could still override it).</li>
+        <li>Makes sure the secret patterns (<code>.env</code>, <code>.env.*</code>, <code>audit.private.jsonl</code>, <code>*.lock</code>, and <code>*.log</code>) stay git-ignored: it creates <code>.ahadiff/.gitignore</code> if it is missing, and if you already have one it appends only the missing secret lines (your existing lines are preserved). If that <code>.gitignore</code> is a symlink, hardlink, reparse point, or cannot be opened safely, saving is rejected instead of writing the key. Either way the key file is ignored by a normal <code>git add</code> (a forced <code>git add -f</code> could still override it).</li>
         <li>Stores only the reference name in <code>config.toml</code> (<code>api_key_env</code> equals <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>); the plaintext is never written to <code>config.toml</code>.</li>
         <li>When you save with an API key in the field, probes the provider to validate connectivity. This is best-effort: a failed probe does not block the save, and the UI shows the validation result. Updating an existing provider with the key field left blank keeps the current key and skips the probe (verification is empty).</li>
       </ul>
@@ -1600,7 +1613,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
         <div class="feat-card">
           <h3>Provider smart config</h3>
           <p>Draft model-limit preview in Settings before you save.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The provider card previews limits from the draft provider class, model, and optional limits profile, with no remote probe on every edit. It shows thinking support, low-confidence warnings, a recommended max-output, and any clamp the save API returns. Generate and judge limits are shown separately.</p></div></details>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The provider card previews limits from the draft provider class, model, base URL, and optional limits profile, with no remote probe on every edit. It shows thinking support, low-confidence warnings, a recommended max-output, and any clamp the save API returns. Official DeepSeek v4 flash/pro expose Thinking Level only when the official API route is detected; <code>none</code> disables thinking, while <code>low</code>, <code>medium</code>, and <code>high</code> map to the API's high effort. Generic OpenAI-compatible routes stay gated by backend metadata. Generate and judge limits are shown separately.</p></div></details>
         </div>
         <div class="feat-card">
           <h3>WebUI</h3>
@@ -1648,8 +1661,8 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
       <div class="feat-grid feat-grid--3">
         <div class="feat-card">
           <h3>LLM provider (BYOK)</h3>
-          <p>AhaDiff runs on the LLM provider you configure: any of the 8 supported formats, your choice of model. No specific model is required. Set it up in Configure a Provider.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Set the provider, base URL, model, and the API-key environment variable before use.</p></div></details>
+          <p>AhaDiff runs on the LLM provider you configure: any of the 9 supported formats, your choice of model. No specific model is required. Set it up in Configure a Provider.</p>
+          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Set the provider, base URL, model, and the API-key environment variable before use. For DeepSeek BYOK, use <code>openai_compat</code> with <code>https://api.deepseek.com</code>; AhaDiff uses JSON object mode on that route rather than native JSON schema.</p></div></details>
         </div>
         <div class="feat-card">
           <h3>APKG export</h3>
@@ -1846,7 +1859,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>Screenshots are committed PNGs served from the docs tree; the workflow animation is CSS. For release status, see GitHub Actions.</p>
-      <div class="footer-version">v1.3.5</div>
+      <div class="footer-version">v1.3.7</div>
     </footer>
   </main>
 </div>

@@ -5,21 +5,22 @@ import json
 import math
 import os
 import stat
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
+import ahadiff.claims.entailment_report as entailment_report_module
 from ahadiff.claims.entailment_report import (
     scan_entailment_corpus,
     wilson_95_ci,
     write_entailment_report,
 )
 from ahadiff.contracts import ClaimRecord, SourceHunk
+from ahadiff.core.errors import InputError
 from ahadiff.git.line_map import FileLineMap, HunkLineMap, serialize_line_map_payload
 from ahadiff.git.symbols import serialize_symbols_payload
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _claim(
@@ -89,6 +90,35 @@ def _write_text_map(path: Path, *, artifact: str, texts: dict[str, str]) -> None
             "texts": texts,
         },
     )
+
+
+def _zero_identity_stat(path_stat: Any) -> SimpleNamespace:
+    return SimpleNamespace(
+        st_mode=path_stat.st_mode,
+        st_size=path_stat.st_size,
+        st_dev=0,
+        st_ino=0,
+        st_nlink=1,
+        st_mtime=path_stat.st_mtime,
+        st_ctime=path_stat.st_ctime,
+        st_mtime_ns=getattr(path_stat, "st_mtime_ns", int(path_stat.st_mtime * 1_000_000_000)),
+        st_ctime_ns=getattr(path_stat, "st_ctime_ns", int(path_stat.st_ctime * 1_000_000_000)),
+    )
+
+
+def _patch_zero_identity_lstat(
+    monkeypatch: pytest.MonkeyPatch,
+    target_path: Path,
+) -> None:
+    original_lstat = entailment_report_module.os.lstat
+
+    def fake_lstat(path: Any) -> Any:
+        path_stat = original_lstat(path)
+        if Path(path) == target_path:
+            return _zero_identity_stat(path_stat)
+        return path_stat
+
+    monkeypatch.setattr(entailment_report_module.os, "lstat", fake_lstat)
 
 
 def _write_finalized_marker(run_path: Path) -> None:
@@ -474,6 +504,66 @@ def test_report_skips_missing_malformed_stale_bad_schema_symlink_reparse_hardlin
     )
     reparse_report = scan_entailment_corpus(reparse_dir)
     assert reparse_report.skip_reasons["unsafe_artifact_reparse"] == 1
+
+
+def test_entailment_finalized_digest_allows_zero_inode_lstat_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run-zero-inode"
+    run_path.mkdir()
+    artifact_path = run_path / "claims.jsonl"
+    artifact_path.write_text("{}\n", encoding="utf-8")
+    _patch_zero_identity_lstat(monkeypatch, artifact_path)
+
+    artifact_count, checksum = entailment_report_module._bounded_finalized_artifact_digest(  # pyright: ignore[reportPrivateUsage]
+        run_path
+    )
+
+    assert artifact_count == 1
+    assert len(checksum) == 64
+
+
+def test_entailment_finalized_digest_rejects_replacement_with_zero_inode_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_path = tmp_path / "run-zero-inode-swap"
+    run_path.mkdir()
+    artifact_path = run_path / "claims.jsonl"
+    artifact_bytes = b'{"safe": 1}\n'
+    replacement_bytes = b'{"evil": 2}\n'
+    assert len(artifact_bytes) == len(replacement_bytes)
+    artifact_path.write_bytes(artifact_bytes)
+    outside_path = tmp_path / "outside.jsonl"
+    outside_path.write_bytes(replacement_bytes)
+    expected_zero_stat = _zero_identity_stat(artifact_path.stat())
+    _patch_zero_identity_lstat(monkeypatch, artifact_path)
+    original_open = entailment_report_module.os.open
+    original_fstat = entailment_report_module.os.fstat
+    open_count = 0
+    opened_fds: set[int] = set()
+
+    def fake_open(path: Any, flags: int, mode: int = 0o777) -> int:
+        nonlocal open_count
+        if Path(path) == artifact_path:
+            open_count += 1
+            opened_path = artifact_path if open_count == 1 else outside_path
+            fd = original_open(opened_path, flags, mode)
+            opened_fds.add(fd)
+            return fd
+        return original_open(path, flags, mode)
+
+    def fake_fstat(fd: int) -> Any:
+        if fd in opened_fds:
+            return expected_zero_stat
+        return original_fstat(fd)
+
+    monkeypatch.setattr(entailment_report_module.os, "open", fake_open)
+    monkeypatch.setattr(entailment_report_module.os, "fstat", fake_fstat)
+
+    with pytest.raises(InputError, match="changed during validation"):
+        entailment_report_module._bounded_finalized_artifact_digest(run_path)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_report_rejects_symlink_run_directory_before_hashing_artifacts(tmp_path: Path) -> None:

@@ -157,7 +157,12 @@ export async function getProviderModelLimits(
 }
 
 export async function previewModelLimits(
-  data: { provider_class: string; model_name: string; model_limits_name?: string | null },
+  data: {
+    provider_class: string;
+    model_name: string;
+    base_url?: string | null;
+    model_limits_name?: string | null;
+  },
   opts?: Pick<ApiFetchOptions, 'signal'>,
 ): Promise<import('./types').ModelLimitsResponse> {
   const raw = await apiFetch<unknown>('/api/providers/model-limits/preview', {
