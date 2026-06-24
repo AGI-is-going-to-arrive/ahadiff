@@ -59,7 +59,7 @@ interface CommandEntry {
 }
 
 const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
-  { command: 'pip install ahadiff', labelKey: 'Guide.commands_install' },
+  { command: 'pipx install ahadiff', labelKey: 'Guide.commands_install' },
   { command: 'ahadiff init', labelKey: 'Guide.commands_init' },
   {
     command: 'ahadiff learn HEAD~1..HEAD',

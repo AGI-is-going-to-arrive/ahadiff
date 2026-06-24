@@ -99,7 +99,7 @@ describe('GuidePage command examples', () => {
     const html = renderToStaticMarkup(<GuidePage />);
     const commands = extractRenderedCommands(html);
 
-    expect(commands).toContain('pip install ahadiff');
+    expect(commands).toContain('pipx install ahadiff');
     expect(commands).toContain('ahadiff learn HEAD~1..HEAD');
     expect(commands).toContain('ahadiff learn --staged --unstaged --include-untracked');
     expect(commands).toContain('ahadiff learn --staged');

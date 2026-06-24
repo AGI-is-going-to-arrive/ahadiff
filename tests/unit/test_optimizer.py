@@ -213,7 +213,7 @@ def test_optimize_weights_wraps_missing_optimizer_extras_as_input_error(
         InputError,
         match=(
             r"FSRS optimizer requires optional dependencies; install with "
-            r"pip install 'ahadiff\[optimizer\]'"
+            r"pipx install 'ahadiff\[optimizer\]'"
         ),
     ):
         optimize_weights(db_path, min_reviews=2)

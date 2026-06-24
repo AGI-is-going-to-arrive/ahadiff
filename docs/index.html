@@ -740,7 +740,7 @@ a.badge { text-decoration: none; }
   <p class="hero-tagline" data-i18n="hero.tagline">AI 写完，<span class="b-mark">Diff 教回</span>。</p>
   <p class="hero-tagline-en" data-i18n="hero.tagline_en">Ship with AI. <span class="b-mark">Learn it back.</span></p>
   <p class="hero-desc" data-i18n="hero.desc">一个 local-first 的 <span class="b-mark">diff-anchored learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链、claim 状态、概念图谱、主动回忆测验和 SRS 复习卡的学习记录。</p>
-  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.7 · pip install ahadiff</p>
+  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.7 · pipx install ahadiff</p>
   <div class="hero-ctas">
     <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
@@ -1034,7 +1034,7 @@ a.badge { text-decoration: none; }
         <a class="badge" href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:-2px"> <span data-i18n="video.zh">中文视频（B 站）</span></a>
       </div>
       <p class="video-link"><a id="tutorialVideoLink" href="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" target="_blank" rel="noopener" data-i18n="video.open">在新标签页打开视频 ↗</a> &middot; <a href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener" data-i18n="video.bilibili">中文版在 B 站观看 ↗</a></p>
-      <p class="video-note" data-i18n="video.note">视频里的安装就是 <code>pip install ahadiff</code>，一行装好。</p>
+      <p class="video-note" data-i18n="video.note">视频里的安装就是 <code>pip install ahadiff</code>，一行装好。（现在推荐用 pipx 隔离安装，见下方安装说明）</p>
     </div>
   </div>
 </section>
@@ -1051,7 +1051,7 @@ a.badge { text-decoration: none; }
         <span class="terminal-title">Terminal</span>
       </div>
       <div class="terminal-body">
-        <div><span class="prompt">$ </span><span class="cmd">pip install ahadiff</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span></div>
         <div><span class="prompt">$ </span><span class="cmd">cd my-project</span></div>
         <div><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
         <div>&nbsp;</div>
@@ -1200,11 +1200,11 @@ a.badge { text-decoration: none; }
         <div class="start-step__head">
           <div class="start-step__n">1</div>
           <h3 data-i18n="start.c1.title">安装并配置</h3>
-          <p data-i18n="start.c1.desc">用 pip 安装已发布的 CLI 和内置 WebUI，然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。</p>
+          <p data-i18n="start.c1.desc">推荐用 <code>pipx install ahadiff</code> 隔离安装已发布的 CLI 和内置 WebUI（<code>uv tool install ahadiff</code> 同样可以，都不需要 git clone），然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。在 venv / conda 里用 <code>pip install ahadiff</code> 也可以；在 Homebrew / 系统 Python 上直接 pip 会触发 externally-managed-environment，改用 pipx 或 uv 即可。</p>
           <div class="start-tip" data-i18n="start.c1.tip">提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。DeepSeek BYOK 使用 <code>openai_compat</code> 与 <code>https://api.deepseek.com</code>；结构化输出走 JSON object mode。DeepSeek v4 的 Thinking Level 只有「无」会关闭思考，低 / 中 / 高会按高处理。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加供应商，保存前还能预览模型限额。</div>
         </div>
         <div class="start-step__body">
-          <div class="code-block"><span class="prompt">$ </span><span class="cmd">pip install ahadiff</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff init</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_API_KEY="&lt;your-provider-api-key&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff provider test \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--name default \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--provider-class openai \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--base-url "$AHADIFF_PROVIDER_BASE_URL" \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--api-key-env AHADIFF_PROVIDER_API_KEY</span></div>
+          <div class="code-block"><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff init</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_API_KEY="&lt;your-provider-api-key&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff provider test \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--name default \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--provider-class openai \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--base-url "$AHADIFF_PROVIDER_BASE_URL" \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--api-key-env AHADIFF_PROVIDER_API_KEY</span></div>
         </div>
       </div>
       <div class="start-step reveal reveal-delay-1">
@@ -1238,7 +1238,7 @@ a.badge { text-decoration: none; }
     <h2 class="section-title reveal" data-i18n="faq.title">你可能会问</h2>
     <div class="faq-list reveal">
       <details class="faq-item"><summary data-i18n="faq.q1">我的代码会被上传吗？</summary><div class="faq-a" data-i18n="faq.a1">默认 strict_local，不向任何远端模型发送内容。要用远端模型时，必须显式切到 redacted_remote 或 explicit_remote；远端请求前会执行隐私与脱敏门禁。</div></details>
-      <details class="faq-item"><summary data-i18n="faq.q2">需要从 PyPI 安装吗？</summary><div class="faq-a" data-i18n="faq.a2">是。直接用 <code>pip install ahadiff</code> 安装已发布的 CLI 和内置 WebUI；源码 checkout 只适合贡献者开发。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q2">需要从 PyPI 安装吗？</summary><div class="faq-a" data-i18n="faq.a2">是，从 PyPI 安装。推荐用 <code>pipx install ahadiff</code>（或 <code>uv tool install ahadiff</code>）隔离安装已发布的 CLI 和内置 WebUI，不需要 git clone。在 Homebrew / 系统 Python 上直接 <code>pip install</code> 会触发 externally-managed-environment，改用 pipx 或 uv 即可；源码 checkout 只适合贡献者开发。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q3">支持哪些模型？</summary><div class="faq-a" data-i18n="faq.a3">BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q4">要花钱吗？</summary><div class="faq-a" data-i18n="faq.a4">AhaDiff 本身免费、在本地运行；你只为自己的 LLM 供应商付费（BYOK）。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q5">评分会因为模型不稳定而乱跳吗？</summary><div class="faq-a" data-i18n="faq.a5">评分主体是 8 维确定性打分；LLM judge 只是可选 advisory，即使 judge 失败也会保留确定性分数。</div></details>
@@ -1293,7 +1293,7 @@ const T = {
     en: 'A local-first <span class="b-mark">diff-anchored learning layer</span>. Transforms git diffs from AI coding tools like Claude, Codex, and Cursor into learning notes with code evidence chains, claim states, concept graphs, active recall quizzes, and SRS review cards.'
   },
   "quote.core": { zh: "每一行 AI 写的代码，都应该能把学习教回给你。", en: "Every line of AI-written code should teach you something back." },
-  "hero.status": { zh: "v1.3.7 · pip install ahadiff", en: "v1.3.7 · pip install ahadiff" },
+  "hero.status": { zh: "v1.3.7 · pipx install ahadiff", en: "v1.3.7 · pipx install ahadiff" },
   "hero.cta1": { zh: "开始使用", en: "Get Started" },
   "hero.insight_title": { zh: "AhaDiff 证据链课程", en: "AhaDiff Evidence-Linked Lesson" },
   "hero.claim1": {
@@ -1463,8 +1463,8 @@ const T = {
   },
   "start.c1.title": { zh: "安装并配置", en: "Install & configure" },
   "start.c1.desc": {
-    zh: "用 pip 安装已发布的 CLI 和内置 WebUI，然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。",
-    en: "Install the published CLI and bundled WebUI with pip, then configure an LLM provider. learn cannot run until a provider is set up."
+    zh: "推荐用 <code>pipx install ahadiff</code> 隔离安装已发布的 CLI 和内置 WebUI（<code>uv tool install ahadiff</code> 同样可以，都不需要 git clone），然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。在 venv / conda 里用 <code>pip install ahadiff</code> 也可以；在 Homebrew / 系统 Python 上直接 pip 会触发 externally-managed-environment，改用 pipx 或 uv 即可。",
+    en: "Recommended: install the published CLI and bundled WebUI in isolation with <code>pipx install ahadiff</code> (<code>uv tool install ahadiff</code> works too — neither needs a git clone), then configure an LLM provider. learn cannot run until a provider is set up. <code>pip install ahadiff</code> is fine inside a venv / conda; on a Homebrew / system Python a bare pip install triggers externally-managed-environment, so use pipx or uv instead."
   },
   "start.c2.title": { zh: "学习", en: "Learn" },
   "start.c2.desc": {
@@ -1497,7 +1497,7 @@ const T = {
   "video.subtitle": { zh: "从 learn 到复习，一个真实 run 的完整演示（带字幕）。", en: "From learn to review: a full walkthrough on a real run (subtitled)." },
   "video.open": { zh: "在新标签页打开视频 ↗", en: "Open the video in a new tab ↗" },
   "video.bilibili": { zh: "中文版在 B 站观看 ↗", en: "Watch the Chinese version on Bilibili ↗" },
-  "video.note": { zh: "视频里的安装就是 <code>pip install ahadiff</code>，一行装好。", en: "The install shown in the video is <code>pip install ahadiff</code> — one line." },
+  "video.note": { zh: "视频里的安装就是 <code>pip install ahadiff</code>，一行装好。（现在推荐用 pipx 隔离安装，见下方安装说明）", en: "The install shown in the video is <code>pip install ahadiff</code> — one line. (we now recommend the isolated pipx install — see Install below)" },
   "video.en": { zh: "英文视频（YouTube）", en: "English video (YouTube)" },
   "video.zh": { zh: "中文视频（B 站）", en: "Chinese video (Bilibili)" },
   "screens.eyebrow": { zh: "界面", en: "WEBUI" },
@@ -1533,7 +1533,7 @@ const T = {
   "faq.q1": { zh: "我的代码会被上传吗？", en: "Does my code get uploaded?" },
   "faq.a1": { zh: "默认 <code>strict_local</code>，不向任何远端模型发送内容。要用远端模型时，必须显式切到 <code>redacted_remote</code> 或 <code>explicit_remote</code>；远端请求前会执行隐私与脱敏门禁。", en: "The default is <code>strict_local</code>: nothing is sent to a remote model. Remote models require explicitly switching to <code>redacted_remote</code> or <code>explicit_remote</code>; privacy and redaction gates run before the request." },
   "faq.q2": { zh: "需要从 PyPI 安装吗？", en: "Do I install it from PyPI?" },
-  "faq.a2": { zh: "是。直接用 <code>pip install ahadiff</code> 安装已发布的 CLI 和内置 WebUI；源码 checkout 只适合贡献者开发。", en: "Yes. Use <code>pip install ahadiff</code> for the published CLI and bundled WebUI; source checkout installs are for contributors." },
+  "faq.a2": { zh: "是，从 PyPI 安装。推荐用 <code>pipx install ahadiff</code>（或 <code>uv tool install ahadiff</code>）隔离安装已发布的 CLI 和内置 WebUI，不需要 git clone。在 Homebrew / 系统 Python 上直接 <code>pip install</code> 会触发 externally-managed-environment，改用 pipx 或 uv 即可；源码 checkout 只适合贡献者开发。", en: "Yes, from PyPI. We recommend the isolated <code>pipx install ahadiff</code> (or <code>uv tool install ahadiff</code>) for the published CLI and bundled WebUI — no git clone needed. On a Homebrew / system Python a bare <code>pip install</code> triggers externally-managed-environment, so use pipx or uv instead; source checkout installs are for contributors." },
   "faq.q3": { zh: "支持哪些模型？", en: "Which models are supported?" },
   "faq.a3": { zh: "BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。", en: "BYOK across 9 API formats (OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio, and more), with context-length auto-probing. DeepSeek BYOK uses OpenAI-compatible JSON object mode." },
   "faq.q4": { zh: "要花钱吗？", en: "Does it cost anything?" },

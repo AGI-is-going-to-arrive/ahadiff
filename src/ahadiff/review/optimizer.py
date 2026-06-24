@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 _OPTIMIZER_INSTALL_HINT = (
-    "FSRS optimizer requires optional dependencies; install with pip install 'ahadiff[optimizer]'"
+    "FSRS optimizer requires optional dependencies; install with pipx install 'ahadiff[optimizer]'"
 )
 _DATABASE_MODULE_NAME = "ahadiff.review.database"
 _FSRS_OPTIMIZER_MAX_SEQ_LEN = 64

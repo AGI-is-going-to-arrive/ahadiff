@@ -6,7 +6,7 @@
 
 [English](./README.md) · [介绍页](https://agi-is-going-to-arrive.github.io/ahadiff/) · [使用指南](./docs/USER_GUIDE.zh.html) · [<img src="./docs/assets/youtube.svg" width="16" height="16" alt="YouTube"> 英文视频教程（YouTube）](https://youtu.be/lvL7GMvDPvI) · [<img src="./docs/assets/bilibili.svg" width="16" height="16" alt="Bilibili"> 中文视频教程（B 站）](https://www.bilibili.com/video/BV1b57k6yEWm) · [中文视频教程（本地最新，带字幕）](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
 
-> 安装以 `pip install ahadiff` 为准；英文视频已是最新，中文 B 站视频正在同步更新。
+> 推荐：`pipx install ahadiff`（或 `uv tool install ahadiff`）—— 隔离式 CLI 安装。在你自管的 venv/conda 里用 `pip install ahadiff` 也可以；在系统或 Homebrew Python 上请看 [安装](#安装) 里的 `externally-managed-environment` 排障。
 
 ---
 
@@ -43,13 +43,35 @@ AI 写代码越来越快，但人对“到底改了什么”的理解很容易�
 
 ## 安装
 
+AhaDiff 是命令行工具，最稳妥的方式是**隔离安装**——它不会和系统/Homebrew Python 冲突（后者会按 [PEP 668](https://peps.python.org/pep-0668/) 拒绝直接的 `pip install`）：
+
 ```bash
-pip install ahadiff
-ahadiff --version   # 应输出 ahadiff 1.3.7
+# 推荐 —— 隔离安装，一条命令（任选其一）
+pipx install ahadiff        # 没装 pipx？ brew install pipx（macOS），或见 https://pipx.pypa.io
+uv tool install ahadiff     # 没装 uv？   https://docs.astral.sh/uv/
+
+ahadiff --version           # 应输出 ahadiff 1.3.7
 ```
 开箱即带可用的 WebUI，所有默认功能无需任何 extra 即可使用。
 
-`pip install 'ahadiff[optimizer]'` 仅在需要 FSRS 参数自动优化时才用到，它会引入较重的 torch 依赖。基础复习与调度不装它也能正常工作。
+在你自己掌控的环境里（virtualenv、conda 或 pyenv），直接用 pip 安装也没问题：
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate   # Windows PowerShell: py -m venv .venv; .venv\Scripts\Activate.ps1
+pip install ahadiff
+```
+
+FSRS 参数自动优化（会引入较重的 torch 依赖）是可选的——用 `pipx install 'ahadiff[optimizer]'`（或 `uv tool install 'ahadiff[optimizer]'`；在 venv/conda 里用 `pip install 'ahadiff[optimizer]'`）安装该 extra。基础复习与调度不装它也能正常工作。
+
+### 排障：`error: externally-managed-environment`
+
+这是 [PEP 668](https://peps.python.org/pep-0668/)：Homebrew（macOS）和 Debian/Ubuntu 会把系统 Python 标为 “externally managed”，拒绝直接 `pip install`——对任何包都如此，不只是 AhaDiff。按优先级修复：
+
+- **隔离安装器（推荐）：** `pipx install ahadiff` 或 `uv tool install ahadiff`。
+- **虚拟环境：** `python3 -m venv .venv && source .venv/bin/activate && pip install ahadiff`（Windows PowerShell：`py -m venv .venv; .venv\Scripts\Activate.ps1; pip install ahadiff`）。
+- **逃生口（不推荐）：** `pip install --break-system-packages ahadiff`——可能破坏你的 Homebrew/系统 Python。
+
+Windows 上 python.org 安装的 Python 不是 externally managed，`pip install ahadiff` 可直接用——但仍推荐用 `pipx` / `uv tool` 做干净的隔离 CLI 安装。
 
 ### 从源码安装（贡献者）
 

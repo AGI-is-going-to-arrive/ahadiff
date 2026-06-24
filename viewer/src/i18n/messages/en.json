@@ -789,7 +789,7 @@
     "maintenance_mark": "Mark a wrong claim",
     "install_model_label": "CLI install and project guidance",
     "install_model_cli_title": "AhaDiff CLI",
-    "install_model_cli_desc": "Requires Python 3.11+. Install the published CLI with pip install ahadiff. Contributors working from a source checkout can instead run uv run ahadiff ... or uv tool install --editable .",
+    "install_model_cli_desc": "Requires Python 3.11+. Install the published CLI in isolation with pipx install ahadiff (or uv tool install ahadiff) — neither needs a git clone. pip install ahadiff also works inside a venv/conda; on a Homebrew/system Python a bare pip install triggers externally-managed-environment, so use pipx or uv instead. Contributors working from a source checkout can instead run uv run ahadiff ... or uv tool install --editable .",
     "install_model_agent_title": "Project agent instructions",
     "install_model_agent_desc": "Project guidance is optional repo-local files that teach Claude, Codex, and other tools how to use AhaDiff in this project.",
     "integrations_title": "Project AI Tool Instructions",

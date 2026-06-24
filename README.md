@@ -6,7 +6,7 @@
 
 [中文](./README.zh.md) · [Landing page](https://agi-is-going-to-arrive.github.io/ahadiff/) · [User Guide](./docs/USER_GUIDE.en.html) · [<img src="./docs/assets/youtube.svg" width="16" height="16" alt="YouTube"> English tutorial video (YouTube)](https://youtu.be/lvL7GMvDPvI) · [<img src="./docs/assets/bilibili.svg" width="16" height="16" alt="Bilibili"> Chinese tutorial video (Bilibili)](https://www.bilibili.com/video/BV1b57k6yEWm)
 
-> Install with `pip install ahadiff`. The English video shows this step; the Chinese Bilibili cut is being refreshed to match.
+> Recommended: `pipx install ahadiff` (or `uv tool install ahadiff`) — an isolated CLI install. A plain `pip install ahadiff` also works inside a venv/conda; on a system or Homebrew Python, see [Install](#install) for the `externally-managed-environment` fix.
 
 ---
 
@@ -43,13 +43,35 @@ AI writes code faster, but developers can understand less of what actually chang
 
 ## Install
 
+AhaDiff is a CLI app, so the most reliable install is an **isolated** one — it never collides with a system or Homebrew Python (which blocks a bare `pip install` via [PEP 668](https://peps.python.org/pep-0668/)):
+
 ```bash
-pip install ahadiff
-ahadiff --version   # should print ahadiff 1.3.7
+# Recommended — isolated, one command (pick either)
+pipx install ahadiff        # no pipx yet?  brew install pipx  (macOS), or see https://pipx.pypa.io
+uv tool install ahadiff     # no uv yet?    https://docs.astral.sh/uv/
+
+ahadiff --version           # should print ahadiff 1.3.7
 ```
 This ships a working WebUI out of the box, and all default features work with no extras.
 
-`pip install 'ahadiff[optimizer]'` is only needed for FSRS parameter auto-optimization, which pulls in a heavy torch dependency. Base review and scheduling work without it.
+Inside a managed environment you control (a virtualenv, conda, or pyenv), a plain pip install is fine:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate   # Windows PowerShell: py -m venv .venv; .venv\Scripts\Activate.ps1
+pip install ahadiff
+```
+
+FSRS parameter auto-optimization (a heavy torch dependency) is optional — install the extra with `pipx install 'ahadiff[optimizer]'` (or `uv tool install 'ahadiff[optimizer]'`; inside a venv/conda, `pip install 'ahadiff[optimizer]'`). Base review and scheduling work without it.
+
+### Troubleshooting: `error: externally-managed-environment`
+
+This is [PEP 668](https://peps.python.org/pep-0668/): Homebrew (macOS) and Debian/Ubuntu mark their system Python as "externally managed" and refuse a direct `pip install` — for any package, not just AhaDiff. Fixes, best first:
+
+- **Isolated installer (recommended):** `pipx install ahadiff` or `uv tool install ahadiff`.
+- **Virtualenv:** `python3 -m venv .venv && source .venv/bin/activate && pip install ahadiff` (Windows PowerShell: `py -m venv .venv; .venv\Scripts\Activate.ps1; pip install ahadiff`).
+- **Last resort (not recommended):** `pip install --break-system-packages ahadiff` — this can break your Homebrew/system Python.
+
+On Windows, the python.org installer is not externally managed, so `pip install ahadiff` works directly — but `pipx` / `uv tool` are still recommended for a clean, isolated CLI.
 
 ### From source (contributors)
 

@@ -19,8 +19,11 @@ export function detectPlatform(): Platform {
 }
 
 export function getInstallCommand(_platform: Platform): string {
-  // Install the published CLI from PyPI.
-  return 'pip install ahadiff';
+  // Install the published CLI from PyPI in an isolated environment. pipx is the
+  // recommended path: it avoids PEP 668 "externally-managed-environment" on a
+  // Homebrew/system Python and needs no git clone. (`uv tool install ahadiff`
+  // works the same way; `pip install ahadiff` is fine inside a venv/conda.)
+  return 'pipx install ahadiff';
 }
 
 export function getShellHint(platform: Platform): string {

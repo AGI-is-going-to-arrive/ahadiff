@@ -789,7 +789,7 @@
     "maintenance_mark": "标记错误声明",
     "install_model_label": "CLI 安装与项目指引关系",
     "install_model_cli_title": "AhaDiff CLI",
-    "install_model_cli_desc": "需要 Python 3.11+。用 pip install ahadiff 安装已发布的 CLI。贡献者在源码 checkout 中也可用 uv run ahadiff ... 或 uv tool install --editable . 运行。",
+    "install_model_cli_desc": "需要 Python 3.11+。推荐用 pipx install ahadiff（或 uv tool install ahadiff）隔离安装已发布的 CLI，都不需要 git clone。在 venv/conda 里用 pip install ahadiff 也可以；在 Homebrew/系统 Python 上直接 pip install 会触发 externally-managed-environment，改用 pipx 或 uv 即可。贡献者在源码 checkout 中也可用 uv run ahadiff ... 或 uv tool install --editable . 运行。",
     "install_model_agent_title": "项目级 Agent 指令",
     "install_model_agent_desc": "项目级指引是可选的仓库本地文件，用来告诉 Claude、Codex 等工具在这个项目里如何使用 AhaDiff。",
     "integrations_title": "项目级 AI 工具指令",
