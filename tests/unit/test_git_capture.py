@@ -38,6 +38,23 @@ else:
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_global_config(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core import config as config_module
+
+    global_dir = tmp_path / "empty-global-config"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr("ahadiff.core.paths.global_config_dir", fake_global_config_dir)
+
+
 def _strip_ansi(text: str) -> str:
     return _ANSI_ESCAPE_RE.sub("", text)
 

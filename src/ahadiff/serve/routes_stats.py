@@ -576,7 +576,7 @@ def _build_providers(state: ServeState) -> dict[str, Any]:
 
     providers: list[ProviderSummary] = []
     try:
-        cfg = load_config(state.state_dir.parent)
+        cfg = load_config(state.state_dir.parent, global_config_root=state.global_config_root)
         values = cast("dict[str, Any]", getattr(cfg, "values", {}))
         provider_scopes = cast("Mapping[str, object]", getattr(cfg, "provider_scopes", {}) or {})
         provider_overrides_global = {

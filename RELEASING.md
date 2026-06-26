@@ -12,12 +12,12 @@ runtime. If you build the wheel before building the viewer, the WebUI is missing
 `ahadiff serve` has nothing to serve. The build order in Section 2 exists to prevent exactly
 this.
 
-## Current v1.3.5 release-candidate boundary
+## Current v1.3.8 release boundary
 
-- `1.3.4` is already published on PyPI. Do not rebuild or republish it; bump all declared
-  versions before cutting the next candidate.
+- `1.3.8` is the current GA release target. Do not rebuild or republish any already published
+  version; bump all declared versions before cutting the next candidate.
 - PyPI publish is **not allowed** until the local gate, remote gate, and explicit maintainer
-  confirmation are all present. A local release candidate can be prepared without publishing.
+  confirmation are all present. A local release artifact can be prepared without publishing.
 - If push is intentionally held back, the release workflow dry run, Linux gate, Windows gate,
   Remote CI, and Antigravity checks must be recorded as `Unknown/blocked`, not as pass.
 - S1 semantic entailment must be described as private shadow-only / measurement-only. Current
@@ -26,11 +26,11 @@ this.
 - A3 quiz distractor analysis is diagnostic/advisory-only. It is not a blocking gate.
 - The 10-mode learn claim means dry-run capture coverage unless the validation log lists each
   live LLM command, `run_id`, exit code, and lesson/claims/quiz/card artifacts.
-- Current v1.3.5 RC note: the macOS local gate, 10-mode live LLM matrix, release workflow dry
-  run, Linux gate, Windows runtime gate, Backend CI, and Frontend CI are recorded in
-  `docs/VALIDATION_AUDIT.zh.md` for branch `release/v1.3.5-rc`. Antigravity remains
-  `Unknown/blocked` until a real Antigravity check is run, and PyPI publish still requires
-  explicit maintainer confirmation.
+- Current v1.3.8 note: the source diff fixes serve-time provider alias parity for global BYOK
+  providers. Settings Save, provider list, capture estimate, improve preflight, and runtime
+  learn now resolve aliases from the merged repo + global snapshot. The local audit in
+  `docs/VALIDATION_AUDIT.zh.md` records the real serve save regression, baseline 400 -> fixed
+  200 behavior, and one live DeepSeek learn run through the global provider.
 
 ---
 

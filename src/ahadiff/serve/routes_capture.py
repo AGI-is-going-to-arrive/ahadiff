@@ -42,9 +42,15 @@ def _workspace_root_for_capture_recommendation(workspace_root: Path) -> tuple[Pa
 def _recommended_capture_payload(state: ServeState) -> dict[str, Any]:
     state_dir = state.state_dir
     root, has_git_repo = _workspace_root_for_capture_recommendation(state_dir.parent)
-    snapshot = load_config(root) if has_git_repo else load_workspace_config(root)
+    snapshot = (
+        load_config(root, global_config_root=state.global_config_root)
+        if has_git_repo
+        else load_workspace_config(root, global_config_root=state.global_config_root)
+    )
     security_config = (
-        load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+        load_security_config(root, global_config_root=state.global_config_root)
+        if has_git_repo
+        else load_workspace_security_config(root, global_config_root=state.global_config_root)
     )
     capture_config = cast("dict[str, Any]", snapshot.values["capture"])
     recommendation = _effective_capture_recommendation(

@@ -11,12 +11,13 @@ from __future__ import annotations
 import json
 import platform
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from starlette.testclient import TestClient
 
 from ahadiff.contracts import ResultEvent
+from ahadiff.core import config as config_module
 from ahadiff.review.database import initialize_review_db, sync_result_event
 from ahadiff.serve.app import create_app
 from ahadiff.serve.state import ServeState
@@ -27,8 +28,35 @@ if TYPE_CHECKING:
 _AUTH = {"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"}
 
 
-def _client(state_dir: Path, *, token: str = "test-token") -> TestClient:
-    app = create_app(ServeState(state_dir=state_dir, token=token, locale="en"))
+@pytest.fixture(autouse=True)
+def _isolate_global_config(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "empty-global-config"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr("ahadiff.core.paths.global_config_dir", fake_global_config_dir)
+
+
+def _client(
+    state_dir: Path,
+    *,
+    token: str = "test-token",
+    global_config_root: Path | None = None,
+) -> TestClient:
+    app = create_app(
+        ServeState(
+            state_dir=state_dir,
+            token=token,
+            locale="en",
+            global_config_root=global_config_root,
+        )
+    )
     return TestClient(app, base_url="http://localhost:8765")
 
 
@@ -129,6 +157,117 @@ def test_improve_preflight_no_db(tmp_path: Path) -> None:
         "lesson_hint.md",
         "quiz_generate.md",
     }
+
+
+def test_improve_preflight_provider_configured_from_global_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Global-only BYOK providers count as configured for improve preflight."""
+    state_dir = _init_repo(tmp_path)
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        '[llm]\ngenerate_model = "gpt-5.5"\n',
+        encoding="utf-8",
+    )
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.global_only]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "https://api.example.test/v1"\n',
+        encoding="utf-8",
+    )
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    client = _client(state_dir)
+
+    response = client.get("/api/improve/preflight", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["provider_configured"] is True
+
+
+def test_improve_preflight_provider_configured_from_serve_global_config_root(
+    tmp_path: Path,
+) -> None:
+    state_dir = _init_repo(tmp_path)
+    state_dir.mkdir()
+    global_dir = tmp_path / "serve-global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.global_only]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "https://api.example.test/v1"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir, global_config_root=global_dir)
+
+    response = client.get("/api/improve/preflight", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["provider_configured"] is True
+
+
+def test_improve_preflight_provider_configured_falls_back_to_repo_when_global_malformed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = _init_repo(tmp_path)
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.local]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "https://api.example.test/v1"\n',
+        encoding="utf-8",
+    )
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text("[providers.bad\n", encoding="utf-8")
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr("ahadiff.core.paths.global_config_dir", fake_global_config_dir)
+    client = _client(state_dir)
+
+    response = client.get("/api/improve/preflight", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["provider_configured"] is True
+
+
+@pytest.mark.parametrize(
+    "config_text",
+    [
+        None,
+        "[providers.bad\n",
+    ],
+)
+def test_improve_preflight_provider_configured_false_without_valid_config(
+    tmp_path: Path,
+    config_text: str | None,
+) -> None:
+    """Missing or malformed config must not raise and must report unconfigured."""
+    state_dir = _init_repo(tmp_path)
+    state_dir.mkdir()
+    if config_text is not None:
+        (state_dir / "config.toml").write_text(config_text, encoding="utf-8")
+    client = _client(state_dir)
+
+    response = client.get("/api/improve/preflight", headers=_AUTH)
+
+    assert response.status_code == 200
+    assert response.json()["provider_configured"] is False
 
 
 def test_improve_preflight_with_sessions(tmp_path: Path) -> None:

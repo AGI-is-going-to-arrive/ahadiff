@@ -16,9 +16,9 @@ def load_serve_config_snapshot(state: ServeState) -> ConfigSnapshot:
 
     root = state.state_dir.parent
     try:
-        return load_config(root)
+        return load_config(root, global_config_root=state.global_config_root)
     except Exception:
-        return load_workspace_config(root)
+        return load_workspace_config(root, global_config_root=state.global_config_root)
 
 
 def configured_desired_retention(state: ServeState) -> float:

@@ -609,6 +609,7 @@ def test_post_learn_estimate_uses_one_config_snapshot_for_capture_and_limits(
     def fake_load_workspace_config(
         root: Path,
         cli_overrides: dict[str, object] | None = None,
+        **_kwargs: object,
     ) -> SimpleNamespace:
         del cli_overrides
         load_calls.append(root)
@@ -620,7 +621,7 @@ def test_post_learn_estimate_uses_one_config_snapshot_for_capture_and_limits(
             metadata={"selected_files": ["a.py"]},
         )
 
-    def fake_load_workspace_security_config(_root: Path) -> SimpleNamespace:
+    def fake_load_workspace_security_config(_root: Path, **_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(
             local_hosts=("127.0.0.1",),
             strict_local_hosts=("127.0.0.1",),

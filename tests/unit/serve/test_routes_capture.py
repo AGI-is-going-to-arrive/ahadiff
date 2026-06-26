@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
 from starlette.testclient import TestClient
 
+from ahadiff.core import config as config_module
 from ahadiff.core.errors import StorageError
 from ahadiff.serve import ServeState, create_app, routes_capture
 
@@ -14,6 +16,21 @@ if TYPE_CHECKING:
 def _client(state_dir: Path) -> TestClient:
     app = create_app(ServeState(state_dir=state_dir, token="test-token", locale="en"))
     return TestClient(app, base_url="http://localhost:8765")
+
+
+@pytest.fixture(autouse=True)
+def _isolate_global_config(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "empty-global-config"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr("ahadiff.core.paths.global_config_dir", fake_global_config_dir)
 
 
 def test_capture_recommended_returns_404_without_configured_provider(tmp_path: Path) -> None:

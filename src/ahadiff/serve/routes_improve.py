@@ -23,6 +23,7 @@ import functools
 import logging
 import os
 import stat
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
 from anyio import to_thread
@@ -176,21 +177,30 @@ def _resolve_runs(
 
 
 def _check_provider_configured(state: ServeState) -> bool:
-    """Detect whether at least one provider exists in the per-repo config.
+    """Detect whether at least one provider exists in the merged config.
 
-    Reads ``.ahadiff/config.toml`` directly with the standard config reader.
     Any exception is treated as "not configured" so the preflight never fails
-    on a malformed file.
+    on malformed or unreadable config.
     """
-    config_path = state.state_dir / "config.toml"
-    if not config_path.exists():
-        return False
+    try:
+        from .config_runtime import load_serve_config_snapshot
+
+        cfg = load_serve_config_snapshot(state)
+        values = cast("dict[str, Any]", getattr(cfg, "values", {}))
+        providers_config = values.get("providers")
+        if isinstance(providers_config, Mapping):
+            provider_mapping = cast("Mapping[object, object]", providers_config)
+            if provider_mapping:
+                return True
+    except Exception:
+        log.debug("failed to load merged config for provider check", exc_info=True)
+
     try:
         from ahadiff.core.config import read_config_data
 
-        data = read_config_data(config_path)
+        data = read_config_data(state.state_dir / "config.toml")
     except Exception:
-        log.debug("failed to read config.toml for provider check", exc_info=True)
+        log.debug("failed to read repo config.toml for provider check", exc_info=True)
         return False
     providers = data.get("providers")
     if isinstance(providers, dict) and providers:

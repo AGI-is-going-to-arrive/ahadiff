@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, ProviderConfig, ResultEvent, SourceHunk
+from ahadiff.core import config as config_module
 from ahadiff.core.config import SecurityConfig, write_default_config
 from ahadiff.core.errors import AhaDiffError, InputError
 from ahadiff.eval.deterministic import DimensionScore
@@ -32,6 +33,21 @@ from ahadiff.review.database import (
 )
 
 _RUNNER = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_global_config(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "empty-global-config"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr("ahadiff.core.paths.global_config_dir", fake_global_config_dir)
 
 
 def _provider_config(*, max_output_tokens: int = 64_000) -> ProviderConfig:

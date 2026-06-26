@@ -37,6 +37,21 @@ if TYPE_CHECKING:
 _AUTH = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
 
 
+@pytest.fixture(autouse=True)
+def _isolate_global_config(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    global_dir = tmp_path / "empty-global-config"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr("ahadiff.core.paths.global_config_dir", fake_global_config_dir)
+
+
 def _client(state_dir: Path, *, global_config_root: Path | None = None) -> TestClient:
     app = create_app(
         ServeState(

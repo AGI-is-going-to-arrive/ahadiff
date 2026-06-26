@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import sqlite3
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from anyio import to_thread
@@ -339,7 +340,7 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
     try:
         from ahadiff.core.config import load_config
 
-        cfg = load_config(repo_root)
+        cfg = load_config(repo_root, global_config_root=state.global_config_root)
         checks.append(
             _doctor_check(
                 "config_valid",
@@ -711,6 +712,22 @@ def _validate_quiz_update(
     return validated
 
 
+def configured_provider_aliases(state: ServeState, fallback_aliases: set[str]) -> set[str]:
+    from .config_runtime import load_serve_config_snapshot
+
+    try:
+        cfg = load_serve_config_snapshot(state)
+        values = cast("dict[str, Any]", getattr(cfg, "values", {}))
+        providers_config = values.get("providers")
+        if isinstance(providers_config, Mapping):
+            provider_mapping = cast("Mapping[object, object]", providers_config)
+            return {str(alias) for alias in provider_mapping}
+    except Exception:
+        log.debug("failed to load merged provider config", exc_info=True)
+        return set(fallback_aliases)
+    return set(fallback_aliases)
+
+
 def _validate_and_persist_config_with_lock(
     app_state: Any,
     state: ServeState,
@@ -731,7 +748,7 @@ def _validate_and_persist_config_with_lock(
             providers = (
                 cast("dict[str, object]", raw_providers) if isinstance(raw_providers, dict) else {}
             )
-            configured_aliases = set(providers)
+            configured_aliases = configured_provider_aliases(state, set(providers))
             for prov_key, pv_stripped in provider_alias_updates.items():
                 if pv_stripped and pv_stripped not in configured_aliases:
                     return f"{prov_key} '{pv_stripped}' not found in configured providers"

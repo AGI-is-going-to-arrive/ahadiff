@@ -734,13 +734,13 @@ a.badge { text-decoration: none; }
 <!-- ===== Hero ===== -->
 <section class="hero container" id="hero">
   <div class="b-crown" aria-hidden="true">&Delta;</div>
-  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v1.3.7</span></div>
+  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v1.3.8</span></div>
   <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">Local-first Diff-Anchored Learning</span></div>
   <h1 class="b-display"><span data-i18n="hero.title.pre">知返 Aha</span><span class="delta shout">Diff</span></h1>
   <p class="hero-tagline" data-i18n="hero.tagline">AI 写完，<span class="b-mark">Diff 教回</span>。</p>
   <p class="hero-tagline-en" data-i18n="hero.tagline_en">Ship with AI. <span class="b-mark">Learn it back.</span></p>
   <p class="hero-desc" data-i18n="hero.desc">一个 local-first 的 <span class="b-mark">diff-anchored learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链、claim 状态、概念图谱、主动回忆测验和 SRS 复习卡的学习记录。</p>
-  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.7 · pipx install ahadiff</p>
+  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.8 · pipx install ahadiff</p>
   <div class="hero-ctas">
     <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
@@ -831,7 +831,7 @@ a.badge { text-decoration: none; }
         <div class="step-num">1</div>
         <div class="step-cmd">git diff</div>
         <h3 data-i18n="how.s1.title">捕获变更</h3>
-        <p data-i18n="how.s1.desc">捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.5 审计已逐项列出 live run。</p>
+        <p data-i18n="how.s1.desc">捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.8 已记录 DeepSeek 全局 provider 回归。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-1">
@@ -921,7 +921,7 @@ a.badge { text-decoration: none; }
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         </div>
         <h3 data-i18n="feat.f7.title">9 LLM Providers</h3>
-        <p data-i18n="feat.f7.desc">OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama 等 9 种 API 格式。BYOK，自动探测上下文长度；DeepSeek 走 JSON object 兼容模式。</p>
+        <p data-i18n="feat.f7.desc">OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama 等 9 种 API 格式。BYOK，自动探测上下文长度；DeepSeek 走 JSON object 兼容模式，全局 provider 可直接选择并保存。</p>
       </div>
       <!-- 8: Multi-Agent -->
       <div class="feat-card reveal reveal-delay-3">
@@ -973,7 +973,7 @@ a.badge { text-decoration: none; }
         <div class="arch-num">1</div>
         <div class="arch-layer-name">Diff Capture</div>
         <div class="arch-layer-sub" data-i18n="arch.l1">worktree / range / since / patch / URL / compare</div>
-        <div class="arch-tooltip" data-i18n="arch.l1.tip">10 capture modes; v1.3.5 validation records capture and live LLM coverage separately</div>
+        <div class="arch-tooltip" data-i18n="arch.l1.tip">10 capture modes; v1.3.8 records the DeepSeek global-provider regression separately</div>
       </div>
       <div class="arch-layer al-2 reveal reveal-delay-1">
         <div class="arch-num">2</div>
@@ -1185,7 +1185,7 @@ a.badge { text-decoration: none; }
         </tbody>
       </table>
     </div>
-    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整命令和 10 种捕获模式见使用指南；macOS 本地 gate、10 种 live LLM 矩阵和远端 gate 已记录，PyPI 发布仍需确认。</p>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整命令和 10 种捕获模式见使用指南；v1.3.8 本地 gate 和 live DeepSeek 全局 provider run 已记录，发布状态见 GitHub Release 与 PyPI。</p>
   </div>
 </section>
 
@@ -1201,7 +1201,7 @@ a.badge { text-decoration: none; }
           <div class="start-step__n">1</div>
           <h3 data-i18n="start.c1.title">安装并配置</h3>
           <p data-i18n="start.c1.desc">推荐用 <code>pipx install ahadiff</code> 隔离安装已发布的 CLI 和内置 WebUI（<code>uv tool install ahadiff</code> 同样可以，都不需要 git clone），然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。在 venv / conda 里用 <code>pip install ahadiff</code> 也可以；在 Homebrew / 系统 Python 上直接 pip 会触发 externally-managed-environment，改用 pipx 或 uv 即可。</p>
-          <div class="start-tip" data-i18n="start.c1.tip">提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。DeepSeek BYOK 使用 <code>openai_compat</code> 与 <code>https://api.deepseek.com</code>；结构化输出走 JSON object mode。DeepSeek v4 的 Thinking Level 只有「无」会关闭思考，低 / 中 / 高会按高处理。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加供应商，保存前还能预览模型限额。</div>
+          <div class="start-tip" data-i18n="start.c1.tip">提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。DeepSeek BYOK 使用 <code>openai_compat</code> 与 <code>https://api.deepseek.com</code>；结构化输出走 JSON object mode。DeepSeek v4 的 Thinking Level 只有「无」会关闭思考，低 / 中 / 高会按高处理。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加仓库级或全局 provider，保存前还能预览模型限额。</div>
         </div>
         <div class="start-step__body">
           <div class="code-block"><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff init</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_API_KEY="&lt;your-provider-api-key&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff provider test \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--name default \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--provider-class openai \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--base-url "$AHADIFF_PROVIDER_BASE_URL" \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--api-key-env AHADIFF_PROVIDER_API_KEY</span></div>
@@ -1271,7 +1271,7 @@ a.badge { text-decoration: none; }
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
   </div>
   <p data-i18n="footer.credit">Made by the AhaDiff team.</p>
-  <div class="footer-version">v1.3.7</div>
+  <div class="footer-version">v1.3.8</div>
 </footer>
 
 <script>
@@ -1283,7 +1283,7 @@ const T = {
   "nav.features": { zh: "特性", en: "Features" },
   "nav.arch": { zh: "架构", en: "Architecture" },
   "nav.start": { zh: "开始", en: "Start" },
-  "hero.eyebrow": { zh: "Local-first · v1.3.7", en: "Local-first · v1.3.7" },
+  "hero.eyebrow": { zh: "Local-first · v1.3.8", en: "Local-first · v1.3.8" },
   "hero.badge": { zh: "Local-first Diff 锚定学习", en: "Local-first Diff-Anchored Learning" },
   "hero.title.pre": { zh: "知返 Aha", en: "Aha" },
   "hero.tagline": { zh: 'AI 写完，<span class="b-mark">Diff 教回</span>。', en: 'Ship with AI. <span class="b-mark">Learn it back.</span>' },
@@ -1293,7 +1293,7 @@ const T = {
     en: 'A local-first <span class="b-mark">diff-anchored learning layer</span>. Transforms git diffs from AI coding tools like Claude, Codex, and Cursor into learning notes with code evidence chains, claim states, concept graphs, active recall quizzes, and SRS review cards.'
   },
   "quote.core": { zh: "每一行 AI 写的代码，都应该能把学习教回给你。", en: "Every line of AI-written code should teach you something back." },
-  "hero.status": { zh: "v1.3.7 · pipx install ahadiff", en: "v1.3.7 · pipx install ahadiff" },
+  "hero.status": { zh: "v1.3.8 · pipx install ahadiff", en: "v1.3.8 · pipx install ahadiff" },
   "hero.cta1": { zh: "开始使用", en: "Get Started" },
   "hero.insight_title": { zh: "AhaDiff 证据链课程", en: "AhaDiff Evidence-Linked Lesson" },
   "hero.claim1": {
@@ -1337,8 +1337,8 @@ const T = {
   },
   "how.s1.title": { zh: "捕获变更", en: "Capture Changes" },
   "how.s1.desc": {
-    zh: "捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.5 审计已逐项列出 live run。",
-    en: "Capture 10 diff modes, including worktree, revision ranges, time windows, patch URLs, and file or directory comparisons; release validation records capture coverage separately from live LLM lesson generation, and the v1.3.5 audit lists each live run."
+    zh: "捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.8 已记录 DeepSeek 全局 provider 回归。",
+    en: "Capture 10 diff modes, including worktree, revision ranges, time windows, patch URLs, and file or directory comparisons; release validation records capture coverage separately from live LLM lesson generation, and v1.3.8 records the DeepSeek global-provider regression."
   },
   "how.s2.title": { zh: "证据链路分析", en: "Evidence-Linked Analysis" },
   "how.s2.desc": {
@@ -1393,8 +1393,8 @@ const T = {
   },
   "feat.f7.title": { zh: "9 种 LLM 供应商", en: "9 LLM Providers" },
   "feat.f7.desc": {
-    zh: "OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama 等 9 种 API 格式。BYOK，自动探测上下文长度；DeepSeek 走 JSON object 兼容模式。",
-    en: "9 API formats: OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama and more. BYOK, with context-length auto-probing; DeepSeek uses JSON object compatibility."
+    zh: "OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama 等 9 种 API 格式。BYOK，自动探测上下文长度；DeepSeek 走 JSON object 兼容模式，全局 provider 可直接选择并保存。",
+    en: "9 API formats: OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama and more. BYOK, with context-length auto-probing; DeepSeek uses JSON object compatibility, and global providers can be selected and saved."
   },
   "feat.f8.title": { zh: "15 个工具目标", en: "15 Tool Targets" },
   "feat.f8.desc": {
@@ -1410,7 +1410,7 @@ const T = {
   "arch.l0": { zh: "ClaimStatus / RunSource / EvalBundle / EventLog", en: "ClaimStatus / RunSource / EvalBundle / EventLog" },
   "arch.l0.tip": { zh: "核心契约冻结：不可变类型定义", en: "Core contract freeze: immutable type definitions" },
   "arch.l1": { zh: "worktree / range / since / patch / URL / compare", en: "worktree / range / since / patch / URL / compare" },
-  "arch.l1.tip": { zh: "10 种捕获模式；v1.3.5 验证按捕获与 live LLM 分开记录", en: "10 capture modes; v1.3.5 validation records capture and live LLM coverage separately" },
+  "arch.l1.tip": { zh: "10 种捕获模式；v1.3.8 已单独记录 DeepSeek 全局 provider 回归", en: "10 capture modes; v1.3.8 records the DeepSeek global-provider regression separately" },
   "arch.l2": { zh: "2a 上下文组装 + 2b 安全门 + 2c 预算", en: "2a Assembly + 2b Safety Gate + 2c Budget" },
   "arch.l2.tip": { zh: "仓库文件、密钥扫描、token 预算", en: "Repo files, secret scan, token budget" },
   "arch.l3": { zh: "prompts/*.md + claim 提取", en: "prompts/*.md + claim extraction" },
@@ -1527,7 +1527,7 @@ const T = {
   "cmds.watch": { zh: "工作区变更自动 learn", en: "Auto-learn on working-tree changes" },
   "cmds.hooksauto": { zh: "每次 commit 后后台自动 learn", en: "Background auto-learn after each commit" },
   "cmds.mcp": { zh: "面向 AI 工具的只读 MCP server（7 个工具）", en: "Read-only MCP server for AI tools (7 tools)" },
-  "cmds.footnote": { zh: "完整命令和 10 种捕获模式见使用指南；macOS 本地 gate、10 种 live LLM 矩阵和远端 gate 已记录，PyPI 发布仍需确认。", en: "See the User Guide for the full command set and all 10 capture modes; the macOS local gate, 10-mode live LLM matrix, and remote gates are recorded, while PyPI publish still requires confirmation." },
+  "cmds.footnote": { zh: "完整命令和 10 种捕获模式见使用指南；v1.3.8 本地 gate 和 live DeepSeek 全局 provider run 已记录，发布状态见 GitHub Release 与 PyPI。", en: "See the User Guide for the full command set and all 10 capture modes; the v1.3.8 local gate and live DeepSeek global-provider run are recorded, and release status belongs in GitHub Releases and PyPI." },
   "faq.eyebrow": { zh: "常见问题", en: "FAQ" },
   "faq.title": { zh: "你可能会问", en: "You Might Be Wondering" },
   "faq.q1": { zh: "我的代码会被上传吗？", en: "Does my code get uploaded?" },
@@ -1540,7 +1540,7 @@ const T = {
   "faq.a4": { zh: "AhaDiff 本身免费、在本地运行；你只为自己的 LLM 供应商付费（BYOK）。", en: "AhaDiff itself is free and runs locally; you only pay your own LLM provider (BYOK)." },
   "faq.q5": { zh: "评分会因为模型不稳定而乱跳吗？", en: "Is the score stable across model runs?" },
   "faq.a5": { zh: "评分主体是 8 维确定性打分；LLM judge 只是可选 advisory，即使 judge 失败也会保留确定性分数。", en: "Scoring is primarily an 8-dimension deterministic score. The LLM judge is optional and advisory; even if it fails, the deterministic score stands." },
-  "start.c1.tip": { zh: "提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。DeepSeek BYOK 使用 <code>openai_compat</code> 与 <code>https://api.deepseek.com</code>；结构化输出走 JSON object mode。DeepSeek v4 的 Thinking Level 只有「无」会关闭思考，低 / 中 / 高会按高处理。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加供应商，保存前还能预览模型限额。", en: "Tip: <code>provider test</code> sends a small probe and, on success, saves the provider to <code>.ahadiff/config.toml</code>. <code>--api-key-env</code> is the environment-variable name, not the secret itself. For DeepSeek BYOK, use <code>openai_compat</code> with <code>https://api.deepseek.com</code>; structured output uses JSON object mode. For DeepSeek v4, only none disables thinking, while low / medium / high map to high. Prefer a form? Run <code>ahadiff serve</code> first and add the provider in Settings, which can even preview model limits before you save." }
+  "start.c1.tip": { zh: "提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。DeepSeek BYOK 使用 <code>openai_compat</code> 与 <code>https://api.deepseek.com</code>；结构化输出走 JSON object mode。DeepSeek v4 的 Thinking Level 只有「无」会关闭思考，低 / 中 / 高会按高处理。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加仓库级或全局 provider，保存前还能预览模型限额。", en: "Tip: <code>provider test</code> sends a small probe and, on success, saves the provider to <code>.ahadiff/config.toml</code>. <code>--api-key-env</code> is the environment-variable name, not the secret itself. For DeepSeek BYOK, use <code>openai_compat</code> with <code>https://api.deepseek.com</code>; structured output uses JSON object mode. For DeepSeek v4, only none disables thinking, while low / medium / high map to high. Prefer a form? Run <code>ahadiff serve</code> first and add a repo or global provider in Settings, which can even preview model limits before you save." }
 };
 
 /* Language detection & toggle */

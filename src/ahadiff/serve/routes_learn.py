@@ -450,10 +450,13 @@ def _capture_recommendation_for_estimate(
     has_git_repo: bool,
     snapshot: object,
     capture_config: dict[str, Any],
+    global_config_root: Path | None = None,
     cjk_factor: float = 1.0,
 ) -> CaptureRecommendation:
     security_config = (
-        load_security_config(root) if has_git_repo else load_workspace_security_config(root)
+        load_security_config(root, global_config_root=global_config_root)
+        if has_git_repo
+        else load_workspace_security_config(root, global_config_root=global_config_root)
     )
     return _effective_capture_recommendation(
         snapshot=snapshot,
@@ -495,9 +498,13 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
 
     cli_overrides = {"privacy_mode": params.get("privacy_mode"), "lang": params.get("lang")}
     snapshot = (
-        load_config(root, cli_overrides=cli_overrides)
+        load_config(root, cli_overrides=cli_overrides, global_config_root=state.global_config_root)
         if has_git_repo
-        else load_workspace_config(root, cli_overrides=cli_overrides)
+        else load_workspace_config(
+            root,
+            cli_overrides=cli_overrides,
+            global_config_root=state.global_config_root,
+        )
     )
     capture_config = cast("dict[str, Any]", snapshot.values["capture"])
     effective_capture_limits = _capture_recommendation_for_estimate(
@@ -505,6 +512,7 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         has_git_repo=has_git_repo,
         snapshot=snapshot,
         capture_config=capture_config,
+        global_config_root=state.global_config_root,
     )
     max_patch_bytes = effective_capture_limits.max_patch_bytes
     from ahadiff.i18n import resolve_locale

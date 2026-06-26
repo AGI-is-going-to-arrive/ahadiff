@@ -937,7 +937,7 @@ img { max-width: 100%; display: block; }
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.7</span></div>
+      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.8</span></div>
       <h1>AhaDiff User Guide</h1>
       <p class="guide-lead">AhaDiff turns a git diff into a code-grounded lesson, explicit claim states, a quiz, review cards, a concept graph and a quality ratchet. It is local-first by default: each repository keeps its own AhaDiff state under <code>.ahadiff/</code>.</p>
       <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> English walkthrough (YouTube)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. Install with <code>pip install ahadiff</code> (we now recommend the isolated <code>pipx install ahadiff</code> &mdash; see Install below). The English walkthrough shows this; the Chinese Bilibili cut is being refreshed to match.</div>
@@ -970,7 +970,7 @@ ahadiff init
 ahadiff doctor
 ahadiff config show --resolved</span></div>
 
-      <p class="g-lead">Everything AhaDiff generates lives in this repo. There is no global database.</p>
+      <p class="g-lead">Run artifacts and review state live in this repo. Provider config can stay repo-local or global.</p>
       <div class="tree" role="img" aria-label="The .ahadiff directory holds config.toml, review.sqlite, runs and concepts.jsonl as repo-local AhaDiff state.">
 <span class="t-root">your-repo/</span>
 &#9492;&#9472; <span class="t-truth t-dir">.ahadiff/</span>  <span class="t-tag">repo-local state &middot; per-repo, not global</span>
@@ -1080,7 +1080,7 @@ ahadiff provider test `
   --privacy-mode explicit_remote</span></div>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-deepseek" aria-labelledby="ptab-deepseek" data-tab="deepseek">
-          <p>Use <code>openai_compat</code> for the official DeepSeek API so structured output uses JSON object mode. DeepSeek v4 flash/pro also expose the Thinking Level control after Settings preview confirms support; <code>none</code> disables thinking, while <code>low</code>, <code>medium</code>, and <code>high</code> all map to the API's high effort.</p>
+          <p>Use <code>openai_compat</code> for the official DeepSeek API so structured output uses JSON object mode. DeepSeek v4 flash/pro also expose the Thinking Level control after Settings preview confirms support; <code>none</code> disables thinking, while <code>low</code>, <code>medium</code>, and <code>high</code> all map to the API's high effort. A global-scope DeepSeek provider is valid in Settings Save, learn, and improve preflight without copying it into each repo.</p>
           <div class="code-block"><span class="cmd">export DEEPSEEK_API_KEY="&lt;your-deepseek-api-key&gt;"
 
 ahadiff provider test \
@@ -1141,7 +1141,7 @@ ahadiff provider test \
       </div>
       <p class="cmp2-foot">For <code>gpt-5.5</code>, the bundled registry keeps these two context profiles. A trustworthy live probe can override either profile when the endpoint reports a real total context.</p>
 
-      <p>Once configured, your single provider (or the generate provider/model you pick in Settings) is used by <code>ahadiff learn</code> automatically. Pass <code>--provider</code> / <code>--model</code> only to override one run.</p>
+      <p>Once configured, your single repo or global provider (or the generate provider/model you pick in Settings) is used by <code>ahadiff learn</code> automatically. A repo provider with the same alias overrides the global alias. Pass <code>--provider</code> / <code>--model</code> only to override one run.</p>
       <div class="code-block"><span class="cmd">ahadiff learn --last</span></div>
 
       <h3>How a saved <code>max_output_tokens</code> is treated</h3>
@@ -1177,7 +1177,7 @@ supports_native_json_schema = false</span></div>
       <div class="g-steps">
         <div class="g-step">
           <h3>Pick a diff source</h3>
-          <p>AhaDiff has 10 capture modes. Pick the tile that matches what you changed. Release validation records capture coverage and live LLM lesson runs separately; the v1.3.5 audit lists one live run for each source.</p>
+          <p>AhaDiff has 10 capture modes. Pick the tile that matches what you changed. Release validation records capture coverage and live LLM lesson runs separately; the v1.3.8 audit records the global-provider save regression and a live DeepSeek run.</p>
         </div>
         <div class="g-step">
           <h3>Generate the lesson and claim states</h3>
@@ -1223,7 +1223,7 @@ supports_native_json_schema = false</span></div>
       </div>
       <div class="badges" style="justify-content:flex-start">
         <span class="badge">10 modes &rarr; capture coverage</span>
-        <span class="badge">v1.3.5 live LLM matrix recorded</span>
+        <span class="badge">v1.3.8 live DeepSeek global-provider run recorded</span>
         <span class="badge">Path scope: working-tree modes only &middot; repo-relative paths</span>
       </div>
       <div class="g-note">Add <code>--against-spec SPEC.md</code> to any of these to check the diff against a spec; add <code>--spec-semantic-review</code> for the semantic pass.</div>
@@ -1816,7 +1816,7 @@ ahadiff config show --resolved</span></div>
       <p>Screenshots in this guide are examples only. They carry no real provider credentials, repository contents, or user data.</p>
 
       <h3>Platform support</h3>
-      <p class="g-lead">macOS is the local RC validation platform. The v1.3.5 RC branch has passed the remote Linux, Windows runtime, Backend CI, and Frontend CI gates. Antigravity stays Unknown/blocked until a real Antigravity check is run. Two features stay POSIX-only.</p>
+      <p class="g-lead">macOS is the local validation platform for v1.3.8. Windows path and global-config behavior are covered by targeted unit tests; real Windows runtime status belongs to the release workflow. Antigravity stays Unknown/blocked until a real Antigravity check is run. Two features stay POSIX-only.</p>
       <div class="cmp-wrap">
         <table class="cmp-table">
           <thead><tr><th>Feature</th><th>macOS &middot; Linux</th><th>Windows</th></tr></thead>
@@ -1832,7 +1832,7 @@ ahadiff config show --resolved</span></div>
       <div class="g-note"><code>--compare-dir</code> needs the secure directory file descriptor available on macOS / Linux only, and fails closed elsewhere. The <code>hooks</code> target uses POSIX shell hooks. Hooks are reminder-only by default; see the Git hooks card for the --auto-learn variant. Rollback restores mode before atomic replace on POSIX, and uses a best-effort mode restore after replace where <code>fchmod</code> is missing.</div>
 
       <h3>Validation snapshot</h3>
-      <p class="g-lead">Local checks recorded for the current docs snapshot. For v1.3.5 RC, S1 is private shadow-only / measurement-only with <code>route_hit=76</code> and <code>fp_rate=53.95%</code>, so enforce/advisory use is blocked. A3 is diagnostic/advisory-only and not a blocking gate. Release and CI status belong in GitHub Actions.</p>
+      <p class="g-lead">Local checks recorded for the current docs snapshot. For v1.3.8, the recorded local gate covers backend unit/integration/eval, ruff/format/pyright, viewer typecheck/Vitest/build, i18n parity, real serve save reproduction, and a live DeepSeek learn run. Release and CI status belong in GitHub Actions.</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>Validated</h3>
@@ -1841,13 +1841,13 @@ ahadiff config show --resolved</span></div>
             <span class="badge">ruff / format / pyright</span>
             <span class="badge"><span class="badge-dot react"></span>viewer Vitest + build</span>
             <span class="badge">i18n parity</span>
-            <span class="badge">macOS local RC gate recorded</span>
-            <span class="badge">remote CI + release dry run passed</span>
+            <span class="badge">macOS local v1.3.8 gate recorded</span>
+            <span class="badge">live DeepSeek global-provider run</span>
             <span class="badge">Antigravity Unknown/blocked</span>
           </div>
         </div>
       </div>
-      <div class="g-note">The 10-mode learn claim in this guide is capture coverage unless the validation audit lists each command, run_id, exit code, and lesson/claims/quiz/card artifacts. The v1.3.5 RC audit lists all 10 live LLM runs and the final remote workflow IDs; PyPI publish still requires explicit maintainer confirmation.</div>
+      <div class="g-note">The 10-mode learn claim in this guide is capture coverage unless the validation audit lists each command, run_id, exit code, and lesson/claims/quiz/card artifacts. The v1.3.8 audit records the DeepSeek global-provider regression separately from the older 10-mode matrix; GitHub Release and PyPI publish are tracked by the release workflow and release notes.</div>
     </section>
 
     <!-- ===== Footer ===== -->
@@ -1859,7 +1859,7 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
       <p>Screenshots are committed PNGs served from the docs tree; the workflow animation is CSS. For release status, see GitHub Actions.</p>
-      <div class="footer-version">v1.3.7</div>
+      <div class="footer-version">v1.3.8</div>
     </footer>
   </main>
 </div>

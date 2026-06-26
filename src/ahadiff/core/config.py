@@ -1660,10 +1660,14 @@ def _load_config_snapshot(
     *,
     cli_overrides: Mapping[str, Any] | None = None,
     env: Mapping[str, str] | None = None,
+    global_config_root: Path | None = None,
 ) -> ConfigSnapshot:
     env_map = os.environ if env is None else env
     repo_path = root / ".ahadiff" / "config.toml"
-    global_path = global_config_dir(env=env_map) / "config.toml"
+    global_dir = (
+        global_config_root if global_config_root is not None else global_config_dir(env=env_map)
+    )
+    global_path = global_dir / "config.toml"
 
     repo_flattened, repo_values, repo_unknown = _flatten_config_file(
         repo_path,
@@ -1746,9 +1750,15 @@ def load_config(
     *,
     cli_overrides: Mapping[str, Any] | None = None,
     env: Mapping[str, str] | None = None,
+    global_config_root: Path | None = None,
 ) -> ConfigSnapshot:
     root = _resolve_config_root(repo_root, allow_non_git=False)
-    return _load_config_snapshot(root, cli_overrides=cli_overrides, env=env)
+    return _load_config_snapshot(
+        root,
+        cli_overrides=cli_overrides,
+        env=env,
+        global_config_root=global_config_root,
+    )
 
 
 def load_workspace_config(
@@ -1756,9 +1766,15 @@ def load_workspace_config(
     *,
     cli_overrides: Mapping[str, Any] | None = None,
     env: Mapping[str, str] | None = None,
+    global_config_root: Path | None = None,
 ) -> ConfigSnapshot:
     root = _resolve_config_root(workspace_root, allow_non_git=True)
-    return _load_config_snapshot(root, cli_overrides=cli_overrides, env=env)
+    return _load_config_snapshot(
+        root,
+        cli_overrides=cli_overrides,
+        env=env,
+        global_config_root=global_config_root,
+    )
 
 
 def resolve_effective(
@@ -1795,13 +1811,21 @@ def iter_resolved_settings(snapshot: ConfigSnapshot) -> list[ResolvedSetting]:
     ]
 
 
-def load_security_config(repo_root: Path | None = None) -> SecurityConfig:
-    snapshot = load_config(repo_root)
+def load_security_config(
+    repo_root: Path | None = None,
+    *,
+    global_config_root: Path | None = None,
+) -> SecurityConfig:
+    snapshot = load_config(repo_root, global_config_root=global_config_root)
     return _security_config_from_snapshot(snapshot)
 
 
-def load_workspace_security_config(workspace_root: Path) -> SecurityConfig:
-    snapshot = load_workspace_config(workspace_root)
+def load_workspace_security_config(
+    workspace_root: Path,
+    *,
+    global_config_root: Path | None = None,
+) -> SecurityConfig:
+    snapshot = load_workspace_config(workspace_root, global_config_root=global_config_root)
     return _security_config_from_snapshot(snapshot)
 
 

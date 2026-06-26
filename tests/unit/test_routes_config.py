@@ -22,8 +22,16 @@ def _client(
     *,
     token: str = "test-token",
     locale: Literal["en", "zh-CN"] = "en",
+    global_config_root: Path | None = None,
 ) -> TestClient:
-    app = create_app(ServeState(state_dir=state_dir, token=token, locale=locale))
+    app = create_app(
+        ServeState(
+            state_dir=state_dir,
+            token=token,
+            locale=locale,
+            global_config_root=global_config_root,
+        )
+    )
     return TestClient(app, base_url="http://localhost:8765")
 
 
@@ -79,6 +87,23 @@ def _validate_quiz_update_for_test(
 
 def _validate_llm_update_for_test(payload: object) -> dict[str, Any] | str:
     return cast("Any", routes_config_module)._validate_llm_update(payload)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_global_config(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core import config as config_module
+
+    global_dir = tmp_path / "empty-global-config"
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    monkeypatch.setattr("ahadiff.core.paths.global_config_dir", fake_global_config_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +548,200 @@ def test_put_config_reads_validates_and_persists_under_repo_write_lock(
     assert response.status_code == 200
     assert read_depths
     assert set(read_depths) == {1}
+
+
+def test_put_config_accepts_global_provider_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core import config as config_module
+    from ahadiff.core.config import read_config_data
+
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.global_only]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_GLOBAL_ONLY_KEY"\n',
+        encoding="utf-8",
+    )
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    client = _client(state_dir)
+
+    providers_response = client.get(
+        "/api/providers",
+        headers={"X-AhaDiff-Token": "test-token"},
+    )
+    provider_payload = providers_response.json()
+    providers = {
+        str(provider["alias"]): provider
+        for provider in cast("list[dict[str, object]]", provider_payload["providers"])
+    }
+
+    response = client.put(
+        "/api/config",
+        json={"generate_provider": "global_only", "judge_provider": "global_only"},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert providers_response.status_code == 200
+    assert providers["global_only"]["scope"] == "global"
+    assert response.status_code == 200
+    repo_config = read_config_data(state_dir / "config.toml")
+    llm_config = cast("dict[str, object]", repo_config["llm"])
+    assert llm_config["generate_provider"] == "global_only"
+    assert llm_config["judge_provider"] == "global_only"
+
+
+def test_put_config_accepts_provider_aliases_from_serve_global_config_root(
+    tmp_path: Path,
+) -> None:
+    from ahadiff.core.config import read_config_data
+
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    global_dir = tmp_path / "serve-global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text(
+        "[providers.global_only]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_GLOBAL_ONLY_KEY"\n',
+        encoding="utf-8",
+    )
+    client = _client(state_dir, global_config_root=global_dir)
+
+    providers_response = client.get(
+        "/api/providers",
+        headers={"X-AhaDiff-Token": "test-token"},
+    )
+    response = client.put(
+        "/api/config",
+        json={"generate_provider": "global_only", "judge_provider": "global_only"},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert providers_response.status_code == 200
+    providers = {
+        str(provider["alias"]): provider
+        for provider in cast("list[dict[str, object]]", providers_response.json()["providers"])
+    }
+    assert providers["global_only"]["scope"] == "global"
+    assert response.status_code == 200
+    repo_config = read_config_data(state_dir / "config.toml")
+    llm_config = cast("dict[str, object]", repo_config["llm"])
+    assert llm_config["generate_provider"] == "global_only"
+    assert llm_config["judge_provider"] == "global_only"
+
+
+def test_put_config_rejects_unknown_provider_alias(tmp_path: Path) -> None:
+    state_dir = tmp_path / "repo" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"generate_provider": "missing"},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 400
+    assert (
+        "generate_provider 'missing' not found in configured providers" in response.json()["error"]
+    )
+
+
+def test_put_config_provider_alias_validation_falls_back_to_repo_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core import config as config_module
+    from ahadiff.core.config import read_config_data
+
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.local]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+    global_dir = tmp_path / "global-config"
+    global_dir.mkdir()
+    (global_dir / "config.toml").write_text("[providers.bad\n", encoding="utf-8")
+
+    def fake_global_config_dir(*, platform: str | None = None, env: Any = None) -> Path:
+        del platform, env
+        return global_dir
+
+    monkeypatch.setattr(config_module, "global_config_dir", fake_global_config_dir)
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"generate_provider": "local"},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 200
+    repo_config = read_config_data(state_dir / "config.toml")
+    llm_config = cast("dict[str, object]", repo_config["llm"])
+    assert llm_config["generate_provider"] == "local"
+
+
+def test_put_config_provider_alias_validation_falls_back_when_merged_providers_not_mapping(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from ahadiff.core.config import read_config_data
+
+    repo_root = tmp_path / "repo"
+    (repo_root / ".git").mkdir(parents=True)
+    state_dir = repo_root / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        "[providers.local]\n"
+        'provider_class = "openai"\n'
+        'model_name = "gpt-5.5"\n'
+        'base_url = "https://api.example.test/v1"\n'
+        'api_key_env = "AHADIFF_PROVIDER_API_KEY"\n',
+        encoding="utf-8",
+    )
+
+    def fake_load_config(*_args: Any, **_kwargs: Any) -> _FakeSnapshot:
+        return _FakeSnapshot(values={"providers": "not-a-table"})
+
+    monkeypatch.setattr("ahadiff.core.config.load_config", fake_load_config)
+    client = _client(state_dir)
+
+    response = client.put(
+        "/api/config",
+        json={"generate_provider": "local"},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 200
+    repo_config = read_config_data(state_dir / "config.toml")
+    llm_config = cast("dict[str, object]", repo_config["llm"])
+    assert llm_config["generate_provider"] == "local"
 
 
 def test_put_config_updates_runtime_locale_under_repo_write_lock(
