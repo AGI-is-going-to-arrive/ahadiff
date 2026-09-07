@@ -6,6 +6,8 @@ import json
 import sqlite3
 import sys
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from typing import Any
@@ -120,6 +122,182 @@ class TestSafeJsonLoads:
 
 
 class TestSafeSqliteConnect:
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows path opens remain fail-closed")
+    def test_concurrent_commit_during_open_discards_ambiguous_connection(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "concurrent.db"
+        original_connect = sqlite_util_module.sqlite3.connect
+        initial = original_connect(db)
+        try:
+            initial.execute("CREATE TABLE marker(value INTEGER)")
+            initial.execute("INSERT INTO marker VALUES(1)")
+            initial.commit()
+        finally:
+            initial.close()
+        opened = threading.Barrier(2)
+        committed = threading.Barrier(2)
+        attempts: list[sqlite3.Connection] = []
+
+        def write_while_opening() -> None:
+            opened.wait(timeout=5)
+            writer = original_connect(db)
+            try:
+                writer.execute("INSERT INTO marker VALUES(2)")
+                writer.commit()
+            finally:
+                writer.close()
+                committed.wait(timeout=5)
+
+        def interleaved_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            connection = original_connect(database, *args, **kwargs)
+            if _is_existing_db_connect_target(database, db):
+                attempts.append(connection)
+                if len(attempts) == 1:
+                    opened.wait(timeout=5)
+                    committed.wait(timeout=5)
+            return connection
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", interleaved_connect)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            writer = executor.submit(write_while_opening)
+            connection = safe_sqlite_connect(db)
+            writer.result(timeout=5)
+        try:
+            assert connection.execute("SELECT value FROM marker ORDER BY value").fetchall() == [
+                (1,),
+                (2,),
+            ]
+            assert len(attempts) == 2
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                attempts[0].execute("SELECT 1")
+        finally:
+            connection.close()
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows path opens remain fail-closed")
+    def test_persistent_same_inode_commit_churn_exhausts_verification(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "busy.db"
+        original_connect = sqlite_util_module.sqlite3.connect
+        initial = original_connect(db)
+        try:
+            initial.execute("CREATE TABLE marker(value INTEGER)")
+            initial.execute("INSERT INTO marker VALUES(0)")
+            initial.commit()
+        finally:
+            initial.close()
+        attempts: list[sqlite3.Connection] = []
+
+        def churning_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            connection = original_connect(database, *args, **kwargs)
+            attempts.append(connection)
+            writer = original_connect(db)
+            try:
+                writer.execute("UPDATE marker SET value = value + 1")
+                writer.commit()
+            finally:
+                writer.close()
+            return connection
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", churning_connect)
+        with pytest.raises(PermissionError, match="database path changed during open"):
+            safe_sqlite_connect(db)
+
+        assert len(attempts) == sqlite_util_module._OPEN_VERIFICATION_RETRIES  # pyright: ignore[reportPrivateUsage]
+        for connection in attempts:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connection.execute("SELECT 1")
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires POSIX rename semantics")
+    def test_one_time_rename_restore_discards_connection_to_substituted_database(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db, replacement, backup = (tmp_path / name for name in ("db", "replacement", "backup"))
+        original_connect = sqlite_util_module.sqlite3.connect
+        for path, marker in ((db, "original"), (replacement, "substituted")):
+            initial = original_connect(path)
+            try:
+                initial.execute("CREATE TABLE marker(value TEXT)")
+                initial.execute("INSERT INTO marker VALUES(?)", (marker,))
+                initial.commit()
+            finally:
+                initial.close()
+        attempts: list[sqlite3.Connection] = []
+
+        def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            if not attempts:
+                db.rename(backup)
+                replacement.rename(db)
+                connection = original_connect(database, *args, **kwargs)
+                db.rename(replacement)
+                backup.rename(db)
+            else:
+                connection = original_connect(database, *args, **kwargs)
+            attempts.append(connection)
+            return connection
+
+        def no_fd_path(_fd: int | None) -> Path | None:
+            return None
+
+        # Exercise the POSIX pathname fallback even on hosts with /proc/self/fd.
+        monkeypatch.setattr(sqlite_util_module, "_sqlite_proc_fd_path", no_fd_path)
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", swapping_connect)
+        connection = safe_sqlite_connect(db)
+        try:
+            assert connection.execute("SELECT value FROM marker").fetchone() == ("original",)
+            assert len(attempts) == 2
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                attempts[0].execute("SELECT value FROM marker")
+        finally:
+            connection.close()
+        untouched = original_connect(replacement)
+        try:
+            assert untouched.execute("SELECT value FROM marker").fetchone() == ("substituted",)
+        finally:
+            untouched.close()
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires POSIX rename semantics")
+    def test_identity_replacement_is_rejected_before_sidecar_retry(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = tmp_path / "db"
+        replacement = tmp_path / "replacement"
+        backup = tmp_path / "backup"
+        original_connect = sqlite_util_module.sqlite3.connect
+        for path in (db, replacement):
+            initial = original_connect(path)
+            initial.execute("CREATE TABLE marker(value INTEGER)")
+            initial.close()
+        replacement_bytes = replacement.read_bytes()
+        attempts: list[sqlite3.Connection] = []
+
+        def replacing_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            connection = original_connect(database, *args, **kwargs)
+            attempts.append(connection)
+            if len(attempts) == 1:
+                db.rename(backup)
+                replacement.rename(db)
+                db.with_name(f"{db.name}-wal").write_bytes(b"sidecar churn")
+            return connection
+
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", replacing_connect)
+        with pytest.raises(PermissionError, match="database path changed during open"):
+            safe_sqlite_connect(db)
+
+        assert len(attempts) == 1
+        assert db.read_bytes() == replacement_bytes
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            attempts[0].execute("SELECT 1")
+
     def test_creates_new_db(self, tmp_path: Path) -> None:
         db = tmp_path / "new.db"
         conn = safe_sqlite_connect(db)
@@ -224,6 +402,7 @@ class TestSafeSqliteConnect:
             assert row is not None
             assert row[0] == 1
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires POSIX unlink of an open file")
     def test_rejects_existing_db_swapped_to_symlink_during_connect(
         self,
         tmp_path: Path,
@@ -256,7 +435,8 @@ class TestSafeSqliteConnect:
 
         assert swapped is True
 
-    def test_rejects_existing_db_rename_race_restored_before_verification(
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires POSIX rename of an open file")
+    def test_rejects_persistent_existing_db_rename_race_restored_before_verification(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -275,7 +455,7 @@ class TestSafeSqliteConnect:
 
         def swapping_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             nonlocal swapped
-            if _is_existing_db_connect_target(database, db) and not swapped:
+            if _is_existing_db_connect_target(database, db):
                 swapped = True
                 db.rename(backup)
                 replacement.rename(db)
@@ -295,6 +475,7 @@ class TestSafeSqliteConnect:
             value = connection.execute("SELECT value FROM marker").fetchone()[0]
         assert value == "original"
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires POSIX rename of an open file")
     def test_rejects_rename_race_even_when_sidecar_state_changes(
         self,
         tmp_path: Path,
@@ -368,6 +549,10 @@ class TestSafeSqliteConnect:
 
         monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", churning_connect)
 
+        if sys.platform == "win32":
+            with pytest.raises(PermissionError, match="database path changed during open"):
+                safe_sqlite_connect(db)
+            return
         conn = safe_sqlite_connect(db)
         try:
             value = conn.execute("SELECT value FROM marker").fetchone()[0]
@@ -375,6 +560,7 @@ class TestSafeSqliteConnect:
         finally:
             conn.close()
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires POSIX unlink of an open file")
     def test_rejects_missing_db_created_as_symlink_during_connect(
         self,
         tmp_path: Path,
@@ -405,6 +591,7 @@ class TestSafeSqliteConnect:
 
         assert swapped is True
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="Windows directory handles prevent rename")
     def test_new_db_parent_swap_to_symlink_does_not_create_outside_target(
         self,
         tmp_path: Path,
@@ -644,3 +831,60 @@ class TestRejectSymlinkPath:
         d = tmp_path / "subdir"
         d.mkdir()
         reject_symlink_path(d)
+
+
+def test_unit_default_config_io_stays_in_isolated_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolate_user_global_config: Path
+) -> None:
+    from ahadiff.core import config as config_module
+    from ahadiff.core import paths as paths_module
+    from ahadiff.core import registry as registry_module
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    global_path = isolate_user_global_config / "config.toml"
+    expected_reads = {workspace / ".ahadiff" / "config.toml", global_path}
+    checked_reads: list[Path] = []
+    original_read = config_module._read_toml  # pyright: ignore[reportPrivateUsage]
+
+    def checked_read(path: Path) -> dict[str, Any]:
+        assert path in expected_reads, "unit config reads must never reach the user directory"
+        checked_reads.append(path)
+        return original_read(path)
+
+    monkeypatch.setattr(config_module, "_read_toml", checked_read)
+    assert paths_module.global_config_dir() == isolate_user_global_config
+    assert config_module.global_config_dir() == isolate_user_global_config
+    assert registry_module.global_config_dir() == isolate_user_global_config
+    config_module.write_config_data(global_path, {"quiz": {"quiz_question_count": 7}})
+    snapshot = config_module.load_workspace_config(workspace)
+    assert snapshot.global_config_path == global_path
+    assert snapshot.values["quiz"]["quiz_question_count"] == 7
+    assert global_path in checked_reads
+    assert (isolate_user_global_config / ".global.lock").is_file()
+    registry_module.save_registry([])
+    assert registry_module.load_registry() == []
+    assert (isolate_user_global_config / "registry.json").is_file()
+
+
+def test_unit_isolation_preserves_path_overrides_and_worker_threads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, isolate_user_global_config: Path
+) -> None:
+    from ahadiff.core import paths as paths_module
+
+    explicit_home = tmp_path / "explicit-home"
+    assert paths_module.global_config_dir(platform="darwin", env={"HOME": str(explicit_home)}) == (
+        explicit_home / "Library" / "Application Support" / "ahadiff"
+    )
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        assert executor.submit(paths_module.usage_db_path).result() == (
+            isolate_user_global_config / "usage.sqlite"
+        )
+
+    override = tmp_path / "custom-global"
+
+    def custom_global_config_dir(**kwargs: object) -> Path:
+        return override
+
+    monkeypatch.setattr(paths_module, "global_config_dir", custom_global_config_dir)
+    assert paths_module.usage_db_path() == override / "usage.sqlite"

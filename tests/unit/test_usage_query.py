@@ -203,3 +203,17 @@ def test_query_usage_time_filters_normalize_timezone_offsets(
     until_result = query_usage_by_model(db_path=db, until="2026-04-28T10:00:00+10:00")
     assert len(until_result) == 1
     assert until_result[0].model_id == "before"
+
+
+def test_default_usage_io_stays_in_unit_directory(isolate_user_global_config: Path) -> None:
+    from ahadiff.core.paths import usage_db_path
+
+    target = isolate_user_global_config / "usage.sqlite"
+    assert usage_db_path() == target
+    assert query_usage_summary().total_calls == 0
+    record_usage_event(_make_record(input_tokens=4, output_tokens=2))
+    assert target.is_file()
+    summary = query_usage_summary()
+    assert summary.total_calls == 1
+    assert summary.total_input_tokens == 4
+    assert summary.total_output_tokens == 2

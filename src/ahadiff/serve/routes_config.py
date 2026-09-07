@@ -27,6 +27,8 @@ from .lock import serve_repo_write_lock
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from ahadiff.core.config import ConfigSnapshot
+
     from .state import ServeState
 
 log = logging.getLogger(__name__)
@@ -658,28 +660,7 @@ def _validate_quiz_int_field(field: str, value: object) -> int | str:
     return value
 
 
-def _validate_effective_quiz_config(values: dict[str, object]) -> str | None:
-    mode = values.get("quiz_question_count_mode", _QUIZ_DEFAULTS["quiz_question_count_mode"])
-    if not isinstance(mode, str) or mode not in _ALLOWED_QUIZ_COUNT_MODES:
-        allowed_modes = sorted(_ALLOWED_QUIZ_COUNT_MODES)
-        return f"quiz.quiz_question_count_mode must be one of {allowed_modes}"
-    for field in _QUIZ_INT_FIELDS:
-        parsed = _validate_quiz_int_field(field, values.get(field))
-        if isinstance(parsed, str):
-            return parsed
-        values[field] = parsed
-    range_min = values["quiz_auto_range_min"]
-    range_max = values["quiz_auto_range_max"]
-    if isinstance(range_min, int) and isinstance(range_max, int) and range_min > range_max:
-        return "quiz.quiz_auto_range_min must be <= quiz.quiz_auto_range_max"
-    return None
-
-
-def _validate_quiz_update(
-    quiz: object,
-    *,
-    current_quiz: object | None = None,
-) -> dict[str, Any] | str:
+def _validate_quiz_update(quiz: object) -> dict[str, Any] | str:
     if not isinstance(quiz, dict):
         return "quiz must be a JSON object"
     quiz_dict = cast("dict[str, Any]", quiz)
@@ -702,13 +683,10 @@ def _validate_quiz_update(
             return parsed
         validated[field] = parsed
 
-    current_values = _object_mapping(current_quiz)
-    effective_values: dict[str, object] = dict(_QUIZ_DEFAULTS)
-    effective_values.update({key: current_values[key] for key in allowed if key in current_values})
-    effective_values.update(validated)
-    effective_error = _validate_effective_quiz_config(effective_values)
-    if effective_error is not None:
-        return effective_error
+    range_min = validated.get("quiz_auto_range_min")
+    range_max = validated.get("quiz_auto_range_max")
+    if isinstance(range_min, int) and isinstance(range_max, int) and range_min > range_max:
+        return "quiz.quiz_auto_range_min must be <= quiz.quiz_auto_range_max"
     return validated
 
 
@@ -728,6 +706,63 @@ def configured_provider_aliases(state: ServeState, fallback_aliases: set[str]) -
     return set(fallback_aliases)
 
 
+def validate_role_thinking_update(snapshot: ConfigSnapshot, roles: set[str]) -> str | None:
+    from ahadiff.core.errors import ProviderError
+    from ahadiff.core.orchestrator import (
+        implicit_duplicate_provider_name,
+        provider_names_for_auto_default,
+    )
+    from ahadiff.llm.adapters.thinking import (
+        minimum_thinking_output_tokens,
+        reject_unsupported_thinking,
+    )
+
+    llm = _object_mapping(snapshot.values.get("llm"))
+    providers = _object_mapping(snapshot.values.get("providers"))
+    for role in sorted(roles):
+        model_override = _explicit_role_model_override(llm, snapshot.resolved, role=role)
+        alias = llm.get(f"{role}_provider")
+        if not isinstance(alias, str) or not alias:
+            names = provider_names_for_auto_default(snapshot=snapshot, providers_table=providers)
+            alias = (
+                names[0]
+                if len(names) == 1
+                else implicit_duplicate_provider_name(
+                    providers_table=providers, configured_names=names, model=model_override
+                )
+            )
+        if alias is None:
+            continue
+        provider = _object_mapping(providers.get(alias))
+        if not provider:
+            return f"{role}_provider '{alias}' not found in configured providers"
+        level = provider.get("thinking_level")
+        profile = provider.get("model_limits_name") if model_override is None else None
+        try:
+            reject_unsupported_thinking(
+                str(provider.get("provider_class", "")),
+                level if isinstance(level, str) else None,
+                model_name=model_override or str(provider.get("model_name", "")),
+                base_url=str(provider.get("base_url", "")),
+                model_limits_name=profile if isinstance(profile, str) else None,
+            )
+            minimum = minimum_thinking_output_tokens(
+                str(provider.get("provider_class", "")),
+                model_override or str(provider.get("model_name", "")),
+                level if isinstance(level, str) else None,
+                base_url=str(provider.get("base_url", "")),
+            )
+            output_cap = provider.get("max_output_tokens")
+            if minimum is not None and isinstance(output_cap, int) and 0 < output_cap < minimum:
+                raise ProviderError(f"max_output_tokens must be at least {minimum}")
+        except ProviderError as exc:
+            return (
+                f"{role} provider '{alias}': {exc}. Choose a compatible model or a "
+                "separate provider alias with the required thinking level."
+            )
+    return None
+
+
 def _validate_and_persist_config_with_lock(
     app_state: Any,
     state: ServeState,
@@ -737,7 +772,8 @@ def _validate_and_persist_config_with_lock(
     quiz_update: object | None,
     lang_update: Literal["en", "zh-CN"] | None,
 ) -> str | None:
-    from ahadiff.core.config import read_config_data, write_config_data
+    from ahadiff.core.config import preview_workspace_config, read_config_data, write_config_data
+    from ahadiff.core.errors import ConfigError
 
     config_path = state.state_dir.parent / ".ahadiff" / "config.toml"
     with serve_repo_write_lock(state, command="serve config update"):
@@ -754,8 +790,7 @@ def _validate_and_persist_config_with_lock(
                     return f"{prov_key} '{pv_stripped}' not found in configured providers"
                 persist_updates.setdefault("llm", {})[prov_key] = pv_stripped
         if has_quiz_update:
-            current_quiz = _object_mapping(data.get("quiz"))
-            quiz_result = _validate_quiz_update(quiz_update, current_quiz=current_quiz)
+            quiz_result = _validate_quiz_update(quiz_update)
             if isinstance(quiz_result, str):
                 return quiz_result
             if quiz_result:
@@ -767,6 +802,25 @@ def _validate_and_persist_config_with_lock(
                     section.update(value)
                 else:
                     data[key] = value
+        llm_updates = _object_mapping(persist_updates.get("llm"))
+        changed_roles = {
+            role
+            for role in ("generate", "judge")
+            if f"{role}_provider" in llm_updates or f"{role}_model" in llm_updates
+        }
+        if has_quiz_update or changed_roles:
+            try:
+                snapshot = preview_workspace_config(
+                    state.state_dir.parent,
+                    data,
+                    global_config_root=state.global_config_root,
+                )
+            except ConfigError as exc:
+                return str(exc)
+            thinking_error = validate_role_thinking_update(snapshot, changed_roles)
+            if thinking_error is not None:
+                return thinking_error
+        if persist_updates:
             write_config_data(config_path, data)
         if lang_update is not None:
             app_state.ahadiff = state.with_locale(lang_update)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
+from urllib.parse import urlsplit
 
 from ahadiff.contracts import ProviderCapabilities
 
@@ -10,7 +11,11 @@ from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import openai_json_schema_format
-from .thinking import deepseek_chat_thinking_payload, reject_unsupported_thinking
+from .thinking import (
+    chat_completion_token_key,
+    supports_request_temperature,
+    thinking_payload_for,
+)
 
 if TYPE_CHECKING:
     import httpx
@@ -81,10 +86,11 @@ class OpenAIChatAdapter(AdapterBase):
         *,
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
-        reject_unsupported_thinking(
+        request = self.prepare_request(request)
+        thinking = thinking_payload_for(
             self.config.provider_class,
+            request.model,
             request.thinking_level,
-            model_name=request.model,
             base_url=self.config.base_url,
         )
         headers = {"content-type": "application/json"}
@@ -95,18 +101,19 @@ class OpenAIChatAdapter(AdapterBase):
             "messages": [{"role": "user", "content": request.effective_payload()}],
             "stream": False,
         }
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
-        if request.max_output_tokens is not None:
-            payload["max_tokens"] = request.max_output_tokens
-        deepseek_thinking = deepseek_chat_thinking_payload(
+        if request.temperature is not None and supports_request_temperature(
             self.config.provider_class,
             request.model,
-            self.config.base_url,
             request.thinking_level,
-        )
-        if deepseek_thinking is not None:
-            payload.update(deepseek_thinking)
+            base_url=self.config.base_url,
+        ):
+            payload["temperature"] = request.temperature
+        if request.max_output_tokens is not None:
+            token_key = chat_completion_token_key(
+                self.config.provider_class, request.model, self.config.base_url
+            )
+            payload[token_key] = request.max_output_tokens
+        payload.update(thinking)
         native_format = openai_json_schema_format(request, capabilities=self.capabilities)
         if native_format is not None:
             payload["response_format"] = native_format
@@ -115,7 +122,11 @@ class OpenAIChatAdapter(AdapterBase):
         ):
             payload["response_format"] = {"type": "json_object"}
         base = self.config.base_url.rstrip("/")
-        prefix = base if base.endswith("/v1") else f"{base}/v1"
+        parsed = urlsplit(base)
+        native_glm = parsed.hostname in {"api.z.ai", "open.bigmodel.cn"} and (
+            parsed.path.endswith("/v4")
+        )
+        prefix = base if base.endswith("/v1") or native_glm else f"{base}/v1"
         url = f"{prefix}/chat/completions"
         return "POST", url, headers, payload
 

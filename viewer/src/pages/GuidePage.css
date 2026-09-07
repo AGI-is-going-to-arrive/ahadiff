@@ -735,38 +735,6 @@
   color: var(--muted-strong);
 }
 
-.guide-agent-previews {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: var(--sp-6);
-  margin-top: var(--sp-6);
-}
-
-.guide-agent-preview {
-  min-width: 0;
-  padding: var(--sp-4);
-  border: 1px solid var(--hair);
-  border-radius: var(--r-md);
-  background: var(--subtle);
-}
-
-.guide-agent-preview__title {
-  margin-bottom: var(--sp-3);
-  font-family: var(--font-serif);
-  font-size: 17px;
-  color: var(--ink-strong);
-}
-
-.guide-agent-preview__code {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--ink-2);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.65;
-}
-
 /* ---- Integrations ---- */
 .guide-integrations__desc {
   margin: 0 0 var(--sp-4);
@@ -819,18 +787,7 @@
   min-width: 0;
 }
 
-.guide-integrations__badge {
-  display: inline-block;
-  padding: 2px var(--sp-2);
-  border-radius: var(--r-full);
-  background: var(--accent-softest);
-  color: var(--accent-ink);
-  font-family: var(--font-sans);
-  font-size: var(--fs-2xs);
-  font-weight: 500;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
+
 
 .guide-integrations__hint {
   display: inline-flex;
@@ -891,9 +848,6 @@
   .guide-agent-skills__grid {
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   }
-  .guide-agent-previews {
-    grid-template-columns: 1fr;
-  }
   .guide-workflow__steps {
     flex-direction: column;
   }
@@ -936,7 +890,6 @@
   .guide-env__pane,
   .guide-accordion,
   .guide-agent-card,
-  .guide-agent-preview,
   .guide-integrations__item,
   .guide-notes,
   .guide-integrations__hint,
@@ -972,11 +925,7 @@
     color: LinkText;
     background: transparent;
   }
-  .guide-integrations__badge {
-    border: 1px solid CanvasText;
-    background: Canvas;
-    color: CanvasText;
-  }
+
   .guide-agent-card__status,
   .guide-agent-card__platform-badge,
   .guide-agent-skills__tab-chip,
@@ -1005,7 +954,6 @@
   .guide-accordion__chevron,
   .guide-nav__chip,
   .guide-agent-card,
-  .guide-agent-preview,
   .guide-integrations__hint,
   .guide-agent-skills__tab-chip,
   .guide-workflow-card {

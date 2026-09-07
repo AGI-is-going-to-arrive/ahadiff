@@ -225,7 +225,7 @@ def test_repository_backend_ci_uses_linux_macos_matrix() -> None:
         workflow,
         workflow_text,
         job_name="windows-runtime",
-        python_version="3.11",
+        python_version="3.13",
     )
     assert "tests/integration/test_learn_pipeline.py" in workflow_text
 

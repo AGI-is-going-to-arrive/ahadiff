@@ -155,7 +155,7 @@ ahadiff review           # 复习过去生成的卡片
 - **新建学习对话框**：Dashboard 可直接从工作区、未暂存、已暂存或最近一次提交开始学习；高级卡片覆盖 `--since`、提交/范围、patch URL、粘贴补丁、文件对比和目录对比。
 - **导出**：命令行里，`ahadiff export-results` 生成 `results.tsv`，`ahadiff export preview` 生成本地静态预览包。WebUI（以及 `serve` API）还能导出 TSV / JSON 和 Anki `.apkg`；`.apkg` 导出使用内置的 `genanki`，默认即可用。
 - **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
-- **AI 工具集成**：为 15 个 CLI / IDE / CI 目标写入项目级指引。Settings 会按目标分组，展示本地化使用提示和不调用 provider 的本地演示，并继续用确认流程保护写入/移除。Guide 只读展示命令，用折叠卡片说明使用方式，并预览 AhaDiff 会写入哪些文件。支持目标包括 Claude、Codex、Gemini、Antigravity IDE、Antigravity CLI、Copilot、OpenCode、Cursor、Cline、Continue、Roo、Windsurf、Aider、GitHub Actions 和 Git hooks（Git hooks 默认仅提醒；加 `--auto-learn` 后每次 commit 自动后台 learn）。
+- **AI 工具集成**：设置与使用指南共用 16 个当前 CLI / IDE / CI 目标的目录，新增 Pi、DeepSeek Harness（开发者预览）、Grok Build 与 Devin。Settings 支持受保护的预览、写入、更新和移除；Guide 使用同一目录，加载失败时提供重试，不伪造可用状态。Gemini CLI 保留 API key／Enterprise 用户的显式安装，个人账号转向 Antigravity；Roo 与旧 Windsurf 指引仅提供清理入口。
 - **自动迭代**：`ahadiff improve-run <run_id>` 在已有 run 上重新生成 lesson，仅当确定性评分严格更高时才保留新结果（另存为独立 run，不改动原 run）——任何安装方式（含 `pip`）都可用。另一个 `ahadiff improve` 命令用于调优 AhaDiff 自身的生成 prompt，仅在 AhaDiff 源码 checkout 内可用。
 - **隐私**：三档模式：strict_local、redacted_remote、explicit_remote；默认 strict_local。
 - **i18n**：WebUI 与 prompt 输出语言支持中英文；CLI help 与多数 CLI 诊断仍为英文。
@@ -219,14 +219,16 @@ ahadiff review           # 复习过去生成的卡片
 <img src="./docs/video/public/screenshots/zh/zh-settings.png" alt="设置页面" width="800">
 </details>
 
+模型限制与思考参数已按 2026-09-07 资料更新。“使用模型默认值”与“关闭思考”是不同设置，可用等级由模型和接口决定。
+
 ## AI 工具集成
 
 AhaDiff 会在当前仓库写入项目级 AI 工具指引文件；不会重新安装 AhaDiff CLI，也不会写入全局用户目录：
 ```bash
 ahadiff install --detect        # 自动检测可用工具
-ahadiff install claude          # 也支持: cursor, copilot, codex, gemini, antigravity, antigravity-cli, aider, windsurf, cline, roo, continue, ...
+ahadiff install claude          # 也支持: codex, pi, deepseek-harness, grok, devin, cursor, copilot, antigravity, ...
 ```
-当前支持 15 个目标。完整列表可运行 `ahadiff install --help`，也可以在 WebUI 的设置 → AI 工具指引中配置。
+当前目录包含 16 个目标。运行 `ahadiff install --detect` 查看项目指引，或使用设置 → AI 工具指引。旧指引可通过 `ahadiff uninstall roo`、`ahadiff uninstall windsurf` 显式清理。
 
 Git hooks 默认仅提醒。`ahadiff install hooks --auto-learn` 会让 post-commit hook 在后台运行 `ahadiff learn --last`（日志：`.ahadiff/hooks.log`）。GUI 客户端提交也能用：hook 会回退到安装时记录的路径；实在找不到 `ahadiff` 时只在日志里记一条跳过，绝不卡住 commit。想按保存而不是按 commit 触发学习？`ahadiff watch` 会在工作区变更时自动 learn（防抖 2s、冷却 30s）；`ahadiff serve --watch` 用同一个监听并带起 WebUI。把只读 MCP server（7 个工具）注册给你的 agent：
 ```bash
@@ -238,7 +240,7 @@ Settings 会按 CLI / IDE / CI 分组展示这些目标，并显示快速开始�
 
 Guide 和新建学习对话框在 Windows 高对比 / forced-colors 模式下也会保持卡片、note marker 和底部操作可辨；使用提示沿用 viewer 的 token 化字号体系。
 
-部分目标会写入工具原生的生成文件，例如 `.claude/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff/SKILL.md`、`.gemini/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff-antigravity/SKILL.md`、`.agents/skills/ahadiff-antigravity-cli/SKILL.md`、`.agents/rules/ahadiff.md`、`.github/instructions/ahadiff.instructions.md`、`.opencode/agents/ahadiff.md`、`.clinerules/ahadiff.md`、`.continue/rules/ahadiff.md`、`.cursor/rules/ahadiff.mdc`、`.roo/rules/ahadiff.md` 和 `.windsurf/rules/ahadiff.md`。repo 指引标记段仍写在 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.github/copilot-instructions.md` 等用户管理文件中。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
+部分目标会写入工具原生的生成文件，例如 `.claude/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff/SKILL.md`、`.gemini/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff-antigravity/SKILL.md`、`.agents/skills/ahadiff-antigravity-cli/SKILL.md`、`.agents/rules/ahadiff.md`、`.github/instructions/ahadiff.instructions.md`、`.opencode/agents/ahadiff.md`、`.clinerules/ahadiff.md`、`.continue/rules/ahadiff.md`、`.cursor/rules/ahadiff.mdc`、`.pi/skills/ahadiff/SKILL.md`、`.dsh/skills/ahadiff/SKILL.md`、`.grok/skills/ahadiff/SKILL.md` 和 `.devin/rules/ahadiff.md`。repo 指引标记段仍写在 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.github/copilot-instructions.md` 等用户管理文件中。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
 
 本仓库会忽略生成出来的 `.agents/` 安装产物，所以 repo-local Codex / Antigravity skill 默认只留在本机，除非用户明确把它们纳入 Git。
 

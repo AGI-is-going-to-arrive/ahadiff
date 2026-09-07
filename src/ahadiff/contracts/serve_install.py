@@ -45,6 +45,10 @@ class InstallTargetSummary(BaseModel):
     platform_supported: bool
     status: Literal["installed", "available", "unsupported", "error"]
     description: str
+    lifecycle: Literal["active", "preview", "limited", "retired", "replaced"] = "active"
+    lifecycle_note: str = ""
+    documentation_url: str = ""
+    verified_at: str = ""
     install_command: str = Field(min_length=1)
     uninstall_command: str = Field(min_length=1)
     manifest: InstallManifestSummary | None = None
@@ -57,6 +61,7 @@ class InstallTargetSummary(BaseModel):
 class InstallTargetsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     targets: list[InstallTargetSummary]
+    legacy_targets: list[InstallTargetSummary] = Field(default_factory=list[InstallTargetSummary])
     total: int
 
 

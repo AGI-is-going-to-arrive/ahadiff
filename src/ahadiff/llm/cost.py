@@ -353,7 +353,7 @@ def resolve_model_limits(
 def _deepseek_registry_fallback_provider_classes(provider_class: str) -> tuple[str, ...]:
     normalized = provider_class.strip().lower()
     if normalized == "openai":
-        return (provider_class, "openai_compat")
+        return ("openai_compat", provider_class)
     return (provider_class,)
 
 

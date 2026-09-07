@@ -10,7 +10,7 @@ from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import native_schema_for_request
-from .thinking import ollama_think_value
+from .thinking import thinking_payload_for
 
 if TYPE_CHECKING:
     import httpx
@@ -48,10 +48,12 @@ class OllamaAdapter(AdapterBase):
             "model": request.model,
             "messages": [{"role": "user", "content": request.effective_payload()}],
             "stream": False,
-            "think": ollama_think_value(request.thinking_level, request.model),
         }
+        payload.update(thinking_payload_for("ollama", request.model, request.thinking_level))
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}
+        if request.max_output_tokens is not None:
+            payload.setdefault("options", {})["num_predict"] = request.max_output_tokens
         schema = (
             native_schema_for_request(request)
             if self.capabilities.supports_native_json_schema
@@ -70,13 +72,12 @@ class OllamaAdapter(AdapterBase):
         payload = response.json()
         message = payload.get("message", {})
         content = str(message.get("content") or "")
-        if not content:
-            content = str(message.get("reasoning_content") or "")
         return ProviderResponse(
             content=content,
             model_id=str(payload.get("model", self.config.model_name)),
             input_tokens=int(payload.get("prompt_eval_count", 0)),
             output_tokens=int(payload.get("eval_count", 0)),
+            reasoning_content=message.get("thinking") or message.get("reasoning_content"),
             finish_reason=payload.get("done_reason"),
             request_id=response.headers.get("x-request-id"),
             raw_json=payload,

@@ -763,11 +763,6 @@ h1+p,h2+p,h3+p{break-before:avoid-page}
   }
 }
 
-/* --- Smooth anchor scrolling without breaking reduced-motion --- */
-@media (prefers-reduced-motion: no-preference){
-  html{scroll-behavior:smooth}
-}
-
 /* ================================================================
    BOLDER OVERLAY · editorial-terminal · v1 · 2026-04-21
    原则：不改原 token；通过低特异性叠加强化 Landing Hero、Badges、

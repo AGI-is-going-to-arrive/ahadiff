@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -11,6 +12,15 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
+from watchdog.events import (
+    DirMovedEvent,
+    FileClosedNoWriteEvent,
+    FileCreatedEvent,
+    FileDeletedEvent,
+    FileModifiedEvent,
+    FileMovedEvent,
+    FileOpenedEvent,
+)
 
 from ahadiff import cli as cli_module
 from ahadiff.core.errors import ConfigError
@@ -269,11 +279,7 @@ class TestFileWatcherEventPaths:
                 on_change=lambda _: None,
                 config=WatcherConfig(debounce_seconds=60.0),
             )
-            event = SimpleNamespace(
-                is_directory=True,
-                src_path=str(tmp_path / "old_pkg"),
-                dest_path=str(tmp_path / "new_pkg"),
-            )
+            event = DirMovedEvent(str(tmp_path / "old_pkg"), str(tmp_path / "new_pkg"))
 
             try:
                 watcher._handle_fs_event(event)
@@ -286,6 +292,70 @@ class TestFileWatcherEventPaths:
                 )
             finally:
                 watcher.stop()
+
+    @pytest.mark.parametrize("event_class", [FileOpenedEvent, FileClosedNoWriteEvent])
+    def test_read_events_do_not_schedule_learning(
+        self,
+        tmp_path: Path,
+        event_class: type[FileOpenedEvent | FileClosedNoWriteEvent],
+    ) -> None:
+        watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+        with patch.object(watcher, "_schedule_trigger") as schedule:
+            watcher._handle_fs_event(event_class(str(tmp_path / "source.py")))
+
+        assert watcher._drain_pending() == frozenset()
+        schedule.assert_not_called()
+
+    @pytest.mark.parametrize("event_class", [FileCreatedEvent, FileModifiedEvent, FileDeletedEvent])
+    def test_content_events_schedule_learning(
+        self,
+        tmp_path: Path,
+        event_class: type[FileCreatedEvent | FileModifiedEvent | FileDeletedEvent],
+    ) -> None:
+        source = str(tmp_path / "source.py")
+        watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+        with patch.object(watcher, "_schedule_trigger") as schedule:
+            watcher._handle_fs_event(event_class(source))
+
+        assert watcher._drain_pending() == frozenset({source})
+        schedule.assert_called_once()
+
+    def test_file_move_schedules_both_paths(self, tmp_path: Path) -> None:
+        source, dest = str(tmp_path / "old.py"), str(tmp_path / "new.py")
+        watcher = FileWatcher(tmp_path, on_change=lambda _: None)
+        with patch.object(watcher, "_schedule_trigger") as schedule:
+            watcher._handle_fs_event(FileMovedEvent(source, dest))
+
+        assert watcher._drain_pending() == frozenset({source, dest})
+        schedule.assert_called_once()
+
+    @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="requires Linux inotify")
+    def test_reading_source_in_callback_does_not_trigger_another_learn(
+        self, tmp_path: Path
+    ) -> None:
+        source = tmp_path / "source.py"
+        source.write_text("value = 1\n", encoding="utf-8")
+        first_callback = threading.Event()
+        repeated_callback = threading.Event()
+
+        def read_changed_source(_event: WatchEvent) -> None:
+            source.read_text(encoding="utf-8")
+            if first_callback.is_set():
+                repeated_callback.set()
+            first_callback.set()
+
+        watcher = FileWatcher(
+            tmp_path,
+            on_change=read_changed_source,
+            config=WatcherConfig(debounce_seconds=0.05, cooldown_seconds=0.1),
+        )
+        watcher.start()
+        try:
+            source.write_text("value = 2\n", encoding="utf-8")
+            assert first_callback.wait(timeout=3)
+            assert not repeated_callback.wait(timeout=0.5)
+        finally:
+            watcher.stop()
 
 
 class TestFileWatcherDrainPending:

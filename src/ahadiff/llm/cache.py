@@ -73,7 +73,10 @@ def build_cache_key(parts: CacheKeyInput) -> str:
         "temperature": parts.temperature,
         "request_payload_sha256": parts.request_payload_sha256,
         "source_ref": parts.source_ref,
-        "thinking_level": parts.thinking_level or "none",
+        # v2 separates provider default from explicit disable and corrects native mappings.
+        "thinking_contract_version": 2,
+        "thinking_level": parts.thinking_level,
+        "model_profile": parts.model_profile,
     }
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()

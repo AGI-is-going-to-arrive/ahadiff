@@ -9,7 +9,7 @@ from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import responses_text_format
-from .thinking import normalize_thinking_level
+from .thinking import supports_request_temperature, thinking_payload_for
 
 if TYPE_CHECKING:
     import httpx
@@ -44,6 +44,12 @@ class OpenAIResponsesAdapter(AdapterBase):
         *,
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
+        thinking = thinking_payload_for(
+            self.config.provider_class,
+            request.model,
+            request.thinking_level,
+            base_url=self.config.base_url,
+        )
         headers = {"content-type": "application/json"}
         if api_key:
             headers["authorization"] = f"Bearer {api_key}"
@@ -51,13 +57,16 @@ class OpenAIResponsesAdapter(AdapterBase):
             "model": request.model,
             "input": request.effective_payload(),
         }
-        if request.temperature is not None:
+        if request.temperature is not None and supports_request_temperature(
+            self.config.provider_class,
+            request.model,
+            request.thinking_level,
+            base_url=self.config.base_url,
+        ):
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             payload["max_output_tokens"] = request.max_output_tokens
-        thinking = normalize_thinking_level(request.thinking_level)
-        if thinking != "none":
-            payload["reasoning"] = {"effort": thinking}
+        payload.update(thinking)
         text_format = responses_text_format(request, capabilities=self.capabilities)
         if text_format is not None:
             payload["text"] = text_format

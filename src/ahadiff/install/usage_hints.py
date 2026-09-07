@@ -7,140 +7,101 @@ from typing import Literal
 
 from ahadiff.contracts.serve_install import ToolUsageHint
 
+from .registry import get_target_metadata
+
 ToolCategory = Literal["cli", "ide", "ci"]
 PlatformKey = Literal["windows", "macos", "linux"]
 
 
 @dataclass(frozen=True)
 class _TargetUsage:
-    category: ToolCategory
-    en_name: str
-    zh_name: str
     en_invocation: str
     zh_invocation: str
 
 
 _TARGETS: dict[str, _TargetUsage] = {
     "aider": _TargetUsage(
-        "cli",
-        "Aider",
-        "Aider",
-        'aider --message "Run ahadiff learn --staged after this change"',
-        'aider --message "这次修改后运行 ahadiff learn --staged"',
+        'aider --read CONVENTIONS.md --message "Run ahadiff learn --staged after this change"',
+        'aider --read CONVENTIONS.md --message "这次修改后运行 ahadiff learn --staged"',
     ),
     "antigravity": _TargetUsage(
-        "ide",
-        "Antigravity IDE",
-        "Antigravity IDE",
         "Open Antigravity IDE and use the AhaDiff workspace skill.",
         "在 Antigravity IDE 打开本仓库，并使用 AhaDiff workspace skill。",
     ),
     "antigravity-cli": _TargetUsage(
-        "cli",
-        "Antigravity CLI",
-        "Antigravity CLI",
-        'antigravity "Use AhaDiff to learn HEAD~1..HEAD"',
-        'antigravity "使用 AhaDiff 学习 HEAD~1..HEAD"',
+        "Start agy in this repository, then ask it to use AhaDiff.",
+        "在此仓库启动 agy，然后要求它使用 AhaDiff。",
     ),
     "claude": _TargetUsage(
-        "cli",
-        "Claude Code",
-        "Claude Code",
         'claude "Use the ahadiff skill to learn HEAD~1..HEAD"',
         'claude "使用 ahadiff skill 学习 HEAD~1..HEAD"',
     ),
     "cline": _TargetUsage(
-        "ide",
-        "Cline",
-        "Cline",
-        "Open Cline in VS Code and ask it to use AhaDiff for the current diff.",
-        "在 VS Code 打开 Cline，并要求它为当前 diff 使用 AhaDiff。",
+        "Open this repository in Cline and ask to use AhaDiff for the current diff.",
+        "在 Cline 打开此仓库，并要求为当前 diff 使用 AhaDiff。",
     ),
     "codex": _TargetUsage(
-        "cli",
-        "Codex CLI",
-        "Codex CLI",
-        'codex "Use AhaDiff to learn the staged diff"',
-        'codex "使用 AhaDiff 学习 staged diff"',
+        'codex "Use AhaDiff to learn the staged diff"', 'codex "使用 AhaDiff 学习 staged diff"'
     ),
     "continue": _TargetUsage(
-        "ide",
-        "Continue",
-        "Continue",
         "Open Continue and ask for an AhaDiff learning pass.",
         "打开 Continue，并要求它执行一次 AhaDiff 学习流程。",
     ),
     "copilot": _TargetUsage(
-        "ide",
-        "Copilot Chat",
-        "Copilot Chat",
-        "Use Copilot Chat in VS Code and ask it to follow the AhaDiff instructions.",
-        "在 VS Code 使用 Copilot Chat，并要求它遵循 AhaDiff 指引。",
+        "Ask GitHub Copilot to follow this repository's AhaDiff instructions.",
+        "要求 GitHub Copilot 遵循此仓库的 AhaDiff 指引。",
     ),
     "cursor": _TargetUsage(
-        "ide",
-        "Cursor",
-        "Cursor",
         "Open Cursor and ask the agent to use AhaDiff for the current diff.",
         "打开 Cursor，并要求 agent 为当前 diff 使用 AhaDiff。",
     ),
     "gemini": _TargetUsage(
-        "cli",
-        "Gemini CLI",
-        "Gemini CLI",
-        'gemini "Use AhaDiff to learn HEAD~1..HEAD"',
-        'gemini "使用 AhaDiff 学习 HEAD~1..HEAD"',
+        'gemini "Use AhaDiff to learn HEAD~1..HEAD"', 'gemini "使用 AhaDiff 学习 HEAD~1..HEAD"'
     ),
     "github-action": _TargetUsage(
-        "ci",
-        "GitHub Actions",
-        "GitHub Actions",
         "Run the generated AhaDiff workflow on a pull request or manual dispatch.",
         "在 pull request 或手动 dispatch 中运行生成的 AhaDiff workflow。",
     ),
     "hooks": _TargetUsage(
-        "ci",
-        "Git hooks",
-        "Git hooks",
         "ahadiff install hooks; ahadiff install hooks --auto-learn",
         "ahadiff install hooks；ahadiff install hooks --auto-learn",
     ),
     "opencode": _TargetUsage(
-        "cli",
-        "OpenCode",
-        "OpenCode",
         'opencode run "Use the AhaDiff agent to learn the staged diff"',
         'opencode run "使用 AhaDiff agent 学习 staged diff"',
     ),
-    "roo": _TargetUsage(
-        "ide",
-        "Roo Code",
-        "Roo Code",
-        "Open Roo Code and ask it to follow the AhaDiff workspace rules.",
-        "打开 Roo Code，并要求它遵循 AhaDiff 工作区规则。",
+    "pi": _TargetUsage(
+        "Start pi in this repository, trust the project, then use /skill:ahadiff.",
+        "在此仓库启动 pi，确认信任项目后使用 /skill:ahadiff。",
     ),
-    "windsurf": _TargetUsage(
-        "ide",
-        "Windsurf",
-        "Windsurf",
-        "Open Windsurf and ask the agent to use AhaDiff before handoff.",
-        "打开 Windsurf，并要求 agent 在交付前使用 AhaDiff。",
+    "deepseek-harness": _TargetUsage(
+        "Start npx @deepseek-ai/dsh web, choose this workspace, then ask to use the AhaDiff skill.",
+        ("启动 npx @deepseek-ai/dsh web，选择此工作区，然后要求使用 AhaDiff 技能。"),
+    ),
+    "grok": _TargetUsage(
+        "Start grok in this repository, then use /ahadiff.",
+        "在此仓库启动 grok，然后使用 /ahadiff。",
+    ),
+    "devin": _TargetUsage(
+        "Open this repository in Devin Desktop or Devin CLI and ask to use AhaDiff.",
+        "在 Devin Desktop 或 Devin CLI 打开此仓库，并要求使用 AhaDiff。",
     ),
 }
 
 
 def get_usage_hint(target_name: str, locale: str) -> ToolUsageHint | None:
     usage = _TARGETS.get(target_name)
-    if usage is None:
+    metadata = get_target_metadata(target_name)
+    if usage is None or metadata is None:
         return None
     localized = locale == "zh-CN"
-    label = usage.zh_name if localized else usage.en_name
+    label = metadata.display_name
     return ToolUsageHint(
-        tool_category=usage.category,
+        tool_category=metadata.category,
         invocation_pattern=usage.zh_invocation if localized else usage.en_invocation,
-        quick_start_steps=list(_quick_start_steps(usage.category, label, localized)),
-        example_prompts=list(_example_prompts(usage.category, label, localized)),
-        expected_behavior=_expected_behavior(target_name, usage.category, label, localized),
+        quick_start_steps=list(_quick_start_steps(metadata.category, label, localized)),
+        example_prompts=list(_example_prompts(metadata.category, label, localized)),
+        expected_behavior=_expected_behavior(target_name, metadata.category, label, localized),
         platform_notes=_platform_notes(target_name, localized),
     )
 
@@ -235,15 +196,22 @@ def _expected_behavior(
     if localized:
         if category == "ci":
             return f"{label} 会在自动化边界生成或验证 AhaDiff 学习产物。"
-        return f"{label} 会遵循仓库本地指引，把代码 diff 转成可验证的学习输出。"
+        return f"在已安装并启用技能的 {label} 中，可要求使用仓库本地指引生成可验证的学习输出。"
     if category == "ci":
         return f"{label} generates or verifies AhaDiff learning artifacts at automation gates."
     return (
-        f"{label} follows repo-local guidance and turns code diffs into verified learning output."
+        f"Once {label} is installed and the guidance is enabled, "
+        "ask it to produce verified learning output."
     )
 
 
 def _platform_notes(target_name: str, localized: bool) -> dict[PlatformKey, str]:
+    if target_name == "pi":
+        return {
+            "windows": "Pi 在 Windows 上默认使用 Git Bash；也可配置 PowerShell。"
+            if localized
+            else "Pi uses Git Bash on Windows by default; PowerShell can be configured."
+        }
     if target_name != "hooks":
         return {}
     if localized:

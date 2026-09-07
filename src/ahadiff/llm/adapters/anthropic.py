@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
 from ahadiff.contracts import ProviderCapabilities
-from ahadiff.core.errors import ProviderError
 
 from ..probe_limits import safe_positive_int
 from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
-from .thinking import anthropic_thinking_config
+from .thinking import supports_request_temperature, thinking_payload_for
 
 if TYPE_CHECKING:
     import httpx
@@ -34,6 +34,13 @@ def _first_positive_probe_limit(
 
 
 class AnthropicAdapter(AdapterBase):
+    def prepare_request(self, request: ProviderRequest) -> ProviderRequest:
+        request = super().prepare_request(request)
+        if request.max_output_tokens is not None:
+            return request
+        context_limit = self.config.probed_max_context or 4096
+        return replace(request, max_output_tokens=max(256, min(4096, context_limit // 4)))
+
     @property
     def capabilities(self) -> ProviderCapabilities:
         return apply_capability_overrides(
@@ -61,32 +68,27 @@ class AnthropicAdapter(AdapterBase):
         *,
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
+        request = self.prepare_request(request)
         headers = {
             "content-type": "application/json",
             "anthropic-version": "2023-06-01",
         }
         if api_key:
             headers["x-api-key"] = api_key
-        default_max_tokens = self.config.probed_max_context or 4096
-        max_tokens = request.max_output_tokens or max(256, min(4096, default_max_tokens // 4))
-        thinking = anthropic_thinking_config(request.thinking_level, request.model)
-        budget = thinking.get("budget_tokens") if thinking is not None else None
-        if isinstance(budget, int):
-            if request.max_output_tokens is not None and request.max_output_tokens <= budget:
-                raise ProviderError(
-                    f"anthropic thinking requires max_output_tokens > budget_tokens={budget}"
-                )
-            max_tokens = max(max_tokens, budget + 1)
+        thinking_payload = thinking_payload_for(
+            "anthropic", request.model, request.thinking_level, base_url=self.config.base_url
+        )
         payload: dict[str, Any] = {
             "model": request.model,
             "messages": [{"role": "user", "content": request.effective_payload()}],
-            "max_tokens": max_tokens,
+            "max_tokens": request.max_output_tokens,
         }
         if request.response_format == "json" or request.enforcement_mode == "json_object":
             payload["system"] = _JSON_OBJECT_SYSTEM_INSTRUCTION
-        if thinking is not None:
-            payload["thinking"] = thinking
-        elif request.temperature is not None:
+        payload.update(thinking_payload)
+        if request.temperature is not None and supports_request_temperature(
+            "anthropic", request.model, request.thinking_level, base_url=self.config.base_url
+        ):
             payload["temperature"] = request.temperature
         base = self.config.base_url.rstrip("/")
         prefix = base if base.endswith("/v1") else f"{base}/v1"

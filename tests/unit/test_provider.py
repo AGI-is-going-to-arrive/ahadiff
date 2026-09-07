@@ -14,6 +14,8 @@ import pytest
 from pydantic import ValidationError
 
 from ahadiff.contracts import ProviderCapabilities, ProviderConfig
+from ahadiff.core import config as config_module
+from ahadiff.core import paths as paths_module
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import ConfigError, InputError, ProviderError, SafetyError, StorageError
 from ahadiff.core.paths import usage_db_path
@@ -64,9 +66,11 @@ def _reset_provider_runtime_state(  # pyright: ignore[reportUnusedFunction]
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Generator[None, None, None]:
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    def isolated_global_dir(**kwargs: object) -> Path:
+        return tmp_path / "global-config"
+
+    monkeypatch.setattr(paths_module, "global_config_dir", isolated_global_dir)
+    monkeypatch.setattr(config_module, "global_config_dir", isolated_global_dir)
     reset_provider_runtime_state()
     reset_openrouter_pricing_cache()
     yield
@@ -605,7 +609,7 @@ def test_openai_compat_deepseek_v4_sends_thinking_params_and_json_object() -> No
     assert payload["response_format"] == {"type": "json_object"}
 
 
-def test_openai_compat_deepseek_v4_disables_thinking_when_unset() -> None:
+def test_openai_compat_deepseek_v4_preserves_default_when_unset() -> None:
     adapter = OpenAICompatAdapter(
         _provider_config(
             "openai_compat",
@@ -619,7 +623,7 @@ def test_openai_compat_deepseek_v4_disables_thinking_when_unset() -> None:
         api_key="test-key",
     )
 
-    assert payload["thinking"] == {"type": "disabled"}
+    assert "thinking" not in payload
     assert "reasoning_effort" not in payload
 
 
@@ -819,9 +823,9 @@ def test_gemini_uses_native_json_schema_when_requested() -> None:
 
 def test_thinking_policy_reports_payload_modes_for_adapter_specific_models() -> None:
     assert thinking_policy_for("openai", "gpt-5.4-mini") == {
-        "supported": False,
-        "accepted_levels": (),
-        "payload_mode": "unsupported",
+        "supported": True,
+        "accepted_levels": ("none", "low", "medium", "high", "xhigh"),
+        "payload_mode": "reasoning_effort",
         "warnings": (),
     }
     assert thinking_policy_for(
@@ -830,9 +834,9 @@ def test_thinking_policy_reports_payload_modes_for_adapter_specific_models() -> 
         base_url="https://api.deepseek.com",
     ) == {
         "supported": True,
-        "accepted_levels": ("low", "medium", "high"),
+        "accepted_levels": ("none", "low", "high", "max"),
         "payload_mode": "deepseek.thinking",
-        "warnings": ("deepseek_low_medium_effort_maps_to_high",),
+        "warnings": (),
     }
     assert not thinking_policy_for(
         "openai_compat",
@@ -845,31 +849,29 @@ def test_thinking_policy_reports_payload_modes_for_adapter_specific_models() -> 
         thinking_policy_for("openai_responses", "gpt-5.4-mini")["payload_mode"]
         == "reasoning.effort"
     )
-    assert (
-        thinking_policy_for("azure", "gpt-5.4-mini")["payload_mode"]
-        == "reasoning_effort+max_completion_tokens"
-    )
+    assert thinking_policy_for("azure", "gpt-5.4-mini")["payload_mode"] == "reasoning_effort"
     assert (
         thinking_policy_for("gemini", "gemini-2.5-pro")["payload_mode"]
-        == "thinkingConfig.thinkingLevel"
+        == "thinkingConfig.thinkingBudget"
     )
-    assert thinking_policy_for("ollama", "llama3.1")["payload_mode"] == "think:boolean"
+    assert thinking_policy_for("ollama", "llama3.1")["supported"] is False
+    assert thinking_policy_for("ollama", "qwen3:8b")["payload_mode"] == "think:boolean"
     assert thinking_policy_for("ollama", "gpt-oss:20b")["payload_mode"] == "think:string"
 
-    old_anthropic = thinking_policy_for("anthropic", "claude-opus-4-6")
+    old_anthropic = thinking_policy_for("anthropic", "claude-opus-4-5")
     adaptive_anthropic = thinking_policy_for("anthropic", "claude-opus-4-7-20260522")
 
     assert old_anthropic["supported"]
-    assert old_anthropic["accepted_levels"] == ("low", "medium", "high")
+    assert old_anthropic["accepted_levels"] == ("none", "low", "medium", "high")
     assert old_anthropic["payload_mode"] == "thinking.budget_tokens"
-    assert adaptive_anthropic["payload_mode"] == "thinking.effort"
-    assert adaptive_anthropic["warnings"] == ("anthropic_adaptive_thinking_effort_only",)
+    assert adaptive_anthropic["payload_mode"] == "thinking.adaptive+output_config.effort"
+    assert adaptive_anthropic["warnings"] == ()
 
 
 def test_gemini_thinking_level_payload_uses_lowercase_level() -> None:
-    adapter = GeminiAdapter(_provider_config("gemini", model_name="gemini-2.5-pro"))
+    adapter = GeminiAdapter(_provider_config("gemini", model_name="gemini-3.8-flash"))
     _method, _url, _headers, payload = adapter.build_request(
-        _request(model="gemini-2.5-pro", thinking_level="HIGH"),
+        _request(model="gemini-3.8-flash", thinking_level="HIGH"),
         api_key="test-key",
     )
 
@@ -887,9 +889,9 @@ def test_anthropic_adapter_does_not_send_unsupported_output_config() -> None:
 
 
 def test_anthropic_old_models_use_manual_budget_tokens_under_max_tokens() -> None:
-    adapter = AnthropicAdapter(_provider_config("anthropic", model_name="claude-sonnet-4-6"))
+    adapter = AnthropicAdapter(_provider_config("anthropic", model_name="claude-sonnet-4-5"))
     _method, _url, _headers, payload = adapter.build_request(
-        _request(model="claude-sonnet-4-6", thinking_level="high", max_output_tokens=8193),
+        _request(model="claude-sonnet-4-5", thinking_level="high", max_output_tokens=8193),
         api_key="test-key",
     )
 
@@ -898,11 +900,11 @@ def test_anthropic_old_models_use_manual_budget_tokens_under_max_tokens() -> Non
 
 
 def test_anthropic_old_models_reject_budget_not_below_max_tokens() -> None:
-    adapter = AnthropicAdapter(_provider_config("anthropic", model_name="claude-sonnet-4-6"))
+    adapter = AnthropicAdapter(_provider_config("anthropic", model_name="claude-sonnet-4-5"))
 
     with pytest.raises(ProviderError, match="max_output_tokens > budget_tokens=8192"):
         adapter.build_request(
-            _request(model="claude-sonnet-4-6", thinking_level="high", max_output_tokens=8192),
+            _request(model="claude-sonnet-4-5", thinking_level="high", max_output_tokens=8192),
             api_key="test-key",
         )
 
@@ -915,7 +917,8 @@ def test_anthropic_opus_4_7_uses_adaptive_effort_without_manual_budget() -> None
     )
 
     assert payload["max_tokens"] == 2048
-    assert payload["thinking"] == {"type": "enabled", "effort": "high"}
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": "high"}
     assert "budget_tokens" not in payload["thinking"]
 
 
@@ -989,9 +992,9 @@ def test_ollama_preserves_json_object_format() -> None:
 
 
 def test_ollama_non_gpt_oss_models_use_boolean_think() -> None:
-    adapter = OllamaAdapter(_provider_config("ollama", model_name="llama3.1"))
+    adapter = OllamaAdapter(_provider_config("ollama", model_name="qwen3:8b"))
     _method, _url, _headers, payload = adapter.build_request(
-        _request(model="llama3.1", thinking_level="medium"),
+        _request(model="qwen3:8b", thinking_level="enabled"),
         api_key=None,
     )
 
@@ -2206,8 +2209,8 @@ def test_provider_cache_separates_temperature(tmp_path: Path) -> None:
         client=client,
     )
     try:
-        first = provider.generate(_request(temperature=0.0))
-        second = provider.generate(_request(temperature=0.8))
+        first = provider.generate(_request(temperature=0.0, thinking_level="none"))
+        second = provider.generate(_request(temperature=0.8, thinking_level="none"))
     finally:
         provider.close()
 

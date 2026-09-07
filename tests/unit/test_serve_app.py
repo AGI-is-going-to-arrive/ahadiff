@@ -3587,6 +3587,72 @@ def test_viewer_static_serves_spa_fallback_without_viewer_source_changes(tmp_pat
     assert "AhaDiff" in nested.text
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/%5C%5Cremote.invalid%5Cshare%5Cfile",
+        "/%5C%5C%3F%5CUNC%5Cremote.invalid%5Cshare%5Cfile",
+        "/C%3A%5Coutside%5Cfile",
+        "/C%3Arelative-file",
+        "/assets/file%3Astream",
+        "/NUL.txt",
+        "/NUL%20.txt",
+        "/assets/COM%C2%B9",
+        "/assets/COM%C2%B9%20.js",
+        "/assets/%00file",
+        "/%2e%2e%5Coutside",
+    ],
+)
+def test_viewer_rejects_unsafe_static_paths_before_filesystem_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+) -> None:
+    from ahadiff.serve.static import SpaStaticFiles
+
+    viewer_dist = tmp_path / "viewer"
+    viewer_dist.mkdir()
+    (viewer_dist / "index.html").write_text("AhaDiff", encoding="utf-8")
+    looked_up: list[str] = []
+
+    def forbidden_lookup(_self: SpaStaticFiles, path: str) -> tuple[str, os.stat_result | None]:
+        looked_up.append(path)
+        raise AssertionError("unsafe path reached filesystem resolver")
+
+    monkeypatch.setattr(SpaStaticFiles, "lookup_path", forbidden_lookup)
+    app = create_app(
+        ServeState(state_dir=tmp_path / ".ahadiff", token="test-token"),
+        viewer_dist=viewer_dist,
+    )
+    with TestClient(app, base_url="http://localhost:8765") as client:
+        response = client.get(url)
+    assert response.status_code == 404
+    assert looked_up == []
+
+
+@pytest.mark.parametrize("path", ["assets/app.js", "assets\\app.js", ".", "目录/module.js"])
+def test_viewer_static_guard_accepts_normalized_relative_asset_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    import asyncio
+
+    from starlette.responses import Response
+    from starlette.staticfiles import StaticFiles
+
+    from ahadiff.serve.static import SpaStaticFiles
+
+    received: list[str] = []
+
+    async def capture_response(_self: StaticFiles, candidate: str, _scope: object) -> Response:
+        received.append(candidate)
+        return Response("asset")
+
+    monkeypatch.setattr(StaticFiles, "get_response", capture_response)
+    response = asyncio.run(SpaStaticFiles(directory=tmp_path).get_response(path, {"type": "http"}))
+    assert response.status_code == 200
+    assert received == [path]
+
+
 def test_api_unknown_returns_json_404(tmp_path: Path) -> None:
     state_dir = tmp_path / ".ahadiff"
     viewer_dist = tmp_path / "viewer" / "dist"

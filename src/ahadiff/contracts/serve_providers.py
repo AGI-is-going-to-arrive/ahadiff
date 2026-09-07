@@ -15,7 +15,7 @@ ProviderAlias = Annotated[
     str,
     Field(min_length=1, max_length=64, pattern=r"^[A-Za-z][A-Za-z0-9_-]{0,63}$"),
 ]
-ProviderMaxOutputTokens = Annotated[StrictInt, Field(ge=1, le=1_000_000)]
+ProviderMaxOutputTokens = Annotated[StrictInt, Field(ge=1, le=100_000_000)]
 ProviderScope = Literal["repo", "global"]
 
 

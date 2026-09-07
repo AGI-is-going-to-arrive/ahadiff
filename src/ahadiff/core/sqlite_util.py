@@ -10,10 +10,13 @@ import sys
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePath
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import quote
 
 from ahadiff.core.errors import StorageError
+
+if TYPE_CHECKING:
+    from ahadiff.core.windows_sqlite import WindowsDirectoryGuard
 
 _VALID_JOURNAL_MODES = frozenset({"DELETE", "WAL", "TRUNCATE", "PERSIST", "MEMORY", "OFF"})
 _SQLITE_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
@@ -36,10 +39,11 @@ class _OpenVerificationState:
     nofollow_fd: int | None = None
     requires_fd_bound_connect: bool = False
     windows_path_name_connect_without_fd_bound: bool = False
+    windows_directory_guard: WindowsDirectoryGuard | None = None
 
 
 class _RetryOpenVerification(Exception):
-    """Retry opening the database after benign SQLite sidecar churn."""
+    """Discard an ambiguous connection and rebuild its full path verification."""
 
 
 def safe_sqlite_connect(
@@ -142,7 +146,11 @@ def safe_sqlite_connect(
                 conn.close()
             raise
         finally:
-            _close_nofollow_fd(attempt_state.nofollow_fd)
+            try:
+                _close_nofollow_fd(attempt_state.nofollow_fd)
+            finally:
+                if attempt_state.windows_directory_guard is not None:
+                    attempt_state.windows_directory_guard.close()
 
     raise PermissionError(f"database path changed during open: {p}")
 
@@ -342,7 +350,35 @@ def _safe_sqlite_create_requires_fd_bound_connect(path: Path) -> PermissionError
 
 
 def _prepare_missing_database_file_without_dir_fd(path: Path) -> _OpenVerificationState:
-    raise _safe_sqlite_create_requires_fd_bound_connect(path)
+    if sys.platform != "win32":
+        raise _safe_sqlite_create_requires_fd_bound_connect(path)
+    from ahadiff.core.windows_sqlite import create_windows_sqlite_file
+
+    fd, directory_guard = create_windows_sqlite_file(path)
+    try:
+        file_stat = os.fstat(fd)
+        _reject_symlink_stat(path, file_stat)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise PermissionError(f"database path changed during open: {path}")
+        _reject_hardlink_stat(path, file_stat)
+        _reject_unknown_windows_identity(path, file_stat)
+        parent_identity, parent_change_token = _parent_directory_state(path)
+        return _OpenVerificationState(
+            expected_identity=(file_stat.st_dev, file_stat.st_ino),
+            existing_path=True,
+            path_change_token=_stat_change_token(file_stat),
+            parent_identity=parent_identity,
+            parent_change_token=parent_change_token,
+            sidecar_state=_sqlite_sidecar_state(path),
+            nofollow_fd=fd,
+            windows_directory_guard=directory_guard,
+        )
+    except Exception:
+        try:
+            os.close(fd)
+        finally:
+            directory_guard.close()
+        raise
 
 
 def _open_parent_directory_for_create(path: Path) -> int:
@@ -395,9 +431,9 @@ def _verify_opened_database_path(
     expected_identity = verification_state.expected_identity
     if expected_identity is not None:
         _verify_nofollow_fd_identity(requested_path, verification_state)
-        _verify_parent_directory_unchanged(requested_path, verification_state)
         if actual_identity != expected_identity:
             raise PermissionError(f"database path changed during open: {requested_path}")
+        _verify_parent_directory_unchanged(requested_path, verification_state)
         return
 
     if not verification_state.existing_path:
@@ -448,13 +484,6 @@ def _verify_parent_directory_unchanged(
         return
     if current_identity != expected_identity:
         raise PermissionError(f"database path changed during open: {requested_path}")
-    if _sqlite_sidecar_state(requested_path) != verification_state.sidecar_state:
-        raise _RetryOpenVerification
-    if verification_state.windows_path_name_connect_without_fd_bound:
-        # Windows has no fd-bound sqlite3 connect path here. After sidecar churn is
-        # ruled out, parent metadata changes fail closed rather than pretending
-        # the pathname open fully preserves the verified nofollow fd identity.
-        raise PermissionError(f"database path changed during open: {requested_path}")
     try:
         current_stat = os.lstat(requested_path)
     except FileNotFoundError as exc:
@@ -468,9 +497,20 @@ def _verify_parent_directory_unchanged(
     current_requested_identity = (current_stat.st_dev, current_stat.st_ino)
     if requested_identity is not None and current_requested_identity != requested_identity:
         raise PermissionError(f"database path changed during open: {requested_path}")
+    if _sqlite_sidecar_state(requested_path) != verification_state.sidecar_state:
+        raise _RetryOpenVerification
+    if verification_state.windows_path_name_connect_without_fd_bound:
+        # Windows has no fd-bound sqlite3 connect path here. After sidecar churn is
+        # ruled out, parent metadata changes fail closed rather than pretending
+        # the pathname open fully preserves the verified nofollow fd identity.
+        raise PermissionError(f"database path changed during open: {requested_path}")
     if _stat_change_token(current_stat) == verification_state.path_change_token:
         return
-    raise PermissionError(f"database path changed during open: {requested_path}")
+    # A concurrent commit can change both timestamps while its journal/WAL is
+    # created and removed between our snapshots. A rename-and-restore can look
+    # identical, so never accept this connection. Close it and repeat every
+    # identity/link check on a fresh open; persistent churn still fails closed.
+    raise _RetryOpenVerification
 
 
 def _raise_if_parent_changed_during_failed_open(

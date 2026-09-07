@@ -7,7 +7,8 @@ import ProviderCard, {
   providerLimitsSourceLabel,
   providerLimitsWarningMessage,
   providerThinkingHintKey,
-  isThinkingSupportedForDraft,
+  isThinkingLevelValidForDraft,
+  minimumThinkingOutputForDraft,
   shouldShowRecommendedLimitAction,
   buildModelLimitsPreviewPayload,
   buildProviderUpdatePayload,
@@ -16,7 +17,7 @@ import ProviderCard, {
   canSubmitProviderForm,
 } from '../ProviderCard';
 import type { ProviderSummary } from '../../api/config';
-import type { TaskInfoResponse } from '../../api/types';
+import type { ModelThinkingSupport, TaskInfoResponse } from '../../api/types';
 
 let mockLocale = 'en-US';
 
@@ -205,12 +206,43 @@ describe('ProviderCard', () => {
     expect(providerThinkingHintKey('openai')).toBeNull();
   });
 
-  it('trusts backend thinking metadata before enabling openai_compat reasoning controls', () => {
-    expect(isThinkingSupportedForDraft('openai_compat', null)).toBe(false);
-    expect(isThinkingSupportedForDraft('openai_compat', { thinking: { supported: false } })).toBe(false);
-    expect(isThinkingSupportedForDraft('openai_compat', { thinking: { supported: true } })).toBe(true);
-    expect(isThinkingSupportedForDraft('gemini', null)).toBe(true);
-    expect(isThinkingSupportedForDraft('gemini', { thinking: { supported: false } })).toBe(false);
+  it('permits only model-confirmed explicit levels and never guesses provider support', () => {
+    const thinking: ModelThinkingSupport = {
+      supported: true,
+      accepted_levels: ['none', 'low', 'high', 'xhigh'],
+      payload_mode: 'reasoning_effort',
+      warnings: [],
+    };
+    expect(isThinkingLevelValidForDraft('', null)).toBe(true);
+    expect(isThinkingLevelValidForDraft('high', null)).toBe(false);
+    expect(isThinkingLevelValidForDraft('none', { thinking })).toBe(true);
+    expect(isThinkingLevelValidForDraft('xhigh', { thinking })).toBe(true);
+    expect(isThinkingLevelValidForDraft('max', { thinking })).toBe(false);
+    expect(isThinkingLevelValidForDraft('high', {
+      thinking: { ...thinking, supported: false, accepted_levels: [] },
+    })).toBe(false);
+    expect(isThinkingLevelValidForDraft('high', {
+      thinking: { ...thinking, accepted_levels: ['none', 'enabled'] },
+    })).toBe(false);
+  });
+
+  it('uses advertised thinking output minimums without inferring token budgets from the protocol', () => {
+    const thinking: ModelThinkingSupport = {
+      supported: true,
+      accepted_levels: ['none', 'low', 'high'],
+      payload_mode: 'vendor.custom_thinking',
+      warnings: [],
+      minimum_output_tokens: { low: 1501, high: 9001 },
+    };
+    expect(minimumThinkingOutputForDraft('high', { thinking })).toBe(9001);
+    expect(minimumThinkingOutputForDraft('low', { thinking })).toBe(1501);
+    expect(minimumThinkingOutputForDraft('none', { thinking })).toBeNull();
+    expect(minimumThinkingOutputForDraft('', { thinking })).toBeNull();
+    expect(minimumThinkingOutputForDraft('max', { thinking })).toBeNull();
+    expect(minimumThinkingOutputForDraft('high', null)).toBeNull();
+    expect(minimumThinkingOutputForDraft('high', {
+      thinking: { ...thinking, payload_mode: 'thinking.budget_tokens', minimum_output_tokens: undefined },
+    })).toBeNull();
   });
 
   it('builds model limits preview payload with draft base_url for DeepSeek detection', () => {
@@ -446,7 +478,7 @@ describe('ProviderCard', () => {
       expect(html).toContain('Settings_page.provider_max_output_invalid');
     });
 
-    it('allows valid integer "4096"', () => {
+    it('accepts a valid integer without a numeric error while waiting for the preview', () => {
       const draft = { ...defaultDraft, max_output_tokens: '4096' };
       const html = renderToStaticMarkup(
         <ProviderEditForm
@@ -462,14 +494,13 @@ describe('ProviderCard', () => {
         />
       );
 
-      // Verify that the submit button is NOT disabled
       const submitBtnHtml = html.match(/<button type="submit"[^>]+>/)?.[0] || '';
-      expect(submitBtnHtml).not.toContain('disabled');
-      // Verify validation error is NOT displayed
+      expect(submitBtnHtml).toContain('disabled');
+      expect(html).toContain('Settings_page.provider_capabilities_loading');
       expect(html).not.toContain('Settings_page.provider_max_output_invalid');
     });
 
-    it('allows empty value (clear/unset)', () => {
+    it('accepts an empty output override without a numeric error while waiting for the preview', () => {
       const draft = { ...defaultDraft, max_output_tokens: '' };
       const html = renderToStaticMarkup(
         <ProviderEditForm
@@ -486,7 +517,7 @@ describe('ProviderCard', () => {
       );
 
       const submitBtnHtml = html.match(/<button type="submit"[^>]+>/)?.[0] || '';
-      expect(submitBtnHtml).not.toContain('disabled');
+      expect(submitBtnHtml).toContain('disabled');
       expect(html).not.toContain('Settings_page.provider_max_output_invalid');
     });
 
@@ -550,7 +581,8 @@ describe('ProviderCard', () => {
       expect(payload.max_output_tokens).toBeNull();
     });
 
-    it('only carries openai_compat thinking_level when backend confirmed support', () => {
+    it.each(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'enabled', ''])(
+      'preserves the explicit thinking setting %s instead of silently clearing it', (level) => {
       const provider = makeProvider({
         provider_class: 'openai_compat',
         model_name: 'deepseek-v4-flash',
@@ -563,14 +595,12 @@ describe('ProviderCard', () => {
         base_url: 'https://api.deepseek.com',
         api_key: '',
         max_output_tokens: '',
-        thinking_level: 'high',
+        thinking_level: level,
         model_limits_name: '',
         scope: 'repo' as const,
       };
 
-      expect(buildProviderUpdatePayload(draft, provider).thinking_level).toBeNull();
-      expect(buildProviderUpdatePayload(draft, provider, { thinkingSupported: false }).thinking_level).toBeNull();
-      expect(buildProviderUpdatePayload(draft, provider, { thinkingSupported: true }).thinking_level).toBe('high');
+      expect(buildProviderUpdatePayload(draft, provider).thinking_level).toBe(level || null);
     });
 
     it('blocks saving while model limits preview is pending', () => {
@@ -580,10 +610,12 @@ describe('ProviderCard', () => {
         modelInvalid: false,
         baseInvalid: false,
         maxOutputInvalid: false,
+        thinkingInvalid: false,
       };
 
       expect(canSubmitProviderForm({ ...ready, modelLimitsLoading: true })).toBe(false);
       expect(canSubmitProviderForm({ ...ready, modelLimitsLoading: false })).toBe(true);
+      expect(canSubmitProviderForm({ ...ready, modelLimitsLoading: false, thinkingInvalid: true })).toBe(false);
     });
   });
 

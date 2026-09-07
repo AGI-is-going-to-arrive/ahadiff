@@ -9,7 +9,7 @@ import stat
 import unicodedata
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from ahadiff.core.config import load_security_config, load_workspace_security_config
 from ahadiff.core.errors import InputError, SafetyError
@@ -128,9 +128,11 @@ def resolve_safe_path(repo_root: Path | None, candidate: str | Path) -> Path:
 
 def resolve_safe_path_from_root(root: Path, candidate: str | Path) -> Path:
     root = root.resolve()
-    if _has_windows_drive_or_unc_syntax(str(candidate)):
+    if _has_unsupported_windows_path_syntax(str(candidate)):
         raise SafetyError("path must not use Windows drive or UNC syntax")
     candidate_path = Path(candidate).expanduser()
+    if candidate_path.drive and candidate_path.drive.casefold() != root.drive.casefold():
+        raise SafetyError("path escapes repo root")
     absolute_candidate = candidate_path if candidate_path.is_absolute() else root / candidate_path
 
     _reject_symlink_or_special_path(root, absolute_candidate)
@@ -152,31 +154,43 @@ def resolve_safe_path_from_root(root: Path, candidate: str | Path) -> Path:
     return resolved
 
 
-def _has_windows_drive_or_unc_syntax(path_text: str) -> bool:
-    return path_text.startswith(("\\\\", "//")) or (
-        len(path_text) >= 2 and path_text[1] == ":" and path_text[0].isalpha()
-    )
+def _has_unsupported_windows_path_syntax(path_text: str) -> bool:
+    windows_path = PureWindowsPath(path_text)
+    if path_text.startswith(("\\\\", "//")) or windows_path.drive.startswith("\\\\"):
+        return True
+    components = windows_path.parts[1:] if windows_path.anchor else windows_path.parts
+    if os.name == "nt" and any(":" in part for part in components):
+        return True
+    if windows_path.drive:
+        return os.name != "nt" or not windows_path.is_absolute()
+    # A rooted path without a drive depends on the process's current drive.
+    return os.name == "nt" and bool(windows_path.root)
 
 
 def _reject_symlink_or_special_path(root: Path, candidate: Path) -> None:
     path_chain = [candidate, *candidate.parents]
-    repo_anchor_index = next(
-        (
-            index
-            for index, current in enumerate(path_chain)
-            if current.resolve(strict=False) == root
-        ),
-        None,
-    )
+    # Prefer the lexical root, so a symlink/junction inside it that points back
+    # to the root is still inspected. Ancestor aliases outside the workspace
+    # remain supported (for example macOS /var -> /private/var).
+    repo_anchor_index = next((i for i, current in enumerate(path_chain) if current == root), None)
+    if repo_anchor_index is None:
+        repo_anchor_index = next(
+            (i for i, current in enumerate(path_chain) if current.resolve(strict=False) == root),
+            None,
+        )
     if repo_anchor_index is None:
         raise SafetyError("path is outside repo root")
 
     for current in path_chain[:repo_anchor_index]:
-        if current.is_symlink():
-            raise SafetyError(f"symlink paths are not allowed: {current}")
-        if not current.exists():
+        try:
+            path_stat = current.lstat()
+        except FileNotFoundError:
             continue
-        mode = current.lstat().st_mode
+        if stat.S_ISLNK(path_stat.st_mode):
+            raise SafetyError(f"symlink paths are not allowed: {current}")
+        if _has_windows_reparse_point(path_stat):
+            raise SafetyError(f"Windows reparse point paths are not allowed: {current}")
+        mode = path_stat.st_mode
         if stat.S_ISFIFO(mode) or stat.S_ISCHR(mode) or stat.S_ISBLK(mode) or stat.S_ISSOCK(mode):
             raise SafetyError(f"special files are not allowed: {current}")
 

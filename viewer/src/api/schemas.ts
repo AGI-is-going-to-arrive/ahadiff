@@ -828,8 +828,7 @@ export const quizConfigSchema = z
  * Backend emits nullable token fields whenever a limit is unknown (e.g. registry
  * miss for a never-probed alias); nullable `alias` / `confidence` mirror the
  * fact that preview lookups omit alias and unknown sources omit confidence.
- * `warnings` and `thinking` are open-ended dicts of LocalizedWarning-style
- * structures we treat as opaque for forward-compatibility.
+ * Thinking choices are validated before the form can offer explicit overrides.
  */
 export const modelLimitsWarningSchema = z
   .object({
@@ -838,13 +837,35 @@ export const modelLimitsWarningSchema = z
   })
   .strict();
 
+export const thinkingLevelSchema = z.enum([
+  'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'enabled',
+]);
+
+export const modelThinkingSupportSchema = z.object({
+  supported: z.boolean(),
+  accepted_levels: z.array(thinkingLevelSchema),
+  payload_mode: z.string().min(1),
+  warnings: z.array(z.string()),
+  minimum_output_tokens: z.partialRecord(thinkingLevelSchema, z.number().int().positive()).optional(),
+}).strict().refine(
+  (thinking) => thinking.supported === (thinking.accepted_levels.length > 0),
+  { message: 'Thinking support must match the available explicit levels', path: ['accepted_levels'] },
+).refine(
+  (thinking) => new Set(thinking.accepted_levels).size === thinking.accepted_levels.length,
+  { message: 'Thinking levels must be unique', path: ['accepted_levels'] },
+).refine(
+  (thinking) => Object.keys(thinking.minimum_output_tokens ?? {})
+    .every((level) => thinking.accepted_levels.some((accepted) => accepted === level)),
+  { message: 'Thinking output minimums must refer to available levels', path: ['minimum_output_tokens'] },
+);
+
 export const modelLimitsResponseSchema = z.object({
   alias: z.string().nullable(),
   provider_class: z.string(),
   model_name: z.string(),
-  max_context_tokens: z.number().int().nullable(),
-  max_input_tokens: z.number().int().nullable(),
-  max_output_tokens: z.number().int().nullable(),
+  max_context_tokens: z.number().int().positive().nullable(),
+  max_input_tokens: z.number().int().positive().nullable(),
+  max_output_tokens: z.number().int().positive().nullable(),
   max_context_known: z.boolean(),
   max_input_known: z.boolean(),
   max_output_known: z.boolean(),
@@ -852,7 +873,12 @@ export const modelLimitsResponseSchema = z.object({
   source: z.enum(['live', 'registry', 'default', 'mixed']),
   confidence: z.enum(['high', 'medium', 'low']).nullable(),
   warnings: z.array(modelLimitsWarningSchema).default([]),
-  thinking: z.record(z.string(), z.unknown()).default({}),
+  thinking: modelThinkingSupportSchema.default({
+    supported: false,
+    accepted_levels: [],
+    payload_mode: 'unsupported',
+    warnings: [],
+  }),
 }).strict();
 
 export const configResponseSchema = z
@@ -957,6 +983,10 @@ export const installTargetSchema = z
     detected: z.boolean(),
     platform_supported: z.boolean(),
     status: z.enum(['installed', 'available', 'unsupported', 'error']),
+    lifecycle: z.enum(['active', 'preview', 'limited', 'retired', 'replaced']).default('active'),
+    lifecycle_note: z.string().default(''),
+    documentation_url: z.string().default(''),
+    verified_at: z.string().default(''),
     description: z.string(),
     install_command: z.string().min(1),
     uninstall_command: z.string().min(1),
@@ -971,6 +1001,7 @@ export const installTargetSchema = z
 export const installTargetsResponseSchema = z
   .object({
     targets: z.array(installTargetSchema),
+    legacy_targets: z.array(installTargetSchema).default([]),
     total: z.number().int().nonnegative(),
   })
   .strict();
@@ -1028,7 +1059,7 @@ export const providerSummarySchema = z
     api_family: z.string().nullable().optional(),
     api_family_version: z.string().nullable().optional(),
     max_output_tokens: z.number().int().positive().nullable().optional(),
-    thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
+    thinking_level: thinkingLevelSchema.nullable().optional(),
     probed: z.boolean(),
     probed_max_context: z.number().int().positive().nullable(),
     probed_max_input_tokens: z.number().int().positive().nullable().optional(),
@@ -1075,7 +1106,7 @@ export const providerCreateRequestSchema = z
     api_key: z.string().min(1).max(4096).nullable().optional(),
     api_key_env: z.string().min(1).optional(),
     max_output_tokens: z.number().int().positive().nullable().optional(),
-    thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
+    thinking_level: thinkingLevelSchema.nullable().optional(),
     model_limits_name: z.string().min(1).nullable().optional(),
     scope: z.enum(['repo', 'global']).optional(),
   })
@@ -1089,7 +1120,7 @@ export const providerUpdateRequestSchema = z
     api_key: z.string().min(1).max(4096).nullable().optional(),
     api_key_env: z.string().min(1).optional(),
     max_output_tokens: z.number().int().positive().nullable().optional(),
-    thinking_level: z.enum(['none', 'low', 'medium', 'high']).nullable().optional(),
+    thinking_level: thinkingLevelSchema.nullable().optional(),
     model_limits_name: z.string().min(1).nullable().optional(),
     scope: z.enum(['repo', 'global']).optional(),
   })

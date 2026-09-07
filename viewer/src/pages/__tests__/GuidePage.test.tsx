@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 
 const platformState = vi.hoisted(() => ({
   current: 'linux' as 'linux' | 'windows',
@@ -172,30 +170,13 @@ describe('GuidePage command examples', () => {
     );
   });
 
-  it('keeps live agent manifest hints accessible and focused on generated files', () => {
-    const source = readFileSync(resolve(__dirname, '../GuidePage.tsx'), 'utf-8');
-
-    expect(source).toContain("file_strategy === 'generated'");
-    expect(source).toContain("? fallbackInstallTargets('error')");
-    expect(source).toContain('? []');
-    expect(source).toContain("t('Guide.agent_empty')");
-    expect(source).toContain("t('Guide.agent_preview_manifest_title')");
-    expect(source).toContain("t('Guide.agent_preview_agents_title')");
-    expect(source).not.toContain('target.manifest?.write?.[0]?.path ?? AGENT_PATH_HINTS');
-    expect(source).not.toContain('(Manifest Preview)');
-    expect(source).not.toContain('AGENTS.md preview</div>');
-    expect(source).not.toContain('className="guide-agent-card__actions-more" aria-hidden');
-  });
-
-  it('uses friendly names for install target fallback cards', async () => {
+  it('shows a loading state without inventing available targets or sample guidance', async () => {
     const { default: GuidePage } = await import('../GuidePage');
     const html = renderToStaticMarkup(<GuidePage />);
 
-    expect(html).toContain('Antigravity IDE');
-    expect(html).toContain('Antigravity CLI');
-    expect(html).toContain('.agents/skills/ahadiff-antigravity/SKILL.md');
-    expect(html).toContain('.agents/skills/ahadiff-antigravity-cli/SKILL.md');
-    expect(html).toContain('Codex CLI');
-    expect(html).toContain('Gemini CLI');
+    expect(html).toContain('正在加载指引目录');
+    expect(html).not.toContain('class="guide-agent-card ');
+    expect(html).not.toContain('allowed-tools: Read, Grep, Bash');
+    expect(html).not.toContain('class="guide-integrations__item"');
   });
 });

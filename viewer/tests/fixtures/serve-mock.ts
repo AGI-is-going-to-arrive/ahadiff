@@ -1199,12 +1199,13 @@ export async function installServeMock(page: Page): Promise<void> {
     'continue',
     'copilot',
     'cursor',
-    'gemini',
+    'deepseek-harness',
+    'devin',
+    'grok',
+    'pi',
     'github-action',
     'hooks',
     'opencode',
-    'roo',
-    'windsurf',
   ];
   const manifestHashes: Record<string, string> = Object.fromEntries(
     installTargetNames.map((name, index) => [
@@ -1218,10 +1219,10 @@ export async function installServeMock(page: Page): Promise<void> {
     cursor: 'available',
   };
   const targetCategory = (name: string): 'cli' | 'ide' | 'ci' => {
-    if (['claude', 'codex', 'antigravity-cli', 'gemini', 'aider', 'opencode'].includes(name)) {
+    if (['claude', 'codex', 'antigravity-cli', 'aider', 'opencode', 'pi', 'deepseek-harness', 'grok'].includes(name)) {
       return 'cli';
     }
-    if (['antigravity', 'cursor', 'cline', 'continue', 'copilot', 'windsurf', 'roo'].includes(name)) {
+    if (['antigravity', 'cursor', 'cline', 'continue', 'copilot', 'devin'].includes(name)) {
       return 'ide';
     }
     return 'ci';
@@ -1230,17 +1231,23 @@ export async function installServeMock(page: Page): Promise<void> {
     antigravity: 'Antigravity IDE',
     'antigravity-cli': 'Antigravity CLI',
     claude: 'Claude Code',
-    codex: 'Codex CLI',
-    copilot: 'Copilot / VS Code',
+    codex: 'Codex',
+    copilot: 'GitHub Copilot',
     cursor: 'Cursor',
+    pi: 'Pi Agent',
+    'deepseek-harness': 'DeepSeek Harness',
+    grok: 'Grok Build',
+    devin: 'Devin Desktop / CLI',
     'github-action': 'GitHub Actions',
   };
   const manifestFor = (name: string) => {
     if (name === 'codex') {
+      const generated = { action: 'write', file_strategy: 'generated', path: '.agents/skills/ahadiff/SKILL.md' };
+      const section = { action: 'merge-section', file_strategy: 'user-managed', path: 'AGENTS.md' };
       return {
-        preview: [{ action: 'preview', file_strategy: 'user-managed', path: 'AGENTS.md' }],
-        write: [{ action: 'append-section', file_strategy: 'user-managed', path: 'AGENTS.md' }],
-        uninstall: [{ action: 'remove-section', file_strategy: 'user-managed', path: 'AGENTS.md' }],
+        preview: [generated, section],
+        write: [generated, section],
+        uninstall: [{ ...generated, action: 'remove' }, { ...section, action: 'remove-section' }],
       };
     }
     if (name === 'antigravity') {
@@ -1299,6 +1306,16 @@ export async function installServeMock(page: Page): Promise<void> {
         ],
       };
     }
+    const nativePaths: Record<string, string> = {
+      pi: '.pi/skills/ahadiff/SKILL.md',
+      'deepseek-harness': '.dsh/skills/ahadiff/SKILL.md',
+      grok: '.grok/skills/ahadiff/SKILL.md',
+      devin: '.devin/rules/ahadiff.md',
+    };
+    if (nativePaths[name]) {
+      const action = { action: 'write', file_strategy: 'generated', path: nativePaths[name] };
+      return { preview: [action], write: [action], uninstall: [{ ...action, action: 'remove' }] };
+    }
     return {
       preview: [
         { action: 'preview', file_strategy: 'user-managed', path: `${name}/manifest.md` },
@@ -1317,6 +1334,10 @@ export async function installServeMock(page: Page): Promise<void> {
     detected: installState[name] === 'installed',
     platform_supported: true,
     status: installState[name] ?? 'available',
+    lifecycle: name === 'deepseek-harness' ? 'preview' : 'active',
+    lifecycle_note: name === 'deepseek-harness' ? 'Developer preview; select a workspace in dsh web.' : '',
+    documentation_url: '',
+    verified_at: '2026-09-07',
     description: `${displayNames[name] ?? name} project guidance`,
     install_command: `ahadiff install ${name}`,
     uninstall_command: `ahadiff uninstall ${name}`,
@@ -1377,6 +1398,7 @@ export async function installServeMock(page: Page): Promise<void> {
         contentType: 'application/json',
         body: JSON.stringify({
           targets: installTargetNames.map(targetFor),
+          legacy_targets: [],
           total: installTargetNames.length,
         }),
       }),

@@ -36,6 +36,7 @@ _BUILTIN_IGNORE_PATTERNS: tuple[str, ...] = (
     "graphify-out",
 )
 _FAILURE_LOG_THRESHOLD = 5
+_CONTENT_CHANGE_EVENT_TYPES = frozenset({"created", "modified", "deleted", "moved"})
 
 
 def is_watchdog_available() -> bool:
@@ -149,7 +150,7 @@ class FileWatcher:
         return tuple(paths)
 
     def _handle_fs_event(self, event: Any) -> None:
-        if self._stopped.is_set():
+        if self._stopped.is_set() or event.event_type not in _CONTENT_CHANGE_EVENT_TYPES:
             return
         changed_paths = self._changed_event_paths(event)
         if not changed_paths:

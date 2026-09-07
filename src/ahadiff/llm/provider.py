@@ -97,6 +97,29 @@ class AdapterBase(ABC):
     def capabilities(self) -> ProviderCapabilities:
         raise NotImplementedError
 
+    def prepare_request(self, request: ProviderRequest) -> ProviderRequest:
+        """Resolve mandatory output budgets before reservation, caching, or dispatch."""
+        from .adapters.thinking import minimum_thinking_output_tokens
+
+        limit = request.max_output_tokens
+        if limit is None:
+            limit = self.config.max_output_tokens
+        minimum = minimum_thinking_output_tokens(
+            self.config.provider_class,
+            request.model,
+            request.thinking_level,
+            base_url=self.config.base_url,
+        )
+        if minimum is not None:
+            if limit is not None and limit < minimum:
+                raise ProviderError(
+                    f"{self.config.provider_class} thinking requires "
+                    f"max_output_tokens > budget_tokens={minimum - 1}"
+                )
+            if limit is None:
+                limit = minimum + 255
+        return replace(request, max_output_tokens=limit)
+
     @abstractmethod
     def build_request(
         self,
@@ -330,6 +353,19 @@ class ManagedProvider:
         self.close()
 
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        from .adapters.thinking import normalize_thinking_level, reject_unsupported_thinking
+
+        reject_unsupported_thinking(
+            self.config.provider_class,
+            request.thinking_level,
+            model_name=request.model,
+            base_url=self.config.base_url,
+            model_limits_name=(
+                self.config.model_limits_name if request.model == self.config.model_name else None
+            ),
+        )
+        request = replace(request, thinking_level=normalize_thinking_level(request.thinking_level))
+        request = self.adapter.prepare_request(request)
         transport_target = transport_target_for_base_url(
             self.config.base_url,
             local_hosts=local_hosts_for_privacy_mode(
@@ -434,7 +470,12 @@ class ManagedProvider:
                 request_to_send.effective_payload().encode("utf-8")
             ).hexdigest(),
             max_output_tokens=request.max_output_tokens,
-            thinking_level=request.thinking_level or "none",
+            thinking_level=request.thinking_level,
+            model_profile=(
+                self.config.model_limits_name
+                if self.config.provider_class == "azure" and request.model == self.config.model_name
+                else None
+            ),
             response_format=request_to_send.response_format,
             output_schema_id=request_to_send.output_schema_id,
             output_schema_version=request_to_send.output_schema_version,
@@ -617,7 +658,23 @@ class ManagedProvider:
         self,
         request: ProviderRequest,
     ) -> tuple[ProviderRequest, tuple[str, ...]]:
-        if request.temperature is not None and not self.capabilities.supports_temperature:
+        from .adapters.thinking import supports_request_temperature
+
+        supports_temperature = (
+            self.capabilities.supports_temperature
+            and supports_request_temperature(
+                self.config.provider_class,
+                request.model,
+                request.thinking_level,
+                base_url=self.config.base_url,
+                model_limits_name=(
+                    self.config.model_limits_name
+                    if request.model == self.config.model_name
+                    else None
+                ),
+            )
+        )
+        if request.temperature is not None and not supports_temperature:
             return (
                 replace(request, temperature=None),
                 ("provider_capability_ignored:temperature",),

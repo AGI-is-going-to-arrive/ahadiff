@@ -513,13 +513,6 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ---- Cross-cutting: smooth anchor scrolling ---- */
-@media (prefers-reduced-motion: no-preference) {
-  html {
-    scroll-behavior: smooth;
-  }
-}
-
 /* ---- Cross-cutting: scrollbar-gutter stable ---- */
 @supports (scrollbar-gutter: stable) {
   html {

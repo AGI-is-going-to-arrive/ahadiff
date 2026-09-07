@@ -108,6 +108,10 @@ export interface InstallTarget {
   detected: boolean;
   platform_supported: boolean;
   status: 'installed' | 'available' | 'unsupported' | 'error';
+  lifecycle?: 'active' | 'preview' | 'limited' | 'retired' | 'replaced';
+  lifecycle_note?: string;
+  documentation_url?: string;
+  verified_at?: string;
   description: string;
   install_command: string;
   uninstall_command: string;
@@ -132,6 +136,7 @@ export interface InstallManifestSummary {
 
 export interface InstallTargetsResponse {
   targets: InstallTarget[];
+  legacy_targets?: InstallTarget[];
   total: number;
 }
 

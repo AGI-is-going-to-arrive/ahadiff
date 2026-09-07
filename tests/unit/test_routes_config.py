@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -74,15 +75,8 @@ def _mock_load_config_factory(
     return _mock_load_config
 
 
-def _validate_quiz_update_for_test(
-    payload: object,
-    *,
-    current_quiz: object | None = None,
-) -> dict[str, Any] | str:
-    return cast("Any", routes_config_module)._validate_quiz_update(
-        payload,
-        current_quiz=current_quiz,
-    )
+def _validate_quiz_update_for_test(payload: object) -> dict[str, Any] | str:
+    return cast("Any", routes_config_module)._validate_quiz_update(payload)
 
 
 def _validate_llm_update_for_test(payload: object) -> dict[str, Any] | str:
@@ -665,7 +659,7 @@ def test_put_config_rejects_unknown_provider_alias(tmp_path: Path) -> None:
     )
 
 
-def test_put_config_provider_alias_validation_falls_back_to_repo_config(
+def test_put_config_role_update_rejects_unreadable_global_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -701,10 +695,10 @@ def test_put_config_provider_alias_validation_falls_back_to_repo_config(
         headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
+    assert "invalid TOML" in response.json()["error"]
     repo_config = read_config_data(state_dir / "config.toml")
-    llm_config = cast("dict[str, object]", repo_config["llm"])
-    assert llm_config["generate_provider"] == "local"
+    assert "llm" not in repo_config
 
 
 def test_put_config_provider_alias_validation_falls_back_when_merged_providers_not_mapping(
@@ -899,11 +893,238 @@ def test_put_config_rejects_partial_quiz_update_when_existing_range_is_invalid(
     assert "quiz.quiz_auto_range_min" in response.json()["error"]
 
 
-def test_validate_quiz_update_allows_payload_to_fix_existing_invalid_range() -> None:
-    assert _validate_quiz_update_for_test(
-        {"quiz_auto_range_max": 10},
-        current_quiz={"quiz_auto_range_min": 9, "quiz_auto_range_max": 3},
-    ) == {"quiz_auto_range_max": 10}
+@pytest.mark.parametrize(
+    ("global_min", "global_max", "repo_values", "update", "expected_status", "expected_range"),
+    [
+        (10, 20, "", {"quiz_auto_range_max": 5}, 400, (10, 20)),
+        (1, 2, "", {"quiz_auto_range_max": 2}, 200, (1, 2)),
+        (20, 30, "", {"quiz_auto_range_min": 25}, 200, (25, 30)),
+        (10, 20, "quiz_auto_range_min = 99\n", {"quiz_auto_range_min": 3}, 200, (3, 20)),
+        (10, 20, 'quiz_auto_range_min = "bad"\n', {"quiz_auto_range_min": 3}, 200, (3, 20)),
+        (10, 20, "quiz_auto_range_max = 5\n", {"quiz_auto_range_max": 15}, 200, (10, 15)),
+        (
+            1,
+            20,
+            "quiz_auto_range_min = 9\nquiz_auto_range_max = 3\n",
+            {"quiz_auto_range_max": 10},
+            200,
+            (9, 10),
+        ),
+    ],
+)
+def test_put_config_validates_partial_quiz_update_against_inherited_values(
+    tmp_path: Path,
+    global_min: int,
+    global_max: int,
+    repo_values: str,
+    update: dict[str, int],
+    expected_status: int,
+    expected_range: tuple[int, int],
+) -> None:
+    from ahadiff.core.config import load_workspace_config, read_config_data
+
+    workspace = tmp_path / "workspace"
+    state_dir = workspace / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    config_path = state_dir / "config.toml"
+    config_path.write_text(f'lang = "zh-CN"\n[quiz]\n{repo_values}', encoding="utf-8")
+    original_repo = config_path.read_bytes()
+    global_dir = tmp_path / "selected-global"
+    global_dir.mkdir()
+    global_path = global_dir / "config.toml"
+    global_path.write_text(
+        f"[quiz]\nquiz_auto_range_min = {global_min}\nquiz_auto_range_max = {global_max}\n",
+        encoding="utf-8",
+    )
+    original_global = global_path.read_bytes()
+
+    response = _client(state_dir, global_config_root=global_dir).put(
+        "/api/config",
+        json={"quiz": update},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == expected_status, response.text
+    if expected_status == 400:
+        assert "quiz.quiz_auto_range_min" in response.json()["error"]
+        assert config_path.read_bytes() == original_repo
+    else:
+        stored = read_config_data(config_path)
+        assert stored["lang"] == "zh-CN"
+        assert stored["quiz"] == {
+            **tomllib.loads(repo_values),
+            **update,
+        }
+    assert global_path.read_bytes() == original_global
+    quiz = load_workspace_config(workspace, global_config_root=global_dir).values["quiz"]
+    assert (quiz["quiz_auto_range_min"], quiz["quiz_auto_range_max"]) == expected_range
+
+
+def test_config_preview_preserves_layering_without_writing(tmp_path: Path) -> None:
+    from ahadiff.core.config import preview_workspace_config
+
+    workspace = tmp_path / "workspace"
+    state_dir = workspace / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    repo_path = state_dir / "config.toml"
+    repo_path.write_text("[quiz]\nquiz_auto_range_min = 99\n", encoding="utf-8")
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    global_path = global_dir / "config.toml"
+    global_path.write_text("[quiz]\nquiz_auto_range_max = 20\n", encoding="utf-8")
+    before = (repo_path.read_bytes(), global_path.read_bytes())
+    proposed = {"lang": "zh-CN", "quiz": {"quiz_auto_range_min": 3, "quiz_question_count": 7}}
+
+    snapshot = preview_workspace_config(
+        workspace,
+        proposed,
+        env={"AHADIFF_QUIZ_QUIZ_AUTO_RANGE_MIN": "4"},
+        global_config_root=global_dir,
+    )
+
+    assert snapshot.values["lang"] == "zh-CN"
+    assert snapshot.values["quiz"]["quiz_auto_range_min"] == 4
+    assert snapshot.values["quiz"]["quiz_auto_range_max"] == 20
+    assert snapshot.resolved["quiz.quiz_auto_range_min"].source.startswith("env:")
+    assert snapshot.resolved["quiz.quiz_question_count"].source.startswith("repo:")
+    assert proposed == {
+        "lang": "zh-CN",
+        "quiz": {"quiz_auto_range_min": 3, "quiz_question_count": 7},
+    }
+    assert (repo_path.read_bytes(), global_path.read_bytes()) == before
+
+
+def test_put_config_partial_quiz_update_respects_environment_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_dir = tmp_path / "workspace" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    config_path = state_dir / "config.toml"
+    config_path.write_text("[quiz]\nquiz_auto_range_min = 10\n", encoding="utf-8")
+    original = config_path.read_bytes()
+    monkeypatch.setenv("AHADIFF_QUIZ_QUIZ_AUTO_RANGE_MIN", "18")
+    monkeypatch.setenv("AHADIFF_QUIZ_QUIZ_AUTO_RANGE_MAX", "20")
+
+    client = _client(state_dir)
+    response = client.put(
+        "/api/config",
+        json={"quiz": {"quiz_auto_range_max": 15}},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    # The environment's maximum continues to win over the proposed repo value.
+    assert response.status_code == 200
+    snapshot = client.get("/api/config", headers={"X-AhaDiff-Token": "test-token"})
+    assert snapshot.json()["quiz"]["quiz_auto_range_max"] == 20
+    assert config_path.read_bytes() != original
+
+
+def test_config_preview_global_candidate_preserves_repo_shadowing(tmp_path: Path) -> None:
+    from ahadiff.core.config import preview_workspace_config
+
+    workspace = tmp_path / "workspace"
+    state_dir = workspace / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    repo_path = state_dir / "config.toml"
+    repo_path.write_text("[quiz]\nquiz_auto_range_min = 9\n", encoding="utf-8")
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    global_path = global_dir / "config.toml"
+    global_path.write_text("[quiz]\nquiz_auto_range_max = 99\n", encoding="utf-8")
+    before = (repo_path.read_bytes(), global_path.read_bytes())
+
+    snapshot = preview_workspace_config(
+        workspace,
+        {"quiz": {"quiz_auto_range_min": 9}},
+        global_config_root=global_dir,
+        global_config_data={"quiz": {"quiz_auto_range_min": 20, "quiz_auto_range_max": 25}},
+        env={},
+    )
+
+    assert snapshot.values["quiz"]["quiz_auto_range_min"] == 9
+    assert snapshot.values["quiz"]["quiz_auto_range_max"] == 25
+    assert snapshot.resolved["quiz.quiz_auto_range_min"].source.startswith("repo:")
+    assert snapshot.resolved["quiz.quiz_auto_range_max"].source.startswith("global:")
+    assert (repo_path.read_bytes(), global_path.read_bytes()) == before
+
+
+@pytest.mark.parametrize("role", ["generate", "judge"])
+@pytest.mark.parametrize("scope", ["repo", "global"])
+def test_put_config_rejects_role_model_with_incompatible_provider_thinking(
+    tmp_path: Path,
+    role: str,
+    scope: str,
+) -> None:
+    state_dir = tmp_path / "workspace" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    repo_path, global_path = state_dir / "config.toml", global_dir / "config.toml"
+    provider_text = (
+        "[providers.local]\n"
+        'provider_class = "openai_responses"\n'
+        'model_name = "gpt-5.6-luna"\n'
+        'base_url = "http://127.0.0.1:8318"\n'
+        'api_key_env = "AHADIFF_TEST_KEY"\n'
+        'thinking_level = "none"\n'
+    )
+    repo_path.write_text(provider_text if scope == "repo" else "", encoding="utf-8")
+    global_path.write_text(provider_text if scope == "global" else "", encoding="utf-8")
+    before = (repo_path.read_bytes(), global_path.read_bytes())
+
+    response = _client(state_dir, global_config_root=global_dir).put(
+        "/api/config",
+        json={f"{role}_model": "gpt-6-astra"},
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == 400
+    assert "does not support thinking_level='none'" in response.json()["error"]
+    assert "separate provider alias" in response.json()["error"]
+    assert (repo_path.read_bytes(), global_path.read_bytes()) == before
+
+
+@pytest.mark.parametrize(
+    ("update", "status"),
+    [
+        ({"judge_provider": "luna"}, 400),
+        ({"judge_provider": "luna", "judge_model": "gpt-5.6-luna"}, 200),
+        ({"judge_provider": "astra"}, 200),
+        ({"lang": "zh-CN"}, 200),
+    ],
+)
+def test_put_config_validates_only_updated_roles_against_final_provider_selection(
+    tmp_path: Path,
+    update: dict[str, str],
+    status: int,
+) -> None:
+    state_dir = tmp_path / "workspace" / ".ahadiff"
+    state_dir.mkdir(parents=True)
+    config_path = state_dir / "config.toml"
+    config_path.write_text(
+        '[llm]\njudge_provider = "luna"\njudge_model = "gpt-6-astra"\n'
+        "[providers.luna]\n"
+        'provider_class = "openai_responses"\nmodel_name = "gpt-5.6-luna"\n'
+        'base_url = "http://127.0.0.1:8318"\napi_key_env = "AHADIFF_TEST_KEY"\n'
+        'thinking_level = "none"\n'
+        "[providers.astra]\n"
+        'provider_class = "openai_responses"\nmodel_name = "gpt-6-astra"\n'
+        'base_url = "http://127.0.0.1:8318"\napi_key_env = "AHADIFF_TEST_KEY"\n'
+        'thinking_level = "low"\n',
+        encoding="utf-8",
+    )
+    before = config_path.read_bytes()
+
+    response = _client(state_dir).put(
+        "/api/config",
+        json=update,
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+    )
+
+    assert response.status_code == status, response.text
+    if status == 400:
+        assert config_path.read_bytes() == before
 
 
 def test_validate_quiz_update_rejects_unknown_quiz_keys() -> None:

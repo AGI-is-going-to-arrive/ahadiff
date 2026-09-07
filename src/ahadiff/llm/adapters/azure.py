@@ -9,7 +9,11 @@ from ..provider import AdapterBase
 from ..schemas import ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import openai_json_schema_format
-from .thinking import normalize_thinking_level
+from .thinking import (
+    supports_request_temperature,
+    thinking_payload_for,
+    uses_openai_completion_tokens,
+)
 
 if TYPE_CHECKING:
     import httpx
@@ -51,6 +55,16 @@ class AzureOpenAIAdapter(AdapterBase):
         *,
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
+        model_profile = (
+            self.config.model_limits_name if request.model == self.config.model_name else None
+        )
+        thinking = thinking_payload_for(
+            "azure",
+            request.model,
+            request.thinking_level,
+            base_url=self.config.base_url,
+            model_limits_name=model_profile,
+        )
         headers = {"content-type": "application/json"}
         v1_compat = self._is_v1_compat()
         if api_key:
@@ -64,14 +78,22 @@ class AzureOpenAIAdapter(AdapterBase):
         }
         if v1_compat:
             payload["model"] = request.model
-        thinking = normalize_thinking_level(request.thinking_level)
-        if request.temperature is not None:
+        if request.temperature is not None and supports_request_temperature(
+            "azure",
+            request.model,
+            request.thinking_level,
+            base_url=self.config.base_url,
+            model_limits_name=model_profile,
+        ):
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
-            token_key = "max_completion_tokens" if thinking != "none" else "max_tokens"
+            token_key = (
+                "max_completion_tokens"
+                if uses_openai_completion_tokens(model_profile or request.model)
+                else "max_tokens"
+            )
             payload[token_key] = request.max_output_tokens
-        if thinking != "none":
-            payload["reasoning_effort"] = thinking
+        payload.update(thinking)
         native_format = openai_json_schema_format(request, capabilities=self.capabilities)
         if native_format is not None:
             payload["response_format"] = native_format
@@ -88,13 +110,12 @@ class AzureOpenAIAdapter(AdapterBase):
         message = choice.get("message", {})
         usage = payload.get("usage", {})
         content = str(message.get("content") or "")
-        if not content:
-            content = str(message.get("reasoning_content") or "")
         return ProviderResponse(
             content=content,
             model_id=str(payload.get("model", self.config.model_name)),
             input_tokens=int(usage.get("prompt_tokens", 0)),
             output_tokens=int(usage.get("completion_tokens", 0)),
+            reasoning_content=message.get("reasoning_content"),
             finish_reason=choice.get("finish_reason"),
             request_id=response.headers.get("x-request-id"),
             raw_json=payload,

@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { installTargetsResponseSchema } from '../../src/api/schemas';
 
 const SERVE_PORT = 18765;
 const HEALTHZ = `http://127.0.0.1:${SERVE_PORT}/healthz`;
@@ -214,9 +215,17 @@ test('browser renders core pages against real serve APIs without mocks', async (
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
 
+  const catalogueResponse = page.waitForResponse(response =>
+    response.url().endsWith('/api/install/targets') && response.request().method() === 'GET',
+  );
   await page.goto('/#/guide');
+  const catalogue = installTargetsResponseSchema.parse(await (await catalogueResponse).json());
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('.guide-agent-card')).toHaveCount(15);
+  await expect(page.locator('.guide-agent-card')).toHaveCount(catalogue.targets.length);
+  const names = catalogue.targets.map(target => target.name);
+  expect(names).toEqual(expect.arrayContaining(['pi', 'deepseek-harness', 'grok', 'devin']));
+  expect(names).not.toEqual(expect.arrayContaining(['roo']));
+  expect(names).not.toEqual(expect.arrayContaining(['windsurf']));
   await expect(page.locator('.guide-agent-card').filter({ hasText: 'Antigravity IDE' })).toContainText(
     '.agents/skills/ahadiff-antigravity/SKILL.md',
   );

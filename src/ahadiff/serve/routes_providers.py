@@ -60,7 +60,11 @@ from ahadiff.core.errors import ConfigError, ProviderError, SafetyError
 from ahadiff.core.ids import make_event_id
 from ahadiff.core.task_runner import TaskStatus
 from ahadiff.llm import provider as provider_module
-from ahadiff.llm.adapters.thinking import thinking_policy_for
+from ahadiff.llm.adapters.thinking import (
+    minimum_thinking_output_tokens,
+    reject_unsupported_thinking,
+    thinking_policy_for,
+)
 from ahadiff.llm.cost import resolve_model_limits
 from ahadiff.llm.probe import probe_provider
 from ahadiff.safety.audit import append_audit_record
@@ -797,12 +801,23 @@ def _thinking_metadata(
     model_name: str,
     *,
     base_url: str | None,
+    model_limits_name: str | None = None,
 ) -> dict[str, object]:
-    policy = thinking_policy_for(provider_class, model_name, base_url=base_url)
+    policy = thinking_policy_for(
+        provider_class, model_name, base_url=base_url, model_limits_name=model_limits_name
+    )
     supported = bool(policy["supported"])
+    minimums: dict[str, int] = {}
+    for level in policy["accepted_levels"]:
+        minimum = minimum_thinking_output_tokens(
+            provider_class, model_name, level, base_url=base_url
+        )
+        if minimum is not None:
+            minimums[level] = minimum
     return {
         **policy,
         "supported": supported,
+        "minimum_output_tokens": minimums,
     }
 
 
@@ -859,8 +874,65 @@ def build_model_limits_response(
             config.provider_class,
             config.model_name,
             base_url=config.base_url,
+            model_limits_name=config.model_limits_name,
         ),
     )
+
+
+def _validate_provider_thinking(provider_data: Mapping[str, Any]) -> None:
+    try:
+        reject_unsupported_thinking(
+            str(provider_data.get("provider_class", "")),
+            provider_data.get("thinking_level"),
+            model_name=str(provider_data.get("model_name", "")),
+            base_url=provider_data.get("base_url"),
+            model_limits_name=provider_data.get("model_limits_name"),
+        )
+    except ProviderError as exc:
+        raise _ProviderFieldError(str(exc)) from exc
+    minimum = minimum_thinking_output_tokens(
+        str(provider_data.get("provider_class", "")),
+        str(provider_data.get("model_name", "")),
+        provider_data.get("thinking_level"),
+        base_url=provider_data.get("base_url"),
+    )
+    maximum = provider_data.get("max_output_tokens")
+    if minimum is not None and isinstance(maximum, int) and maximum < minimum:
+        raise _ProviderFieldError(
+            f"max_output_tokens must be at least {minimum} for the selected thinking budget"
+        )
+
+
+def _validate_provider_role_consumers(
+    state: ServeState, data: Mapping[str, Any], scope: ProviderScope
+) -> None:
+    from .routes_config import validate_role_thinking_update
+
+    repo_path = _config_path(state, "repo")
+    repo_data = (
+        data if scope == "repo" else (read_config_data(repo_path) if repo_path.exists() else {})
+    )
+    snapshot = config_module.preview_workspace_config(
+        state.state_dir.parent,
+        repo_data,
+        global_config_root=state.global_config_root,
+        global_config_data=data if scope == "global" else None,
+    )
+    try:
+        previous = config_module.load_workspace_config(
+            state.state_dir.parent, global_config_root=state.global_config_root
+        )
+    except ConfigError:
+        previous = None
+    for role in ("generate", "judge"):
+        error = validate_role_thinking_update(snapshot, {role})
+        previous_error = (
+            validate_role_thinking_update(previous, {role}) if previous is not None else None
+        )
+        # A legacy incompatible role must not prevent creating its replacement
+        # provider. Reject new breakage, while keeping the repair path available.
+        if error is not None and error != previous_error:
+            raise _ProviderFieldError(error)
 
 
 def _trusted_max_output_limit(limits: Any) -> int | None:
@@ -978,6 +1050,8 @@ def _verification_from_provider_probe(
             base_url=base_url,
             api_key=api_key,
             api_key_env=api_key_env,
+            thinking_level=provider_data.get("thinking_level"),
+            max_output_tokens=provider_data.get("max_output_tokens"),
             workspace_root=workspace_root,
             security_config=security_config,
             request_timeout_seconds=5,
@@ -1090,6 +1164,16 @@ async def create_provider(request: Request) -> JSONResponse:
                 provider_class=body.provider_class,
                 data=data,
             )
+            _validate_provider_thinking(
+                {
+                    "provider_class": body.provider_class,
+                    "model_name": body.model_name,
+                    "base_url": normalized_base_url,
+                    "model_limits_name": model_limits_name,
+                    "thinking_level": body.thinking_level,
+                    "max_output_tokens": body.max_output_tokens,
+                }
+            )
             env_path = _env_path(state, scope)
             if plain_api_key is not None:
                 repo_env = load_repo_env_file(env_path)
@@ -1144,7 +1228,9 @@ async def create_provider(request: Request) -> JSONResponse:
                 if model_limits_name is not None:
                     new_provider["model_limits_name"] = model_limits_name
                 warnings = _apply_max_output_policy(new_provider)
+                _validate_provider_thinking(new_provider)
                 providers[body.alias] = new_provider
+                _validate_provider_role_consumers(state, data, scope)
                 _write_scoped_config_data(config_path, data, scope=scope)
                 config_committed = True
                 _append_provider_audit_event(
@@ -1330,6 +1416,8 @@ async def update_provider(request: Request) -> JSONResponse:
     clear_fields: set[str] = set()
     if "max_output_tokens" in fields_set and body.max_output_tokens is None:
         clear_fields.add("max_output_tokens")
+    if "thinking_level" in fields_set and body.thinking_level is None:
+        clear_fields.add("thinking_level")
     if "model_limits_name" in fields_set and body.model_limits_name is None:
         clear_fields.add("model_limits_name")
     raw_plain_api_key = update_payload.pop("api_key", None)
@@ -1467,7 +1555,9 @@ async def update_provider(request: Request) -> JSONResponse:
                 if limit_identity_changed:
                     clear_provider_probe_fields(updated_provider)
                 warnings = _apply_max_output_policy(updated_provider)
+                _validate_provider_thinking(updated_provider)
                 providers[alias] = updated_provider
+                _validate_provider_role_consumers(state, data, scope)
                 _write_scoped_config_data(config_path, data, scope=scope)
                 config_committed = True
                 _append_provider_audit_event(
@@ -1750,6 +1840,8 @@ async def probe_provider_route(request: Request) -> JSONResponse:
                     base_url=base_url,
                     api_key=api_key,
                     api_key_env=api_key_env,
+                    thinking_level=provider_snapshot.get("thinking_level"),
+                    max_output_tokens=provider_snapshot.get("max_output_tokens"),
                     workspace_root=workspace_root,
                     security_config=security_config,
                     persist_result=False,

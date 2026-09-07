@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from json import JSONDecodeError
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 if not TYPE_CHECKING:
     from pathlib import Path
@@ -25,6 +25,7 @@ from starlette.responses import JSONResponse
 
 from ahadiff.contracts import ErrorCode
 from ahadiff.contracts.event_log import RATCHET_COUNTED_STATUSES, ResultEvent
+from ahadiff.contracts.run_source import ThinkingLevel
 from ahadiff.contracts.serve_stats import (
     HeatmapEntry,
     ProvidersResponse,
@@ -406,7 +407,7 @@ def _optional_positive_int(mapping: Mapping[str, object], key: str) -> int | Non
 
 def _optional_thinking_level(mapping: Mapping[str, object]) -> str | None:
     raw = mapping.get("thinking_level")
-    if isinstance(raw, str) and raw in {"none", "low", "medium", "high"}:
+    if isinstance(raw, str) and raw in get_args(ThinkingLevel):
         return raw
     return None
 

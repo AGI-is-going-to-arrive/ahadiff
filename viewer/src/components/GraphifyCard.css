@@ -44,6 +44,46 @@
   margin-top: 0;
 }
 
+/* Keep the settings controls below asynchronous diagnostics in place. The
+   loading and loaded cards reserve the same five metadata rows. */
+.graphify-card--stable .graphify-card__header {
+  min-block-size: calc(var(--fs-md) * 1.5);
+  line-height: 1.5;
+}
+
+.graphify-card--stable .graphify-card__body {
+  --graphify-row-block-size: calc(var(--fs-2xs) * 1.5 + 6px);
+  min-block-size: calc(var(--graphify-row-block-size) * 5 + 4px);
+}
+
+.graphify-card--stable .graphify-card__row {
+  display: grid;
+  grid-template-columns: 90px 12px minmax(0, 1fr);
+  min-block-size: var(--graphify-row-block-size);
+  line-height: 1.5;
+}
+
+.graphify-card--stable .graphify-card__row > span:last-child {
+  grid-column: 2 / -1;
+}
+
+.graphify-card--stable .graphify-card__row > span:nth-child(3) {
+  grid-column: 3 / -1;
+}
+
+.graphify-card--stable .graphify-card__row:last-child {
+  /* The SHA row includes a copy button with its own padding and border. */
+  min-block-size: calc(var(--graphify-row-block-size) + 4px);
+}
+
+.graphify-card__skeleton-value {
+  display: block;
+  inline-size: min(100%, 16ch);
+  block-size: 1em;
+  border-radius: var(--r-sm);
+  background: var(--hair);
+}
+
 .graphify-card__row {
   display: flex;
   gap: var(--sp-2);
@@ -183,6 +223,14 @@
 
 @supports (container-type: inline-size) {
   @container (max-width: 540px) {
+    .graphify-card--stable .graphify-card__body {
+      --graphify-row-block-size: calc(var(--fs-2xs) * 3 + 6px);
+    }
+
+    .graphify-card--stable .graphify-card__row {
+      grid-template-columns: 70px 12px minmax(0, 1fr);
+    }
+
     .graphify-card__compact-inner {
       flex-direction: column;
       align-items: flex-start;
@@ -203,6 +251,14 @@
    Chrome <105): approximate via viewport width. */
 @supports not (container-type: inline-size) {
   @media (max-width: 540px) {
+    .graphify-card--stable .graphify-card__body {
+      --graphify-row-block-size: calc(var(--fs-2xs) * 3 + 6px);
+    }
+
+    .graphify-card--stable .graphify-card__row {
+      grid-template-columns: 70px 12px minmax(0, 1fr);
+    }
+
     .graphify-card__compact-inner {
       flex-direction: column;
       align-items: flex-start;

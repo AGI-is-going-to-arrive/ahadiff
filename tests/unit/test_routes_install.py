@@ -77,7 +77,10 @@ def test_get_install_targets_contains_known_targets(tmp_path: Path) -> None:
         "antigravity-cli",
         "claude",
         "codex",
-        "gemini",
+        "pi",
+        "deepseek-harness",
+        "grok",
+        "devin",
         "hooks",
         "github-action",
     ):
@@ -199,7 +202,16 @@ def test_hooks_target_is_unsupported_on_windows(
     assert hooks["platform_supported"] is False
     assert hooks["status"] == "unsupported"
     assert hooks["detected"] is False
-    for target_name in ("antigravity", "antigravity-cli", "codex", "gemini", "copilot"):
+    for target_name in (
+        "antigravity",
+        "antigravity-cli",
+        "codex",
+        "pi",
+        "deepseek-harness",
+        "grok",
+        "devin",
+        "copilot",
+    ):
         assert targets_by_name[target_name]["platform_supported"] is True
         assert targets_by_name[target_name]["status"] == "available"
 
@@ -225,7 +237,7 @@ def test_get_install_targets_returns_empty_when_context_fails(
     response = client.get("/api/install/targets")
 
     assert response.status_code == 200
-    assert response.json() == {"targets": [], "total": 0}
+    assert response.json() == {"targets": [], "legacy_targets": [], "total": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +258,7 @@ def test_get_install_targets_empty_registry(
     response = client.get("/api/install/targets")
 
     assert response.status_code == 200
-    assert response.json() == {"targets": [], "total": 0}
+    assert response.json() == {"targets": [], "legacy_targets": [], "total": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +308,10 @@ def test_response_schema_matches_frontend_expectations(tmp_path: Path) -> None:
         "platform_supported",
         "status",
         "description",
+        "lifecycle",
+        "lifecycle_note",
+        "documentation_url",
+        "verified_at",
         "install_command",
         "uninstall_command",
         "manifest",
@@ -362,17 +378,12 @@ def test_get_install_targets_returns_manifest_preview(tmp_path: Path) -> None:
     targets_by_name = {t["name"]: t for t in response.json()["targets"]}
     expected_manifests = {
         "codex": (
-            "Codex CLI",
+            "Codex",
             ".agents/skills/ahadiff/SKILL.md",
             "AGENTS.md",
         ),
-        "gemini": (
-            "Gemini CLI",
-            ".gemini/skills/ahadiff/SKILL.md",
-            "GEMINI.md",
-        ),
         "copilot": (
-            "Copilot / VS Code",
+            "GitHub Copilot",
             ".github/instructions/ahadiff.instructions.md",
             ".github/copilot-instructions.md",
         ),
@@ -741,3 +752,51 @@ def test_install_mutation_rejects_repo_root_override(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert not (tmp_path / "other" / "AGENTS.md").exists()
+
+
+def test_catalogue_localizes_descriptions_and_separates_detected_legacy(tmp_path: Path) -> None:
+    from ahadiff.install.base import InstallContext
+    from ahadiff.install.registry import get_target
+
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    get_target("gemini").write(InstallContext(repo_root=tmp_path))
+    for locale in ("en", "zh-CN"):
+        payload = _client(state_dir, locale=locale).get("/api/install/targets").json()
+        active = {target["name"]: target for target in payload["targets"]}
+        assert {"pi", "deepseek-harness", "grok", "devin"}.issubset(active)
+        assert {"gemini", "roo", "windsurf"}.isdisjoint(active)
+        assert payload["total"] == len(active)
+        assert [target["name"] for target in payload["legacy_targets"]] == ["gemini"]
+        assert payload["legacy_targets"][0]["lifecycle"] == "limited"
+        assert "2026" in payload["legacy_targets"][0]["lifecycle_note"]
+        assert active["deepseek-harness"]["lifecycle"] == "preview"
+        for target in active.values():
+            assert target["documentation_url"].startswith("https://")
+            assert target["verified_at"] == "2026-09-07"
+            if locale == "zh-CN":
+                assert any("\u4e00" <= character <= "\u9fff" for character in target["description"])
+            else:
+                assert target["description"].startswith("Write")
+
+
+def test_retired_guidance_preview_only_permits_protected_cleanup(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    path = tmp_path / ".roo/rules/ahadiff.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("<!-- AHADIFF:GENERATED -->\nOld rules\n", encoding="utf-8")
+    client = _client(state_dir)
+    headers = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
+    preview = client.post("/api/install/roo/preview", headers=headers, json={})
+    assert preview.status_code == 200
+    assert preview.json()["target"]["manifest"]["write"] == []
+    body = {"confirmed_manifest_hash": preview.json()["manifest_hash"]}
+    denied = client.post("/api/install/roo", headers=headers, json=body)
+    assert denied.status_code == 400
+    assert path.exists()
+    removed = client.post("/api/install/roo/uninstall", headers=headers, json=body)
+    assert removed.status_code == 200
+    assert removed.json()["updated"]
+    assert not path.exists()
+    assert client.get("/api/install/targets").json()["legacy_targets"] == []

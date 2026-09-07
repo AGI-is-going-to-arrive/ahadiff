@@ -1941,7 +1941,7 @@ def test_compare_dir_rejects_windows_reparse_point_entry(
 
     monkeypatch.setattr(capture_module.Path, "lstat", fake_lstat)
 
-    with pytest.raises(InputError, match="reparse point"):
+    with pytest.raises(SafetyError, match="reparse point"):
         capture_module.capture_patch(
             workspace_root=workspace_root,
             compare_dir=(Path("old"), Path("new")),
@@ -2178,8 +2178,12 @@ def test_patch_file_binary_only_without_git_header_keeps_path_metadata(tmp_path:
     assert capture.metadata["selected_files"] == ["new.bin"]
 
 
-def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
-    workspace_root = tmp_path / "workspace"
+@pytest.mark.parametrize("absolute_inputs", [False, True])
+def test_patch_and_compare_modes_work_without_git_repo(
+    tmp_path: Path,
+    absolute_inputs: bool,
+) -> None:
+    workspace_root = tmp_path / "workspace 中文"
     workspace_root.mkdir()
     (workspace_root / ".ahadiff").mkdir()
     (workspace_root / ".ahadiff" / "config.toml").write_text(
@@ -2210,7 +2214,7 @@ def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     patch_result = _invoke_repo_cli(
         runner,
         workspace_root,
-        ["learn", "--patch", "sample.patch", "--dry-run"],
+        ["learn", "--patch", str(patch_path) if absolute_inputs else "sample.patch", "--dry-run"],
     )
     assert patch_result.exit_code == 0
     patch_run_dir = _latest_run_dir(workspace_root)
@@ -2221,7 +2225,13 @@ def test_patch_and_compare_modes_work_without_git_repo(tmp_path: Path) -> None:
     compare_result = _invoke_repo_cli(
         runner,
         workspace_root,
-        ["learn", "--compare", "old.py", "new.py", "--dry-run"],
+        [
+            "learn",
+            "--compare",
+            str(old_file) if absolute_inputs else "old.py",
+            str(new_file) if absolute_inputs else "new.py",
+            "--dry-run",
+        ],
     )
     assert compare_result.exit_code == 0
     compare_run_dir = _latest_run_dir(workspace_root)

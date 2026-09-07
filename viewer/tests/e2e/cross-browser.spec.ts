@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { ModelLimitsResponse } from '../../src/api/types';
 import { installServeMock } from '../fixtures/serve-mock';
 
 async function openPreferences(page: Page) {
@@ -53,14 +54,19 @@ async function installProviderSmartConfigMock(page: Page) {
     async (route) => {
       const body = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
       previewBodies.push(body);
+      const providerClass = body.provider_class;
+      const modelName = body.model_name;
+      if (typeof providerClass !== 'string' || typeof modelName !== 'string') {
+        throw new Error('Model limits preview requires a provider class and model name');
+      }
       const usesProfile = body.model_limits_name === 'openai/gpt-4o';
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
           alias: null,
-          provider_class: body.provider_class,
-          model_name: body.model_name,
+          provider_class: providerClass,
+          model_name: modelName,
           max_context_tokens: usesProfile ? 128000 : 400000,
           max_input_tokens: null,
           max_output_tokens: usesProfile ? 16384 : 128000,
@@ -70,9 +76,15 @@ async function installProviderSmartConfigMock(page: Page) {
           context_policy: 'shared_pool',
           source: 'registry',
           confidence: usesProfile ? 'low' : 'high',
-          warnings: usesProfile ? [{ code: 'provider_limits.low_confidence' }] : [],
-          thinking: { supported: false, mode: null, warnings: [] },
-        }),
+          warnings: usesProfile ? [{ code: 'provider_limits.low_confidence', params: {} }] : [],
+          thinking: {
+            supported: false,
+            accepted_levels: [],
+            payload_mode: 'unsupported',
+            warnings: [],
+            minimum_output_tokens: {},
+          },
+        } satisfies ModelLimitsResponse),
       });
     },
   );

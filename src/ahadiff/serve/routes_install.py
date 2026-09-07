@@ -25,7 +25,13 @@ from ahadiff.core.errors import InputError
 from ahadiff.install import base as install_base
 from ahadiff.install.base import InstallContext
 from ahadiff.install.common import manifest_preview_for
-from ahadiff.install.registry import available_targets, get_target
+from ahadiff.install.registry import (
+    available_targets,
+    get_target,
+    get_target_metadata,
+    get_uninstall_target,
+    legacy_targets,
+)
 from ahadiff.install.usage_hints import get_usage_hint
 
 from .auth import require_write_token, serve_state
@@ -46,40 +52,6 @@ class _InstallPathSnapshot:
     mode: int | None
 
 
-_TARGET_DESCRIPTIONS = {
-    "aider": "Write AhaDiff guidance for Aider.",
-    "antigravity": "Write Antigravity IDE workspace skill and AhaDiff rules.",
-    "antigravity-cli": "Write Antigravity CLI workspace skill and GEMINI.md guidance.",
-    "claude": "Write Claude Code project instructions and skills.",
-    "cline": "Write AhaDiff instructions for Cline.",
-    "codex": "Write Codex AGENTS.md guidance.",
-    "continue": "Write AhaDiff instructions for Continue.",
-    "copilot": "Write GitHub Copilot instructions.",
-    "cursor": "Write Cursor rules for AhaDiff.",
-    "gemini": "Write Gemini CLI guidance.",
-    "github-action": "Write the GitHub Actions workflow template.",
-    "hooks": "Write local git hook integration files.",
-    "opencode": "Write OpenCode agent instructions.",
-    "roo": "Write AhaDiff instructions for Roo.",
-    "windsurf": "Write Windsurf rules for AhaDiff.",
-}
-
-_TARGET_DISPLAY_NAMES = {
-    "antigravity": "Antigravity IDE",
-    "antigravity-cli": "Antigravity CLI",
-    "claude": "Claude Code",
-    "codex": "Codex CLI",
-    "copilot": "Copilot / VS Code",
-    "gemini": "Gemini CLI",
-    "github-action": "GitHub Action",
-    "opencode": "OpenCode",
-}
-
-
-def _display_name(name: str) -> str:
-    return _TARGET_DISPLAY_NAMES.get(name, name.replace("-", " ").title())
-
-
 def _normalize_install_target_entry(entry: dict[str, Any], *, locale: str = "en") -> dict[str, Any]:
     name = str(entry.get("name") or "unknown")
     detected = bool(entry.get("detected"))
@@ -91,17 +63,26 @@ def _normalize_install_target_entry(entry: dict[str, Any], *, locale: str = "en"
         status = "unsupported"
     else:
         status = "installed" if detected else "available"
-    description = str(entry.get("description") or "")
-    if not description:
-        description = _TARGET_DESCRIPTIONS.get(name, f"Write AhaDiff guidance for {name}.")
+    metadata = get_target_metadata(name)
+    description = (
+        metadata.description(locale)
+        if metadata is not None
+        else str(entry.get("description") or "")
+    )
     error_message = entry.get("error_message")
     return {
         "name": name,
-        "display_name": str(entry.get("display_name") or _display_name(name)),
+        "display_name": metadata.display_name
+        if metadata
+        else str(entry.get("display_name") or name),
         "detected": detected,
         "platform_supported": platform_supported,
         "status": status,
         "description": description,
+        "lifecycle": metadata.lifecycle if metadata else "active",
+        "lifecycle_note": metadata.note(locale) if metadata else "",
+        "documentation_url": metadata.documentation_url if metadata else "",
+        "verified_at": metadata.verified_at if metadata else "",
         "install_command": str(entry.get("install_command") or _install_command(name)),
         "uninstall_command": str(entry.get("uninstall_command") or _uninstall_command(name)),
         "manifest": entry.get("manifest") if isinstance(entry.get("manifest"), dict) else None,
@@ -145,6 +126,10 @@ def _manifest_preview_payload(target: Any, context: InstallContext) -> tuple[dic
     if not isinstance(raw_actions, dict):
         raise InputError("install target manifest preview is invalid")
     actions = cast("dict[str, Any]", raw_actions)
+    metadata = get_target_metadata(target.name)
+    if metadata and metadata.lifecycle in {"retired", "replaced"}:
+        actions["write"] = []
+        actions["preview"] = actions.get("uninstall", [])
     return actions, _manifest_hash(manifest_payload, context)
 
 
@@ -229,11 +214,9 @@ def _target_context(
 def _target_entry(name: str, state: ServeState, context: InstallContext) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "name": name,
-        "display_name": _display_name(name),
         "detected": False,
         "platform_supported": True,
         "status": "available",
-        "description": _TARGET_DESCRIPTIONS.get(name, f"Write AhaDiff guidance for {name}."),
         "install_command": _install_command(name),
         "uninstall_command": _uninstall_command(name),
         "manifest": None,
@@ -243,7 +226,12 @@ def _target_entry(name: str, state: ServeState, context: InstallContext) -> dict
     }
     del state
     try:
-        target = get_target(name)
+        metadata = get_target_metadata(name)
+        target = (
+            get_uninstall_target(name)
+            if metadata and metadata.lifecycle in {"retired", "replaced"}
+            else get_target(name)
+        )
     except ValueError as exc:
         raise InputError(str(exc)) from exc
     if name == "hooks" and sys.platform == "win32":
@@ -287,13 +275,26 @@ def _detect_all_targets(state: ServeState) -> list[dict[str, Any]]:
     return results
 
 
+def _detect_legacy_targets(state: ServeState) -> list[dict[str, Any]]:
+    try:
+        context = _target_context(state)
+    except Exception:
+        return []
+    entries = [_target_entry(name, state, context) for name in legacy_targets()]
+    return [entry for entry in entries if entry["detected"]]
+
+
 async def get_install_targets(request: Request) -> JSONResponse:
     state: ServeState = serve_state(request)
     locale = request_locale(request)
     targets = await to_thread.run_sync(_detect_all_targets, state)
     normalized = [_normalize_install_target_entry(target, locale=locale) for target in targets]
+    legacy = await to_thread.run_sync(_detect_legacy_targets, state)
+    normalized_legacy = [
+        _normalize_install_target_entry(target, locale=locale) for target in legacy
+    ]
     payload = InstallTargetsResponse.model_validate(
-        {"targets": normalized, "total": len(normalized)}
+        {"targets": normalized, "legacy_targets": normalized_legacy, "total": len(normalized)}
     ).model_dump(mode="json")
     return JSONResponse(payload)
 
@@ -326,7 +327,7 @@ def _mutate_target_sync(
     _validate_install_options(name, layer2=body.layer2)
     context = _target_context(state, force=body.force, layer2=body.layer2)
     try:
-        target = get_target(name)
+        target = get_target(name) if operation == "install" else get_uninstall_target(name)
     except ValueError as exc:
         raise InputError(str(exc)) from exc
     actions, manifest_hash = _manifest_preview_payload(target, context)

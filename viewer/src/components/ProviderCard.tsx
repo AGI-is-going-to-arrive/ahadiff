@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import type { ProviderSummary } from '../api/config';
 import type {
   ModelLimitsResponse,
   ModelLimitsWarning,
+  ModelThinkingSupport,
   ProviderCreateInput,
   ProviderMutationResponse,
   ProviderUpdateInput,
   ProviderVerification,
   TaskInfoResponse,
+  ThinkingLevel,
 } from '../api/types';
+import { thinkingLevelSchema } from '../api/schemas';
 import { ApiError } from '../api/client';
 import { getTask } from '../api/tasks';
 import {
@@ -20,7 +24,6 @@ import {
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import './ProviderCard.css';
 
-const SUPPORTS_THINKING = ['anthropic', 'azure', 'openai_responses', 'gemini', 'ollama'];
 const THINKING_HINT_KEY_BY_PROVIDER: Record<string, MessageKey> = {
   anthropic: 'Settings_page.provider_thinking_hint_anthropic',
   azure: 'Settings_page.provider_thinking_hint_azure',
@@ -39,8 +42,13 @@ const PROVIDER_WARNING_KEY_BY_CODE: Record<string, MessageKey> = {
   'provider_limits.unverified_override': 'Settings_page.provider_limits_warning_unverified_override',
 };
 const THINKING_WARNING_KEY_BY_CODE: Record<string, MessageKey> = {
-  ollama_thinking_unverified: 'Settings_page.provider_thinking_warning_ollama_unverified',
-  deepseek_low_medium_effort_maps_to_high: 'Settings_page.provider_thinking_warning_deepseek_low_medium_maps_high',
+  thinking_always_on: 'Settings_page.provider_thinking_warning_always_on',
+  thinking_toggle_only: 'Settings_page.provider_thinking_warning_toggle_only',
+  thinking_budget_mapping: 'Settings_page.provider_thinking_warning_budget_mapping',
+  compatible_endpoint_thinking_unverified: 'Settings_page.provider_thinking_warning_compatible_unverified',
+  thinking_minimal_not_off: 'Settings_page.provider_thinking_warning_minimal_not_off',
+  azure_thinking_uses_model_profile: 'Settings_page.provider_thinking_warning_azure_profile',
+  thinking_controls_agent_count: 'Settings_page.provider_thinking_warning_agent_count',
 };
 export const PROVIDER_ERROR_KEY_BY_CODE: Record<string, MessageKey> = {
   INPUT_VALIDATION: 'Settings_page.provider_error_validation_error',
@@ -86,10 +94,6 @@ export interface DraftFields {
   scope: 'repo' | 'global';
 }
 
-interface ProviderSaveOptions {
-  thinkingSupported?: boolean;
-}
-
 export interface ProviderSaveReadiness {
   saving: boolean;
   aliasInvalid: boolean;
@@ -97,6 +101,7 @@ export interface ProviderSaveReadiness {
   baseInvalid: boolean;
   maxOutputInvalid: boolean;
   modelLimitsLoading: boolean;
+  thinkingInvalid: boolean;
 }
 
 export interface ProviderCardProps {
@@ -116,7 +121,7 @@ const DEFAULT_DRAFT: DraftFields = {
   base_url: '',
   api_key: '',
   max_output_tokens: '',
-  thinking_level: 'none',
+  thinking_level: '',
   model_limits_name: '',
   scope: 'repo',
 };
@@ -130,32 +135,32 @@ interface ProviderExample {
 const PROVIDER_EXAMPLES: Record<string, ProviderExample> = {
   openai: {
     base_url: 'https://api.openai.com/v1',
-    model_name: 'gpt-5.5',
+    model_name: 'gpt-5.6-luna',
     api_key: 'sk-...',
   },
   openai_responses: {
     base_url: 'https://api.openai.com/v1',
-    model_name: 'gpt-5.5',
+    model_name: 'gpt-5.6-luna',
     api_key: 'sk-...',
   },
   gemini: {
     base_url: 'https://generativelanguage.googleapis.com',
-    model_name: 'gemini-3.1-pro-preview',
+    model_name: 'gemini-3.8-flash',
     api_key: 'AIza...',
   },
   anthropic: {
     base_url: 'https://api.anthropic.com',
-    model_name: 'claude-opus-4-6',
+    model_name: 'claude-sonnet-5',
     api_key: 'sk-ant-...',
   },
   azure: {
     base_url: 'https://{resource}.openai.azure.com',
-    model_name: 'gpt-5.5',
+    model_name: 'gpt-5.6-luna',
     api_key: '<azure-openai-key>',
   },
   newapi: {
     base_url: 'https://api.newapi.com/v1',
-    model_name: 'gpt-5.5',
+    model_name: 'gpt-5.6-luna',
     api_key: 'sk-...',
   },
   ollama: {
@@ -287,25 +292,31 @@ export function providerThinkingHintKey(providerClass: string): MessageKey | nul
   return THINKING_HINT_KEY_BY_PROVIDER[providerClass] ?? null;
 }
 
-export function isThinkingSupportedForDraft(
-  providerClass: string,
+export function isThinkingLevelValidForDraft(
+  level: string,
   modelLimits: Pick<ModelLimitsResponse, 'thinking'> | null,
 ): boolean {
-  const supported = modelLimits?.thinking?.supported;
-  if (typeof supported === 'boolean') return supported;
-  return SUPPORTS_THINKING.includes(providerClass);
+  if (!level) return true;
+  return modelLimits?.thinking.supported === true
+    && modelLimits.thinking.accepted_levels.some((accepted) => accepted === level);
+}
+
+export function minimumThinkingOutputForDraft(
+  level: string,
+  modelLimits: Pick<ModelLimitsResponse, 'thinking'> | null,
+): number | null {
+  const parsed = thinkingLevelSchema.safeParse(level);
+  if (!parsed.success || !isThinkingLevelValidForDraft(level, modelLimits)) return null;
+  return modelLimits?.thinking.minimum_output_tokens?.[parsed.data] ?? null;
 }
 
 function providerThinkingWarningMessages(
   t: TranslateFn,
-  thinking: Record<string, unknown> | undefined,
+  thinking: ModelThinkingSupport,
 ): string[] {
-  const rawWarnings = thinking?.warnings;
-  if (!Array.isArray(rawWarnings)) return [];
-  return rawWarnings
-    .map((warning) => (typeof warning === 'string' ? THINKING_WARNING_KEY_BY_CODE[warning] : undefined))
-    .filter((key): key is MessageKey => Boolean(key))
-    .map((key) => t(key));
+  return [...new Set(thinking.warnings.map((warning) => t(
+    THINKING_WARNING_KEY_BY_CODE[warning] ?? 'Settings_page.provider_thinking_warning_unknown',
+  )))];
 }
 
 export function shouldShowRecommendedLimitAction(
@@ -323,7 +334,8 @@ export function canSubmitProviderForm(readiness: ProviderSaveReadiness): boolean
     && !readiness.modelInvalid
     && !readiness.baseInvalid
     && !readiness.maxOutputInvalid
-    && !readiness.modelLimitsLoading;
+    && !readiness.modelLimitsLoading
+    && !readiness.thinkingInvalid;
 }
 
 function providerActionError(t: TranslateFn, key: MessageKey): string {
@@ -338,15 +350,24 @@ function toDraft(p: ProviderSummary): DraftFields {
     base_url: p.base_url,
     api_key: '',
     max_output_tokens: p.max_output_tokens != null ? String(p.max_output_tokens) : '',
-    thinking_level: p.thinking_level ?? 'none',
+    thinking_level: p.thinking_level ?? '',
     model_limits_name: p.model_limits_name ?? '',
     scope: p.scope ?? 'repo',
   };
 }
 
-function draftThinkingLevel(draft: DraftFields, thinkingSupported: boolean): string | null {
-  if (!thinkingSupported) return null;
-  return draft.thinking_level === 'none' || !draft.thinking_level ? null : draft.thinking_level;
+function draftThinkingLevel(draft: DraftFields): ThinkingLevel | null {
+  return draft.thinking_level ? thinkingLevelSchema.parse(draft.thinking_level) : null;
+}
+
+function draftMaxOutput(draft: DraftFields): number | null {
+  const value = draft.max_output_tokens.trim();
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(parsed)) {
+    throw new Error('Invalid max_output_tokens');
+  }
+  return parsed;
 }
 
 export function buildModelLimitsPreviewPayload(draft: DraftFields): {
@@ -366,13 +387,9 @@ export function buildModelLimitsPreviewPayload(draft: DraftFields): {
 export function buildProviderUpdatePayload(
   draft: DraftFields,
   provider: ProviderSummary,
-  options: ProviderSaveOptions = {},
 ): ProviderUpdateInput {
-  const parsedMaxOutput = parseInt(draft.max_output_tokens, 10);
-  const maxOutput = Number.isFinite(parsedMaxOutput) && parsedMaxOutput > 0 ? parsedMaxOutput : null;
-  const thinkingSupported = options.thinkingSupported
-    ?? isThinkingSupportedForDraft(draft.provider_class, null);
-  const thinkingLevel = draftThinkingLevel(draft, thinkingSupported);
+  const maxOutput = draftMaxOutput(draft);
+  const thinkingLevel = draftThinkingLevel(draft);
   const modelLimitsName = draft.model_limits_name.trim() || null;
   const apiKey = draft.api_key.trim();
 
@@ -499,16 +516,13 @@ export default function ProviderCard({
     setSaveError(null);
   };
 
-  const handleSave = async (options: ProviderSaveOptions = {}) => {
+  const handleSave = async () => {
     setSaving(true);
     setSaveError(null);
     setVerification(null);
     try {
-      const parsedMaxOutput = parseInt(draft.max_output_tokens, 10);
-      const maxOutput = Number.isFinite(parsedMaxOutput) && parsedMaxOutput > 0 ? parsedMaxOutput : null;
-      const thinkingSupported = options.thinkingSupported
-        ?? isThinkingSupportedForDraft(draft.provider_class, null);
-      const thinkingLevel = draftThinkingLevel(draft, thinkingSupported);
+      const maxOutput = draftMaxOutput(draft);
+      const thinkingLevel = draftThinkingLevel(draft);
       const modelLimitsName = draft.model_limits_name.trim() || null;
       const apiKey = draft.api_key.trim();
       let result: ProviderMutationResponse | void;
@@ -526,7 +540,7 @@ export default function ProviderCard({
         };
         result = await onSave(draft.alias.trim(), payload);
       } else {
-        const payload = buildProviderUpdatePayload(draft, provider, { thinkingSupported });
+        const payload = buildProviderUpdatePayload(draft, provider);
         result = await onSave(provider.alias, payload);
       }
       setMutationWarnings(result?.warnings ?? []);
@@ -696,10 +710,10 @@ export default function ProviderCard({
           </div>
           <div className="provider-card__header-meta">
             <span className="provider-card__badge">
-              {provider.provider_class}
+              {editing ? draft.provider_class : provider.provider_class}
             </span>
-            {!isNew && (
-              <span className="provider-card__model">{provider.model_name}</span>
+            {(editing ? draft.model_name : provider.model_name) && (
+              <span className="provider-card__model">{editing ? draft.model_name : provider.model_name}</span>
             )}
           </div>
         </div>
@@ -844,9 +858,12 @@ export function ProviderDetailView({
         {provider.max_output_tokens != null && (
           <Field label={t('Settings_page.provider_max_output_label')} value={formatTokenCount(provider.max_output_tokens, locale)} mono />
         )}
-        {provider.thinking_level != null && provider.thinking_level !== 'none' && (
-          <Field label={t('Settings_page.provider_thinking_label')} value={t(`Settings_page.provider_thinking_level_${provider.thinking_level}` as MessageKey)} mono />
-        )}
+        <Field
+          label={t('Settings_page.provider_thinking_label')}
+          value={provider.thinking_level == null
+            ? t('Settings_page.provider_thinking_level_default')
+            : t(`Settings_page.provider_thinking_level_${provider.thinking_level}`)}
+        />
       </dl>
 
       {provider.scope === 'global' && (
@@ -1095,7 +1112,7 @@ interface FormProps {
   isNew: boolean;
   saving: boolean;
   saveError: string | null;
-  onSave: (options?: ProviderSaveOptions) => void;
+  onSave: () => void;
   onCancel: () => void;
   t: ReturnType<typeof useTranslation>['t'];
   locale: string;
@@ -1115,26 +1132,38 @@ export function ProviderEditForm({
   const [discoveredModels, setDiscoveredModels] = useState<string[] | null>(null);
   const [discoveringModels, setDiscoveringModels] = useState(false);
   const [discoverError, setDiscoverError] = useState<string | null>(null);
+  const [manualModelEntry, setManualModelEntry] = useState(false);
   const discoverAbortRef = useRef<AbortController | null>(null);
   const discoverRequestRef = useRef(0);
-  const [modelLimits, setModelLimits] = useState<ModelLimitsResponse | null>(null);
-  const [modelLimitsLoading, setModelLimitsLoading] = useState(false);
+  const [limitsPreview, setLimitsPreview] = useState<{
+    key: string;
+    status: 'loading' | 'ready' | 'error';
+    result: ModelLimitsResponse | null;
+  } | null>(null);
+  const [previewRetry, setPreviewRetry] = useState(0);
   const limitsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const limitsAbortRef = useRef<AbortController | null>(null);
   const limitsRequestRef = useRef(0);
+  const previewKey = JSON.stringify(buildModelLimitsPreviewPayload(draft));
+  // A changed draft must never reuse the previous model's capability, even in
+  // the render before the preview effect starts its next request.
+  const currentPreview = limitsPreview?.key === previewKey ? limitsPreview : null;
+  const modelLimits = currentPreview?.status === 'ready' ? currentPreview.result : null;
+  const modelLimitsLoading = Boolean(draft.model_name.trim())
+    && (currentPreview == null || currentPreview.status === 'loading');
+  const modelLimitsError = currentPreview?.status === 'error';
 
   useEffect(() => {
     if (limitsTimerRef.current) clearTimeout(limitsTimerRef.current);
     limitsAbortRef.current?.abort();
     const requestId = limitsRequestRef.current + 1;
     limitsRequestRef.current = requestId;
-    setModelLimits(null);
-
     if (!draft.model_name.trim()) {
-      setModelLimitsLoading(false);
+      setLimitsPreview(null);
       return;
     }
-    setModelLimitsLoading(true);
+    const key = JSON.stringify(buildModelLimitsPreviewPayload(draft));
+    setLimitsPreview({ key, status: 'loading', result: null });
 
     limitsTimerRef.current = setTimeout(() => {
       const controller = new AbortController();
@@ -1148,14 +1177,12 @@ export function ProviderEditForm({
       fetchPromise
         .then((res) => {
           if (!controller.signal.aborted && limitsRequestRef.current === requestId) {
-            setModelLimits(res);
-            setModelLimitsLoading(false);
+            setLimitsPreview({ key, status: 'ready', result: res });
           }
         })
         .catch(() => {
           if (!controller.signal.aborted && limitsRequestRef.current === requestId) {
-            setModelLimits(null);
-            setModelLimitsLoading(false);
+            setLimitsPreview({ key, status: 'error', result: null });
           }
         });
     }, 300);
@@ -1164,7 +1191,7 @@ export function ProviderEditForm({
       if (limitsTimerRef.current) clearTimeout(limitsTimerRef.current);
       limitsAbortRef.current?.abort();
     };
-  }, [draft.provider_class, draft.model_name, draft.base_url, draft.model_limits_name]);
+  }, [draft.provider_class, draft.model_name, draft.base_url, draft.model_limits_name, previewRetry]);
   useEffect(() => {
     return () => {
       discoverRequestRef.current += 1;
@@ -1176,6 +1203,7 @@ export function ProviderEditForm({
     discoverRequestRef.current += 1;
     discoverAbortRef.current?.abort();
     setDiscoveredModels(null);
+    setManualModelEntry(false);
     setDiscoverError(null);
     setDiscoveringModels(false);
   }, [draft.api_key, draft.base_url, draft.provider_class]);
@@ -1199,6 +1227,7 @@ export function ProviderEditForm({
       const result = await discoverModels(requestDraft, { signal: controller.signal });
       if (controller.signal.aborted || discoverRequestRef.current !== requestId) return;
       setDiscoveredModels(result.models);
+      setManualModelEntry(false);
       const firstModel = result.models[0];
       if (firstModel && !draft.model_name.trim()) {
         setDraft((prev) => {
@@ -1229,17 +1258,25 @@ export function ProviderEditForm({
   const modelInvalid = draft.model_name.trim() === '';
   const baseInvalid = draft.base_url.trim() === '';
   const maxOutputTrimmed = draft.max_output_tokens.trim();
-  const maxOutputInvalid = maxOutputTrimmed !== '' && !/^[1-9]\d*$/.test(maxOutputTrimmed);
+  const maxOutputInvalid = maxOutputTrimmed !== ''
+    && (!/^[1-9]\d*$/.test(maxOutputTrimmed) || !Number.isSafeInteger(Number(maxOutputTrimmed)));
+  const thinkingInvalid = !isThinkingLevelValidForDraft(draft.thinking_level, modelLimits);
+  const minimumThinkingOutput = minimumThinkingOutputForDraft(draft.thinking_level, modelLimits);
+  const thinkingBudgetInvalid = !maxOutputInvalid && maxOutputTrimmed !== ''
+    && minimumThinkingOutput != null && Number(maxOutputTrimmed) < minimumThinkingOutput;
+  const acceptedThinkingLevels = modelLimits?.thinking.supported
+    ? modelLimits.thinking.accepted_levels
+    : [];
   const canSave = canSubmitProviderForm({
     saving,
     aliasInvalid,
     modelInvalid,
     baseInvalid,
-    maxOutputInvalid,
+    maxOutputInvalid: maxOutputInvalid || thinkingBudgetInvalid,
     modelLimitsLoading,
+    thinkingInvalid,
   });
-  const thinkingSupported = isThinkingSupportedForDraft(draft.provider_class, modelLimits);
-  const thinkingHintKey = thinkingSupported && modelLimits
+  const thinkingHintKey = modelLimits?.thinking.supported
     ? providerThinkingHintKey(modelLimits.provider_class)
     : null;
 
@@ -1248,7 +1285,7 @@ export function ProviderEditForm({
       className="provider-card__form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (canSave) onSave({ thinkingSupported });
+        if (canSave) onSave();
       }}
     >
       {isNew && (
@@ -1345,12 +1382,14 @@ export function ProviderEditForm({
           {t('Settings_page.provider_model_name_label')}
         </label>
         <div className="provider-card__model-discover">
-          {discoveredModels && discoveredModels.length > 0 ? (
+          {discoveredModels && discoveredModels.length > 0 && !manualModelEntry ? (
             <select
               id={`provider-model-${isNew ? 'new' : draft.alias}`}
               className="provider-card__select"
               value={draft.model_name}
               onChange={(e) => setField('model_name', e.target.value)}
+              required
+              aria-invalid={modelInvalid}
             >
               {!discoveredModels.includes(draft.model_name) && draft.model_name && (
                 <option value={draft.model_name}>{draft.model_name}</option>
@@ -1369,6 +1408,7 @@ export function ProviderEditForm({
               placeholder={example.model_name}
               required
               aria-invalid={modelInvalid}
+              spellCheck={false}
             />
           )}
           <button
@@ -1377,10 +1417,25 @@ export function ProviderEditForm({
             onClick={handleDiscoverModels}
             disabled={discoveringModels || !draft.base_url.trim() || !draft.api_key.trim()}
             title={t('Settings_page.provider_models_fetch')}
+            aria-label={t('Settings_page.provider_models_fetch')}
           >
-            {discoveringModels ? '…' : '↻'}
+            <RefreshCw size={16} aria-hidden="true" />
           </button>
         </div>
+        {discoveredModels && discoveredModels.length > 0 && (
+          <button
+            type="button"
+            className="provider-card__model-entry-toggle"
+            onClick={() => setManualModelEntry((previous) => !previous)}
+          >
+            {t(manualModelEntry
+              ? 'Settings_page.provider_model_choose_list'
+              : 'Settings_page.provider_model_enter_id')}
+          </button>
+        )}
+        {discoveredModels?.length === 0 && (
+          <p className="provider-card__hint" role="status">{t('Settings_page.provider_models_empty_manual')}</p>
+        )}
         {discoverError && <p className="provider-card__error provider-card__error--sm">{discoverError}</p>}
       </div>
 
@@ -1454,8 +1509,8 @@ export function ProviderEditForm({
             value={draft.max_output_tokens}
             onChange={(e) => setField('max_output_tokens', e.target.value)}
             placeholder={t('Settings_page.provider_max_output_ph')}
-            aria-invalid={maxOutputInvalid}
-            aria-describedby={`provider-maxout-hint-${isNew ? 'new' : draft.alias}`}
+            aria-invalid={maxOutputInvalid || thinkingBudgetInvalid}
+            aria-describedby={`provider-maxout-hint-${isNew ? 'new' : draft.alias}${thinkingBudgetInvalid ? ` provider-thinking-budget-error-${isNew ? 'new' : draft.alias}` : ''}`}
           />
           {maxOutputInvalid && (
             <p className="provider-card__error provider-card__error--sm" style={{ gridColumn: '1 / -1', marginTop: 0 }}>
@@ -1486,6 +1541,24 @@ export function ProviderEditForm({
           />
         </div>
       </details>
+
+      {modelLimitsLoading && (
+        <p className="provider-card__hint" role="status">
+          {t('Settings_page.provider_capabilities_loading')}
+        </p>
+      )}
+      {modelLimitsError && (
+        <div className="provider-card__preview-status" role="status">
+          <p className="provider-card__warning">{t('Settings_page.provider_capabilities_failed')}</p>
+          <button
+            type="button"
+            className="provider-card__btn provider-card__btn--secondary provider-card__btn--sm"
+            onClick={() => setPreviewRetry((previous) => previous + 1)}
+          >
+            {t('Settings_page.provider_capabilities_retry')}
+          </button>
+        </div>
+      )}
 
       {modelLimits && (
         <div className="provider-card__limits-info">
@@ -1520,6 +1593,14 @@ export function ProviderEditForm({
               </dd>
             </div>
             <div>
+              <dt>{t('Settings_page.limits_max_in')}</dt>
+              <dd>
+                {modelLimits.max_input_known && modelLimits.max_input_tokens != null
+                  ? formatTokenCount(modelLimits.max_input_tokens, locale)
+                  : t('Settings_page.limits_unknown')}
+              </dd>
+            </div>
+            <div>
               <dt>{t('Settings_page.limits_max_out')}</dt>
               <dd>
                 {modelLimits.max_output_known && modelLimits.max_output_tokens != null
@@ -1548,27 +1629,69 @@ export function ProviderEditForm({
         </div>
       )}
 
-      {thinkingSupported && (
-        <div className="provider-card__form-row">
-          <label
-            className="provider-card__form-label"
-            htmlFor={`provider-thinking-${isNew ? 'new' : draft.alias}`}
+      <div className="provider-card__form-row provider-card__thinking-row">
+        <label
+          className="provider-card__form-label"
+          htmlFor={`provider-thinking-${isNew ? 'new' : draft.alias}`}
+        >
+          {t('Settings_page.provider_thinking_label')}
+        </label>
+        <select
+          id={`provider-thinking-${isNew ? 'new' : draft.alias}`}
+          className="provider-card__select"
+          value={draft.thinking_level}
+          onChange={(e) => setField('thinking_level', e.target.value)}
+          disabled={saving || modelLimitsLoading}
+          aria-invalid={(thinkingInvalid && !modelLimitsLoading) || thinkingBudgetInvalid}
+          aria-describedby={`provider-thinking-hint-${isNew ? 'new' : draft.alias}${thinkingInvalid && !modelLimitsLoading ? ` provider-thinking-error-${isNew ? 'new' : draft.alias}` : ''}${thinkingBudgetInvalid ? ` provider-thinking-budget-error-${isNew ? 'new' : draft.alias}` : ''}`}
+        >
+          <option value="">{t('Settings_page.provider_thinking_level_default')}</option>
+          {draft.thinking_level && thinkingInvalid && (
+            <option value={draft.thinking_level} disabled>
+              {thinkingLevelSchema.safeParse(draft.thinking_level).success
+                ? t(`Settings_page.provider_thinking_level_${draft.thinking_level}`)
+                : draft.thinking_level}
+            </option>
+          )}
+          {acceptedThinkingLevels.map((level) => (
+            <option key={level} value={level}>{t(`Settings_page.provider_thinking_level_${level}`)}</option>
+          ))}
+        </select>
+        <p
+          id={`provider-thinking-hint-${isNew ? 'new' : draft.alias}`}
+          className="provider-card__hint"
+        >
+          {t('Settings_page.provider_thinking_default_hint')}
+        </p>
+        {modelLimits && !modelLimits.thinking.supported
+          && !modelLimits.thinking.warnings.includes('thinking_always_on') && (
+          <p className="provider-card__hint" role="status">
+            {t('Settings_page.provider_thinking_unsupported')}
+          </p>
+        )}
+        {thinkingInvalid && !modelLimitsLoading && (
+          <p
+            id={`provider-thinking-error-${isNew ? 'new' : draft.alias}`}
+            className="provider-card__error provider-card__error--sm"
+            role="alert"
           >
-            {t('Settings_page.provider_thinking_label')}
-          </label>
-          <select
-            id={`provider-thinking-${isNew ? 'new' : draft.alias}`}
-            className="provider-card__select"
-            value={draft.thinking_level}
-            onChange={(e) => setField('thinking_level', e.target.value)}
+            {t(modelLimits
+              ? 'Settings_page.provider_thinking_invalid'
+              : 'Settings_page.provider_thinking_unverified')}
+          </p>
+        )}
+        {thinkingBudgetInvalid && minimumThinkingOutput != null && (
+          <p
+            id={`provider-thinking-budget-error-${isNew ? 'new' : draft.alias}`}
+            className="provider-card__error provider-card__error--sm"
+            role="alert"
           >
-            <option value="none">{t('Settings_page.provider_thinking_level_none')}</option>
-            <option value="low">{t('Settings_page.provider_thinking_level_low')}</option>
-            <option value="medium">{t('Settings_page.provider_thinking_level_medium')}</option>
-            <option value="high">{t('Settings_page.provider_thinking_level_high')}</option>
-          </select>
-        </div>
-      )}
+            {t('Settings_page.provider_thinking_output_minimum', {
+              minimum: formatTokenCount(minimumThinkingOutput, locale),
+            })}
+          </p>
+        )}
+      </div>
 
       {saveError && (
         <div className="provider-card__probe-msg provider-card__probe-msg--error" role="alert">

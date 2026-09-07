@@ -211,29 +211,6 @@ const MAINTENANCE_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'ahadiff mark CLAIM_ID wrong', labelKey: 'Guide.maintenance_mark' },
 ];
 
-interface IntegrationTarget {
-  name: string;
-  posixOnly?: boolean;
-}
-
-const INTEGRATION_TARGETS: ReadonlyArray<IntegrationTarget> = [
-  { name: 'aider' },
-  { name: 'antigravity' },
-  { name: 'antigravity-cli' },
-  { name: 'claude' },
-  { name: 'cline' },
-  { name: 'codex' },
-  { name: 'continue' },
-  { name: 'copilot' },
-  { name: 'cursor' },
-  { name: 'gemini' },
-  { name: 'github-action' },
-  { name: 'hooks', posixOnly: true },
-  { name: 'opencode' },
-  { name: 'roo' },
-  { name: 'windsurf' },
-];
-
 interface NavTarget {
   id: string;
   labelKey: MessageKey;
@@ -249,97 +226,34 @@ const NAV_TARGETS: ReadonlyArray<NavTarget> = [
   { id: 'integrations', labelKey: 'Guide.nav_integrations' },
 ];
 
-const AGENT_MARKS: Record<string, string> = {
-  aider: 'AI',
-  antigravity: 'AG',
-  'antigravity-cli': 'AC',
-  claude: 'CC',
-  cline: 'CL',
-  codex: 'CD',
-  continue: 'CN',
-  copilot: 'CP',
-  cursor: 'CX',
-  gemini: 'GM',
-  'github-action': 'GH',
-  hooks: 'HK',
-  opencode: 'OC',
-  roo: 'RO',
-  windsurf: 'WS',
-};
-
-const AGENT_DISPLAY_NAMES: Record<string, string> = {
-  aider: 'Aider',
-  antigravity: 'Antigravity IDE',
-  'antigravity-cli': 'Antigravity CLI',
-  claude: 'Claude Code',
-  cline: 'Cline',
-  codex: 'Codex CLI',
-  continue: 'Continue',
-  copilot: 'Copilot / VS Code',
-  cursor: 'Cursor',
-  gemini: 'Gemini CLI',
-  'github-action': 'GitHub Action',
-  hooks: 'Git hooks',
-  opencode: 'OpenCode',
-  roo: 'Roo',
-  windsurf: 'Windsurf',
-};
-
-const AGENT_PATH_HINTS: Record<string, string> = {
-  aider: 'CONVENTIONS.md',
-  antigravity: '.agents/skills/ahadiff-antigravity/SKILL.md · .agents/rules/ahadiff.md',
-  'antigravity-cli': '.agents/skills/ahadiff-antigravity-cli/SKILL.md · GEMINI.md',
-  claude: '.claude/skills/ahadiff/SKILL.md',
-  cline: '.clinerules/ahadiff.md',
-  codex: '.agents/skills/ahadiff/SKILL.md',
-  continue: '.continue/rules/ahadiff.md',
-  copilot: '.github/instructions/ahadiff.instructions.md',
-  cursor: '.cursor/rules/ahadiff.mdc',
-  gemini: '.gemini/skills/ahadiff/SKILL.md',
-  'github-action': '.github/workflows/ahadiff-verify.yml',
-  hooks: '.git/hooks/post-commit',
-  opencode: '.opencode/agents/ahadiff.md',
-  roo: '.roo/rules/ahadiff.md',
-  windsurf: '.windsurf/rules/ahadiff.md',
-};
+type CatalogueState = 'loading' | 'ready' | 'error';
 
 function targetMark(name: string): string {
-  return AGENT_MARKS[name] ?? name.slice(0, 2).toUpperCase();
+  return name.split('-').map(part => part[0]).join('').slice(0, 2).toUpperCase();
 }
-
-function fallbackInstallTargets(status: InstallTarget['status']): InstallTarget[] {
-  return INTEGRATION_TARGETS.map((target) => ({
-    name: target.name,
-    display_name: AGENT_DISPLAY_NAMES[target.name] ?? target.name,
-    detected: false,
-    platform_supported: true,
-    status,
-    description: '',
-    install_command: `ahadiff install ${target.name}`,
-    uninstall_command: `ahadiff uninstall ${target.name}`,
-  }));
-}
-
-const SKILL_PREVIEW = `---
-name: ahadiff
-description: Turn git diffs into verified learning lessons.
-allowed-tools: Read, Grep, Bash
----
-
-1. Read the diff or run artifact.
-2. Ground every claim to file:line evidence.
-3. Write lesson, claims, quiz, and score outputs.`;
-
-const AGENTS_PREVIEW = `# AGENTS.md · AhaDiff
-
-When a code change lands:
-1. Run ahadiff learn on the relevant diff.
-2. Keep claims evidence-bound.
-3. Never upload secrets or local private files.
-4. Mark ungrounded claims as not_proven.`;
 
 export default function GuidePage() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const [targets, setTargets] = useState<InstallTarget[]>([]);
+  const [catalogueState, setCatalogueState] = useState<CatalogueState>('loading');
+  const [retryCount, setRetryCount] = useState(0);
+  const retryCatalogue = useCallback(() => setRetryCount(value => value + 1), []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setCatalogueState('loading');
+    setTargets([]);
+    getInstallTargets({ signal: controller.signal }).then(payload => {
+      if (controller.signal.aborted) return;
+      setTargets(payload.targets);
+      setCatalogueState('ready');
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      setCatalogueState('error');
+    });
+    return () => controller.abort();
+  }, [locale, retryCount]);
+
   const platform = useMemo<Platform>(() => detectPlatform(), []);
 
   const copyLabels = {
@@ -372,7 +286,7 @@ export default function GuidePage() {
           copyLabels={copyLabels}
         />
 
-        <AgentSkillsSection t={t} copyLabels={copyLabels} />
+        <AgentSkillsSection t={t} copyLabels={copyLabels} targets={targets} catalogueState={catalogueState} onRetry={retryCatalogue} />
 
         <AdvancedSection
           t={t}
@@ -386,7 +300,7 @@ export default function GuidePage() {
           titleId="guide-maintenance-title"
         />
 
-        <IntegrationsSection t={t} titleId="guide-integrations-title" />
+        <IntegrationsSection t={t} titleId="guide-integrations-title" targets={targets} catalogueState={catalogueState} onRetry={retryCatalogue} />
       </div>
     </AppShell>
   );
@@ -451,7 +365,7 @@ function WorkflowSection({ t }: { t: TranslateFn }) {
           const stepAria = t('Guide.workflow_step_aria', { n: stepNumber });
           return (
             <li className="guide-workflow__step-item" key={step.titleKey}>
-              <div className="guide-workflow__step" aria-label={stepAria}>
+              <div className="guide-workflow__step" role="group" aria-label={stepAria}>
                 <div className="guide-workflow__step-icon" aria-hidden="true">
                   <Icon size={22} />
                   <span className="guide-workflow__step-number">{stepNumber}</span>
@@ -584,30 +498,40 @@ function SetupSection({
   );
 }
 
-function getTargetCategory(targetName: string, hintCategory?: string): 'cli' | 'ide' | 'ci' {
-  if (hintCategory === 'cli' || hintCategory === 'ide' || hintCategory === 'ci') {
-    return hintCategory;
-  }
-  const cliTargets = ['claude', 'codex', 'antigravity-cli', 'gemini', 'aider', 'opencode'];
-  const ideTargets = ['antigravity', 'cursor', 'cline', 'continue', 'copilot', 'windsurf', 'roo'];
-  if (cliTargets.includes(targetName)) return 'cli';
-  if (ideTargets.includes(targetName)) return 'ide';
-  return 'ci';
+function CatalogueStatus({ state, empty, t, onRetry }: {
+  state: CatalogueState;
+  empty: boolean;
+  t: TranslateFn;
+  onRetry: () => void;
+}) {
+  if (state === 'ready' && !empty) return null;
+  return (
+    <div className="guide-agent-skills__empty" role={state === 'error' ? 'alert' : 'status'}>
+      <p>{t(state === 'loading' ? 'Guide.agent_loading' : state === 'error' ? 'Guide.agent_load_failed' : 'Guide.agent_empty')}</p>
+      {state === 'error' && (
+        <button type="button" className="guide-agent-skills__tab-chip" onClick={onRetry}>
+          {t('Guide.agent_retry')}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function AgentSkillsSection({
   t,
   copyLabels,
+  targets,
+  catalogueState,
+  onRetry,
 }: {
   t: TranslateFn;
   copyLabels: { copyLabel: string; copiedLabel: string };
+  targets: InstallTarget[];
+  catalogueState: CatalogueState;
+  onRetry: () => void;
 }) {
-  const { locale } = useTranslation();
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [printExpanded, setPrintExpanded] = useState(false);
-  const [targets, setTargets] = useState<InstallTarget[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
   const [activeCategory, setActiveCategory] = useState<'all' | 'cli' | 'ide' | 'ci'>('all');
   const buttonRefs = useRef<HTMLButtonElement[]>([]);
 
@@ -631,60 +555,21 @@ function AgentSkillsSection({
     };
   }, []);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    getInstallTargets({ signal: controller.signal }).then((payload) => {
-      if (!controller.signal.aborted) {
-        setTargets(payload.targets);
-        setLoaded(true);
-        setFailed(false);
-      }
-    }).catch((err: unknown) => {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      if (!controller.signal.aborted) {
-        setTargets([]);
-        setLoaded(true);
-        setFailed(true);
-      }
-    });
-    return () => controller.abort();
-  }, [locale]);
-
-  const displayTargets = useMemo(
-    () =>
-      targets.length > 0
-        ? targets
-        : failed
-          ? fallbackInstallTargets('error')
-          : loaded
-            ? []
-            : fallbackInstallTargets('available'),
-    [failed, loaded, targets],
-  );
-
-  const integrationMeta = useMemo(() => {
-    const map = new Map<string, IntegrationTarget>();
-    for (const target of INTEGRATION_TARGETS) {
-      map.set(target.name, target);
-    }
-    return map;
-  }, []);
-
   const { allCount, cliCount, ideCount, ciCount } = useMemo(() => {
     let cli = 0, ide = 0, ci = 0;
-    displayTargets.forEach(t => {
-      const cat = getTargetCategory(t.name, t.usage_hint?.tool_category);
+    targets.forEach(t => {
+      const cat = t.usage_hint?.tool_category;
       if (cat === 'cli') cli++;
       else if (cat === 'ide') ide++;
       else if (cat === 'ci') ci++;
     });
     return {
-      allCount: displayTargets.length,
+      allCount: targets.length,
       cliCount: cli,
       ideCount: ide,
       ciCount: ci,
     };
-  }, [displayTargets]);
+  }, [targets]);
 
   const categories = [
     { id: 'all', labelKey: 'Guide.agent_category_all' as const, count: allCount },
@@ -715,12 +600,12 @@ function AgentSkillsSection({
   };
 
   const filteredTargets = useMemo(() => {
-    if (activeCategory === 'all') return displayTargets;
-    return displayTargets.filter(t => {
-      const cat = getTargetCategory(t.name, t.usage_hint?.tool_category);
+    if (activeCategory === 'all') return targets;
+    return targets.filter(t => {
+      const cat = t.usage_hint?.tool_category;
       return cat === activeCategory;
     });
-  }, [displayTargets, activeCategory]);
+  }, [targets, activeCategory]);
 
   return (
     <section
@@ -772,20 +657,16 @@ function AgentSkillsSection({
         role="tabpanel"
         aria-label={t('Guide.agent_skills_title')}
       >
-        {filteredTargets.length === 0 && (
-          <p className="guide-agent-skills__empty">{t('Guide.agent_empty')}</p>
-        )}
+        <CatalogueStatus state={catalogueState} empty={filteredTargets.length === 0} t={t} onRetry={onRetry} />
         {filteredTargets.map((target) => {
           const name = target.name;
-          const status = loaded && failed ? 'error' : target.status;
+          const status = target.status;
           const displayName = target.display_name || name;
           const command = target.install_command ?? `ahadiff install ${name}`;
           const writes = target?.manifest?.write ?? [];
           const pathHint = writes.find((action) => action.file_strategy === 'generated')?.path
             ?? writes[0]?.path
-            ?? AGENT_PATH_HINTS[name]
             ?? '';
-          const meta = integrationMeta.get(name);
           const isExpanded = expandedCard === name;
           const renderPanelContent = isExpanded || printExpanded;
           return (
@@ -804,10 +685,8 @@ function AgentSkillsSection({
                       <span className={`guide-agent-card__status guide-agent-card__status--${status}`}>
                         {t(`Guide.agent_status_${status}` as MessageKey)}
                       </span>
-                      {meta?.posixOnly && (
-                        <span className="guide-agent-card__platform-badge">
-                          {t('Guide.integrations_posix_only')}
-                        </span>
+                      {target.lifecycle === 'preview' && (
+                        <span className="guide-agent-card__platform-badge">{t('Guide.agent_lifecycle_preview')}</span>
                       )}
                     </span>
                     <span className="guide-agent-card__name">{displayName}</span>
@@ -824,6 +703,11 @@ function AgentSkillsSection({
               >
                 {renderPanelContent && (
                   <div className="guide-agent-card__content-inner">
+                    <p>{target.description}</p>
+                    {target.lifecycle_note && <p>{target.lifecycle_note}</p>}
+                    {target.documentation_url?.startsWith('https://') && (
+                      <a href={target.documentation_url} target="_blank" rel="noreferrer">{t('Guide.agent_native_docs')}</a>
+                    )}
                     <div className="guide-agent-card__install">
                       <CommandBlock command={command} {...copyLabels} />
                     </div>
@@ -892,18 +776,7 @@ function AgentSkillsSection({
         </div>
       </div>
 
-      {(failed || targets.length === 0) && (
-        <div className="guide-agent-previews">
-          <article className="guide-agent-preview">
-            <div className="guide-agent-preview__title">SKILL.md</div>
-            <pre className="guide-agent-preview__code">{SKILL_PREVIEW}</pre>
-          </article>
-          <article className="guide-agent-preview">
-            <div className="guide-agent-preview__title">{t('Guide.agent_preview_agents_title')}</div>
-            <pre className="guide-agent-preview__code">{AGENTS_PREVIEW}</pre>
-          </article>
-        </div>
-      )}
+
     </section>
   );
 }
@@ -1004,7 +877,13 @@ function MaintenanceSection({
   );
 }
 
-function IntegrationsSection({ t, titleId }: { t: TranslateFn; titleId: string }) {
+function IntegrationsSection({ t, titleId, targets, catalogueState, onRetry }: {
+  t: TranslateFn;
+  titleId: string;
+  targets: InstallTarget[];
+  catalogueState: CatalogueState;
+  onRetry: () => void;
+}) {
   return (
     <section
       id="integrations"
@@ -1030,15 +909,13 @@ function IntegrationsSection({ t, titleId }: { t: TranslateFn; titleId: string }
         <div className="guide-accordion__body">
           <p className="guide-integrations__desc">{t('Guide.integrations_desc')}</p>
           <p className="guide-integrations__scope">{t('Guide.integrations_scope_note')}</p>
+          <p className="guide-integrations__scope">{t('Guide.integrations_migration_note')}</p>
+          <CatalogueStatus state={catalogueState} empty={targets.length === 0} t={t} onRetry={onRetry} />
           <ul className="guide-integrations__list" role="list">
-            {INTEGRATION_TARGETS.map((target) => (
+            {targets.map((target) => (
               <li className="guide-integrations__item" key={target.name}>
-                <span className="guide-integrations__name">{target.name}</span>
-                {target.posixOnly && (
-                  <span className="guide-integrations__badge">
-                    {t('Guide.integrations_posix_only')}
-                  </span>
-                )}
+                <span className="guide-integrations__name">{target.display_name}</span>
+
               </li>
             ))}
           </ul>

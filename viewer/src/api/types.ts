@@ -856,7 +856,7 @@ export interface ProviderCreateInput {
   /** Env-var NAME holding the credential (legacy / advanced). Optional when `api_key` is provided. */
   api_key_env?: string;
   max_output_tokens?: number | null;
-  thinking_level?: string | null;
+  thinking_level?: ThinkingLevel | null;
   model_limits_name?: string | null;
   scope?: 'repo' | 'global';
 }
@@ -869,7 +869,7 @@ export interface ProviderUpdateInput {
   api_key?: string | null;
   api_key_env?: string;
   max_output_tokens?: number | null;
-  thinking_level?: string | null;
+  thinking_level?: ThinkingLevel | null;
   model_limits_name?: string | null;
   scope?: 'repo' | 'global';
 }
@@ -949,6 +949,17 @@ export interface ModelLimitsWarning {
   params: Record<string, unknown>;
 }
 
+export type ThinkingLevel = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'enabled';
+
+export interface ModelThinkingSupport {
+  supported: boolean;
+  accepted_levels: ThinkingLevel[];
+  payload_mode: string;
+  warnings: string[];
+  /** Minimum total output allowance for an explicit thinking setting, when required. */
+  minimum_output_tokens?: Partial<Record<ThinkingLevel, number>>;
+}
+
 export interface ModelLimitsResponse {
   alias: string | null;
   provider_class: string;
@@ -963,5 +974,5 @@ export interface ModelLimitsResponse {
   source: 'live' | 'registry' | 'default' | 'mixed';
   confidence: 'high' | 'medium' | 'low' | null;
   warnings: ModelLimitsWarning[];
-  thinking: Record<string, unknown>;
+  thinking: ModelThinkingSupport;
 }

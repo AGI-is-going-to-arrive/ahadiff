@@ -1036,7 +1036,11 @@ def _write_provider_env_lines_atomic(
             temp_path = Path(handle.name)
             handle.write(rendered)
             try:
-                os.fchmod(handle.fileno(), 0o600)
+                change_fd_mode = getattr(os, "fchmod", None)
+                if change_fd_mode is None:
+                    temp_path.chmod(0o600)
+                else:
+                    change_fd_mode(handle.fileno(), 0o600)
             except (AttributeError, OSError, NotImplementedError):
                 temp_path.chmod(0o600)
             # On Windows this mode is advisory; global .env confidentiality
@@ -1439,8 +1443,13 @@ def _flatten_config_file(
     *,
     validate_repo_provider_env: bool = False,
     warn_skip_invalid_provider_env: bool = False,
+    config_data: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Scalar], dict[str, Scalar], tuple[str, ...]]:
-    data = _read_toml(path)
+    if config_data is None:
+        data = _read_toml(path)
+    else:
+        data = config_data
+        _validate_config_table_shapes(data)
     flattened = _flatten_mapping(data)
     unknown = tuple(sorted(key for key in flattened if not _is_supported_key(key)))
     for key in unknown:
@@ -1661,6 +1670,8 @@ def _load_config_snapshot(
     cli_overrides: Mapping[str, Any] | None = None,
     env: Mapping[str, str] | None = None,
     global_config_root: Path | None = None,
+    repo_config_data: Mapping[str, Any] | None = None,
+    global_config_data: Mapping[str, Any] | None = None,
 ) -> ConfigSnapshot:
     env_map = os.environ if env is None else env
     repo_path = root / ".ahadiff" / "config.toml"
@@ -1672,11 +1683,13 @@ def _load_config_snapshot(
     repo_flattened, repo_values, repo_unknown = _flatten_config_file(
         repo_path,
         validate_repo_provider_env=True,
+        config_data=repo_config_data,
     )
     global_flattened, global_values, global_unknown = _flatten_config_file(
         global_path,
         validate_repo_provider_env=True,
         warn_skip_invalid_provider_env=True,
+        config_data=global_config_data,
     )
     cli_values = _normalize_cli_overrides(cli_overrides)
     env_values = _collect_env_overrides(env_map)
@@ -1774,6 +1787,30 @@ def load_workspace_config(
         cli_overrides=cli_overrides,
         env=env,
         global_config_root=global_config_root,
+    )
+
+
+def preview_workspace_config(
+    workspace_root: Path,
+    repo_config_data: Mapping[str, Any],
+    *,
+    env: Mapping[str, str] | None = None,
+    global_config_root: Path | None = None,
+    global_config_data: Mapping[str, Any] | None = None,
+) -> ConfigSnapshot:
+    """Validate prospective repo data with normal global/environment precedence.
+
+    Replacement payloads are validated before layer resolution, allowing an
+    editor to repair an invalid stored value without writing it first. Neither
+    repo nor global configuration is modified.
+    """
+    root = _resolve_config_root(workspace_root, allow_non_git=True)
+    return _load_config_snapshot(
+        root,
+        env=env,
+        global_config_root=global_config_root,
+        repo_config_data=repo_config_data,
+        global_config_data=global_config_data,
     )
 
 
@@ -2050,6 +2087,7 @@ __all__ = [
     "normalize_provider_base_url",
     "original_ambient_provider_key_env_names",
     "parse_provider_query_pairs",
+    "preview_workspace_config",
     "provider_core_fingerprint",
     "remove_global_env_var",
     "remove_provider_env_var",

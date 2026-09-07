@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 from urllib.request import urlopen
@@ -34,12 +35,6 @@ PROVIDER_ALIASES = {
     "together_ai": "openai_compat",
     "xai": "openai_compat",
 }
-DEEPSEEK_DIRECT_ONE_MIB_CONTEXT_MODELS = {
-    "deepseek-v4-flash",
-    "deepseek-v4-pro",
-    "deepseek-chat",
-    "deepseek-reasoner",
-}
 
 
 def main() -> int:
@@ -47,20 +42,27 @@ def main() -> int:
         description="Curate AhaDiff's vendored model limit registry from LiteLLM metadata."
     )
     parser.add_argument("--url", default=DEFAULT_LITELLM_REGISTRY_URL)
+    parser.add_argument("--input", type=Path, help="Read a saved LiteLLM snapshot without network.")
     parser.add_argument(
         "--out",
         type=Path,
         default=Path("src/ahadiff/llm/model_registry.json"),
     )
-    parser.add_argument("--limit", type=int, default=80)
-    parser.add_argument("--source-tag", default="LS-2026-05-22")
+    parser.add_argument("--limit", type=int, help="Optional cap; all supported models by default.")
+    parser.add_argument("--source-tag", default=None)
     args = parser.parse_args()
 
-    raw_registry = _download_registry(args.url)
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be positive")
+    raw_registry = (
+        _parse_registry(args.input.read_text(encoding="utf-8"))
+        if args.input is not None
+        else _download_registry(args.url)
+    )
     entries = _curate_entries(
         raw_registry,
-        limit=max(1, args.limit),
-        source_tag=args.source_tag,
+        limit=args.limit,
+        source_tag=args.source_tag or _default_source_tag(args.url),
     )
     payload = {"schema_version": 2, "models": entries}
     args.out.write_text(
@@ -73,17 +75,25 @@ def main() -> int:
 
 def _download_registry(url: str) -> dict[str, Any]:
     with urlopen(url, timeout=30) as response:  # noqa: S310 - dev-time script only
-        payload = json.loads(response.read().decode("utf-8"))
+        return _parse_registry(response.read().decode("utf-8"))
+
+
+def _parse_registry(raw_text: str) -> dict[str, Any]:
+    payload = json.loads(raw_text)
     if not isinstance(payload, dict):
         raise ValueError("LiteLLM registry payload must be a JSON object")
     return cast("dict[str, Any]", payload)
 
 
+def _default_source_tag(url: str = DEFAULT_LITELLM_REGISTRY_URL) -> str:
+    return f"{url}; retrieved {datetime.now(UTC).date().isoformat()}"
+
+
 def _curate_entries(
     registry: dict[str, Any],
     *,
-    limit: int,
-    source_tag: str = "LS-2026-05-22",
+    limit: int | None = None,
+    source_tag: str | None = None,
 ) -> list[dict[str, object]]:
     curated: list[dict[str, object]] = []
     for model, raw_entry in sorted(registry.items()):
@@ -127,9 +137,6 @@ def _curate_entries(
         max_context = top_provider_context if provider == "openrouter" else raw_context
         if provider == "openrouter" and top_provider_context is not None:
             max_input = top_provider_context
-        if provider == "openai_compat" and model_name in DEEPSEEK_DIRECT_ONE_MIB_CONTEXT_MODELS:
-            max_context = 1_048_576
-            max_input = 1_048_576
         if context_policy == "split_envelope" and max_input is not None and max_output is not None:
             max_context = max_input + max_output
         if max_context is None and context_policy != "local_runtime":
@@ -155,12 +162,12 @@ def _curate_entries(
                 "max_input_tokens": max_input,
                 "max_output_tokens": max_output,
                 "context_policy": context_policy,
-                "source": source_tag,
+                "source": source_tag or _default_source_tag(),
                 "confidence": "medium",
                 "warnings": warnings,
             }
         )
-        if len(curated) >= limit:
+        if limit is not None and len(curated) >= limit:
             break
     return curated
 
@@ -205,7 +212,9 @@ def _aliases_for_model(model: str, entry: dict[str, Any]) -> list[str]:
         if isinstance(raw_value, str) and raw_value and raw_value != model:
             aliases.append(raw_value)
         elif isinstance(raw_value, list):
-            aliases.extend(str(item) for item in raw_value if isinstance(item, str) and item)
+            aliases.extend(
+                item for item in cast("list[object]", raw_value) if isinstance(item, str) and item
+            )
     return sorted(set(aliases))
 
 

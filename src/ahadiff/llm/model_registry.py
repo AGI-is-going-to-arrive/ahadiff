@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any, Literal, cast
@@ -92,11 +92,36 @@ def lookup_model_limits(
             explicit_lookup,
         )
 
-    return _lookup_model_limits_for_providers(
+    match = _lookup_model_limits_for_providers(
         entries,
         provider_names,
         lookup_name,
         explicit_lookup,
+    )
+    if match is not None or explicit_lookup:
+        return match
+    # A relay's wire protocol does not identify the model vendor. Match a known
+    # model across cloud transports, but keep the deployment limits advisory.
+    if provider_class.strip().lower() not in {
+        "openai",
+        "openai_responses",
+        "openai_compat",
+        "newapi",
+        "azure",
+    }:
+        return None
+    cloud_providers = ("openai", "anthropic", "gemini", "openai_compat", "openrouter")
+    match = _lookup_model_limits_for_providers(entries, cloud_providers, lookup_name, True)
+    if match is None:
+        return None
+    return replace(
+        match,
+        context_policy="local_runtime"
+        if match.context_policy == "local_runtime"
+        else "route_specific",
+        confidence="medium" if match.confidence == "high" else match.confidence,
+        warnings=match.warnings
+        + ("model profile matched across API protocols; relay limits may differ",),
     )
 
 

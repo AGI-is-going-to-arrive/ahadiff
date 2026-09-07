@@ -1060,8 +1060,9 @@ def test_extract_claim_candidates_from_run_caps_request_max_output_tokens(
 
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content.decode("utf-8"))
-        sent_max_tokens.append(payload.get("max_tokens"))
-        assert payload["max_tokens"] == expected_max_tokens
+        sent_max_tokens.append(payload.get("max_completion_tokens"))
+        assert payload["max_completion_tokens"] == expected_max_tokens
+        assert "max_tokens" not in payload
         return httpx.Response(200, json=_claim_extract_response(run_id))
 
     with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:

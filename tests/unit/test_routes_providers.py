@@ -2405,7 +2405,8 @@ def test_get_provider_model_limits_returns_registry_metadata(tmp_path: Path) -> 
     assert payload["max_output_known"] is True
     assert payload["context_policy"] == "shared_pool"
     assert payload["confidence"] == "high"
-    assert payload["thinking"]["supported"] is False
+    assert payload["thinking"]["supported"] is True
+    assert payload["thinking"]["payload_mode"] == "reasoning_effort"
     assert "hint_key" not in payload["thinking"]
 
 
@@ -2555,7 +2556,7 @@ def test_model_limits_preview_warns_for_route_specific_and_low_confidence(
         json={
             "provider_class": "newapi",
             "model_name": "served-model",
-            "model_limits_name": "openrouter/qwen/qwen3.5-35b-a3b",
+            "model_limits_name": "openai_compat/Llama-4-Maverick",
         },
     )
 
@@ -2598,6 +2599,183 @@ def test_provider_create_clamps_max_output_tokens_to_known_hard_limit(
     ]
     snapshot = load_config(tmp_path)
     assert snapshot.values["providers"]["demo"]["max_output_tokens"] == 128000
+
+
+def test_provider_thinking_none_and_default_round_trip_and_invalid_update_is_atomic(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    with _client(state_dir) as client:
+        created = client.post(
+            "/api/providers",
+            headers=_AUTH,
+            json=_provider_payload(
+                model_name="gpt-5.6-luna",
+                provider_class="openai_responses",
+                thinking_level="none",
+            ),
+        )
+        assert created.status_code == 201
+        assert created.json()["provider"]["thinking_level"] == "none"
+        invalid = client.put(
+            "/api/providers/demo",
+            headers=_AUTH,
+            json={
+                "model_name": "gpt-6-astra",
+                "thinking_level": "none",
+            },
+        )
+        assert invalid.status_code == 422
+        saved = load_config(tmp_path).values["providers"]["demo"]
+        assert saved["model_name"] == "gpt-5.6-luna"
+        assert saved["thinking_level"] == "none"
+        cleared = client.put("/api/providers/demo", headers=_AUTH, json={"thinking_level": None})
+        assert cleared.status_code == 200
+        assert cleared.json()["provider"]["thinking_level"] is None
+        assert not load_config(tmp_path).values["providers"]["demo"].get("thinking_level")
+
+
+@pytest.mark.parametrize(
+    ("provider_class", "model", "level"),
+    [
+        ("openai_responses", "gpt-5.6-luna", "xhigh"),
+        ("openai", "gpt-5.6-luna", "max"),
+        ("openai", "gpt-5", "minimal"),
+        ("ollama", "qwen3:8b", "enabled"),
+    ],
+)
+def test_provider_summary_keeps_new_thinking_levels(
+    tmp_path: Path,
+    provider_class: str,
+    model: str,
+    level: str,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    with _client(tmp_path / ".ahadiff") as client:
+        created = client.post(
+            "/api/providers",
+            headers=_AUTH,
+            json=_provider_payload(
+                provider_class=provider_class,
+                model_name=model,
+                thinking_level=level,
+            ),
+        )
+        assert created.status_code == 201
+        assert created.json()["provider"]["thinking_level"] == level
+        listed = client.get("/api/providers", headers=_AUTH)
+        assert listed.status_code == 200
+        assert listed.json()["providers"][0]["thinking_level"] == level
+
+
+def test_provider_output_cap_accepts_current_models_above_one_million() -> None:
+    from ahadiff.contracts.serve_providers import ProviderCreateRequest
+
+    parsed = ProviderCreateRequest.model_validate(
+        _provider_payload(
+            model_name="kimi-k3",
+            max_output_tokens=1_048_576,
+        )
+    )
+    assert parsed.max_output_tokens == 1_048_576
+
+
+def test_provider_rejects_thinking_budget_larger_than_output_cap(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    with _client(state_dir) as client:
+        response = client.post(
+            "/api/providers",
+            headers=_AUTH,
+            json=_provider_payload(
+                provider_class="anthropic",
+                model_name="claude-sonnet-4-5",
+                base_url="https://api.anthropic.com",
+                thinking_level="high",
+                max_output_tokens=4096,
+                api_key="synthetic-budget-test-key",
+            ),
+        )
+    assert response.status_code == 422
+    assert "max_output_tokens" in response.json()["error"]
+    assert not (state_dir / ".env").exists()
+    assert not (state_dir / "config.toml").exists()
+
+
+def test_provider_thinking_update_cannot_break_active_role_model(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    with _client(state_dir) as client:
+        created = client.post(
+            "/api/providers",
+            headers=_AUTH,
+            json=_provider_payload(
+                provider_class="openai_responses",
+                model_name="gpt-5.6-luna",
+            ),
+        )
+        assert created.status_code == 201
+        selected = client.put(
+            "/api/config",
+            headers=_AUTH,
+            json={
+                "judge_provider": "demo",
+                "judge_model": "gpt-6-astra",
+            },
+        )
+        assert selected.status_code == 200
+        before = (state_dir / "config.toml").read_bytes()
+        rejected = client.put("/api/providers/demo", headers=_AUTH, json={"thinking_level": "none"})
+        assert rejected.status_code == 422
+        assert "judge" in rejected.json()["error"]
+        assert (state_dir / "config.toml").read_bytes() == before
+
+
+def test_incompatible_legacy_role_does_not_block_creating_replacement_provider(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    (state_dir / "config.toml").write_text(
+        '[llm]\njudge_provider="legacy"\njudge_model="gpt-6-astra"\n'
+        '[providers.legacy]\nprovider_class="openai_responses"\n'
+        'model_name="gpt-5.6-luna"\nthinking_level="none"\n'
+        'base_url="https://api.example.test/v1"\napi_key_env="AHADIFF_LEGACY_TEST_KEY"\n',
+        encoding="utf-8",
+    )
+    with _client(state_dir) as client:
+        response = client.post(
+            "/api/providers",
+            headers=_AUTH,
+            json=_provider_payload(
+                alias="replacement",
+                model_name="gpt-6-astra",
+                provider_class="openai_responses",
+                thinking_level="low",
+            ),
+        )
+    assert response.status_code == 201
+    assert response.json()["provider"]["alias"] == "replacement"
+
+
+def test_provider_thinking_invalid_create_does_not_persist_credentials(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    state_dir = tmp_path / ".ahadiff"
+    with _client(state_dir) as client:
+        response = client.post(
+            "/api/providers",
+            headers=_AUTH,
+            json=_provider_payload(
+                model_name="gpt-6-astra",
+                thinking_level="none",
+                api_key="synthetic-invalid-test-key",
+            ),
+        )
+    assert response.status_code == 422
+    assert not (state_dir / ".env").exists()
+    assert not (state_dir / "config.toml").exists()
 
 
 def test_provider_update_clamps_and_null_clears_max_output_tokens(

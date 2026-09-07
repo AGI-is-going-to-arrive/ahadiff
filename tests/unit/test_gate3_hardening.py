@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from typing import TYPE_CHECKING
 
 import pytest
@@ -1156,11 +1157,14 @@ def _score_report(run_id: str) -> ScoreReport:
     )
 
 
-def test_gate3_result_events_support_concurrent_writes(tmp_path: Path) -> None:
+@pytest.mark.parametrize("workers", [4, 8])
+def test_gate3_result_events_support_concurrent_writes(tmp_path: Path, workers: int) -> None:
     run_path = tmp_path / ".ahadiff" / "runs" / "run-concurrent"
     run_path.mkdir(parents=True)
+    ready = Barrier(workers)
 
     def write_event(index: int) -> bool:
+        ready.wait(timeout=10)
         outcome = append_result(
             run_path=run_path,
             report=_score_report("run-concurrent"),
@@ -1173,7 +1177,7 @@ def test_gate3_result_events_support_concurrent_writes(tmp_path: Path) -> None:
         )
         return outcome.sqlite_inserted
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         inserted = list(executor.map(write_event, range(8)))
 
     assert inserted == [True] * 8

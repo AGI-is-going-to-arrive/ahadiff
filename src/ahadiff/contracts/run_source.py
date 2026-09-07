@@ -33,7 +33,9 @@ ProviderClass: TypeAlias = Literal[
     "openai_compat",
 ]
 TokenizerEstimation: TypeAlias = Literal["tiktoken", "char_div_4", "probe_cached"]
-ThinkingLevel: TypeAlias = Literal["none", "low", "medium", "high"]
+ThinkingLevel: TypeAlias = Literal[
+    "none", "minimal", "low", "medium", "high", "xhigh", "max", "enabled"
+]
 DegradedFlagsMap: TypeAlias = dict[DegradedFlag, bool]
 ProviderCapabilityOverride: TypeAlias = Literal[
     "supports_stream",

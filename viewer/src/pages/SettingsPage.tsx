@@ -1,8 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
 import Skeleton, { SkeletonGroup } from '../components/Skeleton';
 import LanguageSwitcher from '../components/LanguageSwitcher';
-import ProviderCard from '../components/ProviderCard';
+import ProviderCard, { PROVIDER_ERROR_KEY_BY_CODE } from '../components/ProviderCard';
 import DiagnosticRow, { type DiagnosticStatus } from '../components/DiagnosticRow';
 import { ApiError } from '../api/client';
 import {
@@ -34,8 +34,7 @@ import { actionLabel, strategyLabel } from '../utils/integrationLabels';
 import '../components/Settings.css';
 import UsagePanel from '../components/UsagePanel';
 import DemoWidget from '../components/DemoWidget';
-
-const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
+import GraphifyCard from '../components/GraphifyCard';
 
 type TabId = 'account' | 'provider' | 'capture' | 'privacy' | 'audit' | 'preferences' | 'integrations';
 
@@ -89,6 +88,7 @@ interface InstallActionState {
   pending?: InstallActionKind;
   message?: string;
   error?: string;
+  warning?: string;
   previewTarget?: InstallTarget;
   manifestHash?: string;
   previewCollapsed?: boolean;
@@ -132,11 +132,13 @@ export default function SettingsPage() {
   const [printMode, setPrintMode] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const hasLoadedRef = useRef(false);
+  const catalogueRequestIdRef = useRef(0);
 
   const fetchAll = useCallback(async () => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    const catalogueRequestId = ++catalogueRequestIdRef.current;
     // Only show the full-page skeleton (which unmounts the tab tree) on the
     // first load. Locale-triggered refetches must keep tabs mounted so that
     // in-progress local state (provider draft/edit mode, quiz mode toggle) is
@@ -150,22 +152,26 @@ export default function SettingsPage() {
         getUsage(s), getAudit(20, 0, s), getInstallTargets(s),
       ]);
       if (controller.signal.aborted) return;
-      setData({
+      setData((current) => ({
         config: cfg.status === 'fulfilled' ? cfg.value : null,
         checks: doc.status === 'fulfilled' ? doc.value.checks : [],
         providers: prov.status === 'fulfilled' ? prov.value.providers : [],
         usage: usg.status === 'fulfilled' ? usg.value : null,
         audit: aud.status === 'fulfilled' ? aud.value : null,
-        installTargets: inst.status === 'fulfilled' ? inst.value.targets : [],
+        installTargets: catalogueRequestId === catalogueRequestIdRef.current
+          ? (inst.status === 'fulfilled' ? [...inst.value.targets, ...(inst.value.legacy_targets ?? [])] : [])
+          : current.installTargets,
         failed: {
           config: cfg.status === 'rejected',
           doctor: doc.status === 'rejected',
           providers: prov.status === 'rejected',
           usage: usg.status === 'rejected',
           audit: aud.status === 'rejected',
-          installTargets: inst.status === 'rejected',
+          installTargets: catalogueRequestId === catalogueRequestIdRef.current
+            ? inst.status === 'rejected'
+            : current.failed.installTargets,
         },
-      });
+      }));
     } catch (e) {
       if (controller.signal.aborted) return;
       setError(e instanceof Error ? e.message : 'fetch_failed');
@@ -178,11 +184,12 @@ export default function SettingsPage() {
   }, [locale]);
 
   const refreshInstallTargets = useCallback(async (opts?: { signal?: AbortSignal }) => {
+    const requestId = ++catalogueRequestIdRef.current;
     const inst = await getInstallTargets(opts);
-    if (opts?.signal?.aborted) return;
+    if (opts?.signal?.aborted || requestId !== catalogueRequestIdRef.current) return;
     setData((current) => ({
       ...current,
-      installTargets: inst.targets,
+      installTargets: [...inst.targets, ...(inst.legacy_targets ?? [])],
       failed: {
         ...current.failed,
         installTargets: false,
@@ -707,6 +714,12 @@ function ModelLimitSummary({
           </span>
         </div>
         <div className="settings-model-context-bar__stat">
+          <span className="settings-model-context-bar__stat-label">{t('Settings_page.limits_max_in')}</span>
+          <span className="settings-model-context-bar__stat-val">
+            {formattedLimitValue(limits.max_input_tokens, limits.max_input_known, t)}
+          </span>
+        </div>
+        <div className="settings-model-context-bar__stat">
           <span className="settings-model-context-bar__stat-label">{t('Settings_page.limits_max_out')}</span>
           <span className="settings-model-context-bar__stat-val">
             {formattedLimitValue(limits.max_output_tokens, limits.max_output_known, t)}
@@ -762,7 +775,7 @@ function ProviderTab({
 }) {
   const [form, setForm] = useState<ProviderForm | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveErrorKey, setSaveErrorKey] = useState<MessageKey | null>(null);
   const [saveOk, setSaveOk] = useState(false);
   const [showNewProvider, setShowNewProvider] = useState(false);
   const seededProviderConfigRef = useRef<ProviderForm | null>(null);
@@ -785,14 +798,22 @@ function ProviderTab({
     const payload = buildProviderConfigUpdatePayload(form, config);
     if (Object.keys(payload).length === 0) return;
     setSaving(true);
-    setSaveError(null);
+    setSaveErrorKey(null);
     setSaveOk(false);
     try {
       await putConfig(payload);
       setSaveOk(true);
       onSaved();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'save failed');
+      const errorCode = e instanceof ApiError ? e.errorCode : null;
+      if (errorCode === 'INPUT_BAD_FIELD' || errorCode === 'INPUT_VALIDATION') {
+        setSaveErrorKey('Settings_page.provider_role_settings_invalid');
+      } else {
+        const mappedKey = errorCode && Object.prototype.hasOwnProperty.call(PROVIDER_ERROR_KEY_BY_CODE, errorCode)
+          ? PROVIDER_ERROR_KEY_BY_CODE[errorCode]
+          : undefined;
+        setSaveErrorKey(mappedKey ?? 'Settings_page.provider_save_failed');
+      }
     } finally {
       setSaving(false);
     }
@@ -1095,7 +1116,7 @@ function ProviderTab({
                 {saving ? t('Settings_page.capture_saving') : t('Settings_page.capture_save')}
               </button>
               {saveOk && <span className="settings-field__badge settings-field__badge--configured">{t('Settings_page.capture_saved')}</span>}
-              {saveError && <span className="settings-field__badge settings-field__badge--missing">{saveError}</span>}
+              {saveErrorKey && <span className="settings-field__badge settings-field__badge--missing" role="alert">{t(saveErrorKey)}</span>}
               {dirty && <span className="u-muted-sm">{t('Settings_page.capture_unsaved')}</span>}
             </div>
           </div>
@@ -2336,6 +2357,7 @@ function IntegrationsTab({
   const mountedRef = useRef(true);
   const copiedResetTimerRef = useRef<number | null>(null);
   const actionAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const pendingTargetsRef = useRef<Set<string>>(new Set());
   const pendingUsageFocusRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -2350,6 +2372,9 @@ function IntegrationsTab({
 
   useEffect(() => {
     setLocalTargets(targets);
+    setActionState(current => Object.fromEntries(
+      Object.entries(current).map(([name, state]) => [name, { ...state, warning: undefined }]),
+    ));
   }, [targets]);
 
   useEffect(() => {
@@ -2386,6 +2411,8 @@ function IntegrationsTab({
   }, []);
 
   const runAction = useCallback(async (target: InstallTarget, kind: InstallActionKind) => {
+    if (pendingTargetsRef.current.has(target.name)) return;
+    pendingTargetsRef.current.add(target.name);
     const controller = new AbortController();
     actionAbortControllersRef.current.add(controller);
     setActionState((current) => ({
@@ -2394,6 +2421,7 @@ function IntegrationsTab({
         ...current[target.name],
         pending: kind,
         error: undefined,
+        warning: undefined,
       },
     }));
     try {
@@ -2436,7 +2464,18 @@ function IntegrationsTab({
           usageCollapsed: shouldFocusUsage ? false : true,
         },
       }));
-      await onRefreshTargets({ signal: controller.signal });
+      try {
+        await onRefreshTargets({ signal: controller.signal });
+      } catch {
+        if (controller.signal.aborted || !mountedRef.current) return;
+        setActionState((current) => ({
+          ...current,
+          [target.name]: {
+            ...current[target.name],
+            warning: t('Settings_page.integration_refresh_failed'),
+          },
+        }));
+      }
     } catch (e) {
       if (controller.signal.aborted || !mountedRef.current) return;
       setActionState((current) => ({
@@ -2450,6 +2489,7 @@ function IntegrationsTab({
       }));
     } finally {
       actionAbortControllersRef.current.delete(controller);
+      pendingTargetsRef.current.delete(target.name);
     }
   }, [onRefreshTargets, t, upsertTarget]);
 
@@ -2479,20 +2519,22 @@ function IntegrationsTab({
     }));
   }, []);
 
+  const activeTargets = useMemo(() => localTargets.filter(target => !isLegacyTarget(target)), [localTargets]);
+  const legacyTargets = localTargets.filter(isLegacyTarget);
   const categories = ['cli', 'ide', 'ci'] as const;
   const groups = useMemo(() => {
     const res: Record<string, InstallTarget[]> = { cli: [], ide: [], ci: [], other: [] };
-    localTargets.forEach(t => {
+    activeTargets.forEach(t => {
       const cat = t.usage_hint?.tool_category || 'other';
       if (res[cat]) res[cat].push(t);
       else res.other.push(t);
     });
     return res;
-  }, [localTargets]);
+  }, [activeTargets]);
 
-  const installedCount = localTargets.filter(t => t.status === 'installed').length;
-  const availableCount = localTargets.filter(t => t.status === 'available').length;
-  const unsupportedCount = localTargets.filter(t => t.status === 'unsupported').length;
+  const installedCount = activeTargets.filter(t => t.status === 'installed').length;
+  const availableCount = activeTargets.filter(t => t.status === 'available').length;
+  const unsupportedCount = activeTargets.filter(t => t.status === 'unsupported').length;
 
   const renderTarget = (target: InstallTarget) => {
     const statusKey = INTEGRATION_STATUS_KEY[target.status];
@@ -2503,7 +2545,9 @@ function IntegrationsTab({
         : 'missing';
     const state = actionState[target.name] ?? {};
     const isPending = state.pending != null;
-    const primaryAction: InstallActionKind = target.status === 'installed' ? 'uninstall' : 'install';
+    const legacy = isLegacyTarget(target);
+    const primaryAction: InstallActionKind = legacy ? 'uninstall' : 'install';
+    const updating = !legacy && target.status === 'installed';
     const primaryCommandKind = primaryAction === 'uninstall' ? 'uninstall' : 'install';
     const previewTarget = state.previewTarget ?? target;
     const manifest = previewTarget.manifest ?? target.manifest ?? null;
@@ -2533,6 +2577,10 @@ function IntegrationsTab({
         <div className="integration-card__main">
           <h3 id={titleId} className="integration-card__name">{target.display_name}</h3>
           <p className="integration-card__description">{target.description}</p>
+          {target.lifecycle_note && <p className="integration-card__description">{target.lifecycle_note}</p>}
+          {target.documentation_url?.startsWith('https://') && (
+            <a href={target.documentation_url} target="_blank" rel="noreferrer">{t('Guide.agent_native_docs')}</a>
+          )}
           <p className="integration-card__scope">
             <span>{t('Settings_page.integration_scope_current')}</span>
             {t('Settings_page.integration_scope_note')}
@@ -2567,6 +2615,14 @@ function IntegrationsTab({
           )}
           {state.message && <p className="integration-message" role="status">{state.message}</p>}
           {state.error && <p className="integration-message integration-message--error" role="alert">{state.error}</p>}
+          {state.warning && (
+            <div className="integration-message" role="alert">
+              <p>{state.warning}</p>
+              <button type="button" className="integration-btn integration-btn--secondary" onClick={onRetry}>
+                {t('Guide.agent_retry')}
+              </button>
+            </div>
+          )}
           {isPreviewOpen && manifest && (
             <IntegrationPreviewPanel
               id={previewId}
@@ -2622,7 +2678,7 @@ function IntegrationsTab({
                 disabled={isPending || target.status === 'unsupported' || target.status === 'error'}
                 aria-label={t(
                   primaryAction === 'install'
-                    ? 'Settings_page.integration_install_project_aria'
+                    ? (updating ? 'Settings_page.integration_update_project_aria' : 'Settings_page.integration_install_project_aria')
                     : 'Settings_page.integration_uninstall_project_aria',
                   { target: target.display_name },
                 )}
@@ -2633,9 +2689,20 @@ function IntegrationsTab({
                     ? t('Settings_page.integration_writing_guidance')
                     : t('Settings_page.integration_removing_guidance'))
                   : (primaryAction === 'install'
-                    ? t('Settings_page.integration_install_project_action')
+                    ? t(updating ? 'Settings_page.integration_update_project_action' : 'Settings_page.integration_install_project_action')
                     : t('Settings_page.integration_uninstall_project_action'))}
               </button>
+              {updating && (
+                <button
+                  type="button"
+                  className="integration-btn integration-btn--danger"
+                  disabled={isPending}
+                  aria-label={t('Settings_page.integration_uninstall_project_aria', { target: target.display_name })}
+                  onClick={() => void runAction(target, 'uninstall')}
+                >
+                  {state.pending === 'uninstall' ? t('Settings_page.integration_removing_guidance') : t('Settings_page.integration_uninstall_project_action')}
+                </button>
+              )}
             </>
           )}
         </div>
@@ -2645,13 +2712,7 @@ function IntegrationsTab({
 
   return (
     <>
-      {showGraphify && (
-        <Suspense
-          fallback={<div className="settings-graphify-placeholder" aria-hidden="true" />}
-        >
-          <GraphifyCard />
-        </Suspense>
-      )}
+      {showGraphify && <GraphifyCard stable />}
       {failed ? (
         <UnavailableCard
           title={t('Settings_page.section_integrations')}
@@ -2664,7 +2725,7 @@ function IntegrationsTab({
         <div className="settings-card">
           <div className="settings-card__header">
             <h2>{t('Settings_page.section_integrations')}</h2>
-            <span className="integration-card-count">{localTargets.length}</span>
+            <span className="integration-card-count">{activeTargets.length}</span>
           </div>
           <div className="settings-card__body">
             <p className="integration-intro">
@@ -2672,6 +2733,7 @@ function IntegrationsTab({
               {t('Settings_page.integration_intro_project')}
             </p>
 
+            <p className="integration-intro">{t('Guide.integrations_migration_note')}</p>
             <div className="integration-overview">
               <h3 className="integration-overview__title">{t('Settings_page.integration_quick_overview')}</h3>
               <div className="integration-overview__stats">
@@ -2689,7 +2751,7 @@ function IntegrationsTab({
               </div>
             </div>
 
-            {localTargets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
+            {activeTargets.length === 0 && <div className="u-muted-sm">{t('Settings_page.integration_empty')}</div>}
 
             {categories.map(category => {
               const targets = groups[category];
@@ -2710,6 +2772,13 @@ function IntegrationsTab({
                 <div className="integration-grid">
                   {groups.other.map(renderTarget)}
                 </div>
+              </div>
+            )}
+            {legacyTargets.length > 0 && (
+              <div className="integration-category">
+                <h3 className="integration-category__title">{t('Settings_page.integration_legacy_title')}</h3>
+                <p>{t('Settings_page.integration_legacy_description')}</p>
+                <div className="integration-grid">{legacyTargets.map(renderTarget)}</div>
               </div>
             )}
           </div>
@@ -2738,25 +2807,11 @@ function commandFor(target: InstallTarget, kind: 'install' | 'uninstall'): strin
   return kind === 'install' ? installCommand(target) : uninstallCommand(target);
 }
 
+function isLegacyTarget(target: InstallTarget): boolean {
+  return target.lifecycle === 'limited' || target.lifecycle === 'retired' || target.lifecycle === 'replaced';
+}
+
 function targetMark(target: InstallTarget): string {
-  const knownMarks: Record<string, string> = {
-    aider: 'AI',
-    antigravity: 'AG',
-    'antigravity-cli': 'AC',
-    claude: 'CC',
-    cline: 'CL',
-    codex: 'CD',
-    continue: 'CN',
-    copilot: 'CP',
-    cursor: 'CX',
-    gemini: 'GM',
-    'github-action': 'GH',
-    hooks: 'HK',
-    opencode: 'OC',
-    roo: 'RO',
-    windsurf: 'WS',
-  };
-  if (knownMarks[target.name]) return knownMarks[target.name];
   const words = target.display_name
     .split(/[^A-Za-z0-9]+/)
     .map((part) => part.trim())
@@ -2829,12 +2884,14 @@ function IntegrationPreviewPanel({
         {hash && <code>{t('Settings_page.integration_manifest_hash', { hash })}</code>}
       </div>
       <div className="integration-preview__grid">
-        <IntegrationActionList
-          title={t('Settings_page.integration_preview_install_title')}
-          actions={manifest.write}
-          titleId={`${idBase}-install-title`}
-          t={t}
-        />
+        {!isLegacyTarget(target) && (
+          <IntegrationActionList
+            title={t('Settings_page.integration_preview_install_title')}
+            actions={manifest.write}
+            titleId={`${idBase}-install-title`}
+            t={t}
+          />
+        )}
         <IntegrationActionList
           title={t('Settings_page.integration_preview_uninstall_title')}
           actions={manifest.uninstall}

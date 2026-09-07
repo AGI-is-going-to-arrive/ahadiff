@@ -17,7 +17,12 @@ import ahadiff.install.hooks as hooks_module
 from ahadiff.cli import app
 from ahadiff.core.errors import InputError
 from ahadiff.install.base import InstallContext
-from ahadiff.install.registry import available_targets, get_target, target_detection
+from ahadiff.install.registry import (
+    available_targets,
+    get_target,
+    get_uninstall_target,
+    target_detection,
+)
 from ahadiff.install.template_loader import render_template
 from ahadiff.install.usage_hints import get_usage_hint
 
@@ -41,6 +46,7 @@ _INSTALL_TEMPLATE_NAMES = (
     "claude_skill.md.j2",
     "cline_rules.md.j2",
     "codex_skill.md.j2",
+    "native_skill.md.j2",
     "continue_rule.md.j2",
     "copilot_instruction.md.j2",
     "copilot_section.md.j2",
@@ -59,6 +65,7 @@ _SKILL_TEMPLATE_NAMES = (
     "antigravity_cli_skill.md.j2",
     "antigravity_skill.md.j2",
     "codex_skill.md.j2",
+    "native_skill.md.j2",
     "gemini_skill.md.j2",
     "opencode_agent.md.j2",
 )
@@ -172,8 +179,10 @@ _V02_INSTALL_TARGET_CASES = (
     ("continue", ".continue/rules/ahadiff.md", "AHADIFF:GENERATED", True),
     ("copilot", ".github/copilot-instructions.md", "AHADIFF:BEGIN target=copilot", False),
     ("cursor", ".cursor/rules/ahadiff.mdc", "AHADIFF:GENERATED", True),
-    ("roo", ".roo/rules/ahadiff.md", "AHADIFF:GENERATED", True),
-    ("windsurf", ".windsurf/rules/ahadiff.md", "AHADIFF:GENERATED", True),
+    ("devin", ".devin/rules/ahadiff.md", "AHADIFF:GENERATED", True),
+    ("pi", ".pi/skills/ahadiff/SKILL.md", "AHADIFF:GENERATED", True),
+    ("deepseek-harness", ".dsh/skills/ahadiff/SKILL.md", "AHADIFF:GENERATED", True),
+    ("grok", ".grok/skills/ahadiff/SKILL.md", "AHADIFF:GENERATED", True),
 )
 _EXPECTED_USAGE_CATEGORIES = {
     "aider": "cli",
@@ -185,12 +194,13 @@ _EXPECTED_USAGE_CATEGORIES = {
     "continue": "ide",
     "copilot": "ide",
     "cursor": "ide",
-    "gemini": "cli",
     "github-action": "ci",
     "hooks": "ci",
     "opencode": "cli",
-    "roo": "ide",
-    "windsurf": "ide",
+    "devin": "ide",
+    "pi": "cli",
+    "deepseek-harness": "cli",
+    "grok": "cli",
 }
 
 
@@ -306,7 +316,7 @@ def test_install_dry_run_lists_workspace_targets(tmp_path: Path) -> None:
 
 def test_install_help_uses_current_hooks_platform_language() -> None:
     result = _RUNNER.invoke(app(), ["install", "--help"])
-    normalized_output = " ".join(result.output.split())
+    normalized_output = " ".join(_strip_ansi(result.output).replace("│", " ").split())
 
     assert result.exit_code == 0, result.output
     assert "hooks uses POSIX shell hooks and is not" in normalized_output
@@ -352,14 +362,6 @@ def test_v02_install_targets_write_detect_and_uninstall(
         assert not target_path.exists()
     else:
         assert marker not in target_path.read_text(encoding="utf-8")
-
-
-@pytest.mark.parametrize("target", tuple(case[0] for case in _V02_INSTALL_TARGET_CASES))
-def test_v02_install_targets_are_available_in_help(target: str) -> None:
-    result = _RUNNER.invoke(app(), ["install", target, "--help"])
-
-    assert result.exit_code == 0, result.output
-    assert target in result.output
 
 
 def test_install_templates_are_static_and_render_without_values() -> None:
@@ -959,9 +961,9 @@ def test_install_uninstall_respect_ahadiff_lang_for_usage_hints(
 
     assert install_result.exit_code == 0, install_result.output
     assert uninstall_result.exit_code == 0, uninstall_result.output
-    assert "把 Codex CLI 指引写入当前仓库" in install_result.output
+    assert "把 Codex 指引写入当前仓库" in install_result.output
     assert "要求它运行 AhaDiff 学习 staged diff" in install_result.output
-    assert "把 Codex CLI 指引写入当前仓库" not in uninstall_result.output
+    assert "把 Codex 指引写入当前仓库" not in uninstall_result.output
     assert "Ask it to run AhaDiff" not in install_result.output
 
 
@@ -980,10 +982,10 @@ def test_install_uninstall_default_to_english_usage_hints(
 
     assert install_result.exit_code == 0, install_result.output
     assert uninstall_result.exit_code == 0, uninstall_result.output
-    assert "Write the Codex CLI guidance into this repository" in install_result.output
+    assert "Write the Codex guidance into this repository" in install_result.output
     assert "Ask it to run AhaDiff" in install_result.output
-    assert "Write the Codex CLI guidance into this repository" not in uninstall_result.output
-    assert "把 Codex CLI 指引写入当前仓库" not in install_result.output
+    assert "Write the Codex guidance into this repository" not in uninstall_result.output
+    assert "把 Codex 指引写入当前仓库" not in install_result.output
 
 
 def test_install_usage_hint_respects_repo_config_lang_before_system_lang(
@@ -1606,3 +1608,80 @@ def test_hooks_detect_handles_oserror_gracefully(tmp_path: Path) -> None:
         patch.object(Path, "exists", return_value=True),
     ):
         assert target.detect(context) is False
+
+
+@pytest.mark.parametrize("target_name", ["roo", "windsurf"])
+def test_legacy_guidance_only_allows_explicit_owned_cleanup(
+    tmp_path: Path, target_name: str
+) -> None:
+    _init_git_repo(tmp_path)
+    context = InstallContext(repo_root=tmp_path)
+    assert target_name not in available_targets()
+    with pytest.raises(ValueError, match="no longer offered"):
+        get_target(target_name)
+    legacy = get_uninstall_target(target_name)
+    path = tmp_path / f".{target_name}/rules/ahadiff.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("User rules\n", encoding="utf-8")
+    assert legacy.uninstall(context) == []
+    assert path.read_text(encoding="utf-8") == "User rules\n"
+    path.write_text("<!-- AHADIFF:GENERATED -->\nOld guidance\n", encoding="utf-8")
+    assert legacy.detect(context)
+    result = _RUNNER.invoke(app(), ["uninstall", target_name, "--repo-root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert not path.exists()
+
+
+def test_gemini_remains_explicit_for_supported_accounts() -> None:
+    assert "gemini" not in available_targets()
+    assert get_target("gemini").name == "gemini"
+
+
+@pytest.mark.parametrize(
+    "target_name,relative",
+    [
+        ("pi", ".pi/skills/ahadiff/SKILL.md"),
+        ("deepseek-harness", ".dsh/skills/ahadiff/SKILL.md"),
+        ("grok", ".grok/skills/ahadiff/SKILL.md"),
+        ("devin", ".devin/rules/ahadiff.md"),
+    ],
+)
+def test_native_guidance_preserves_user_files_and_rejects_hardlinks(
+    tmp_path: Path, target_name: str, relative: str
+) -> None:
+    context = InstallContext(repo_root=tmp_path)
+    target = get_target(target_name)
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    path.write_text("User content\n", encoding="utf-8")
+    with pytest.raises(InputError, match="user-managed"):
+        target.write(context)
+    assert target.uninstall(context) == []
+    assert path.read_text(encoding="utf-8") == "User content\n"
+    path.unlink()
+    external = tmp_path / "external.md"
+    external.write_text("<!-- AHADIFF:GENERATED -->\nKeep me\n", encoding="utf-8")
+    try:
+        path.hardlink_to(external)
+    except OSError:
+        pytest.skip("hardlinks unavailable on this filesystem")
+    assert not target.detect(context)
+    with pytest.raises(OSError, match="hardlink"):
+        target.write(context)
+    with pytest.raises(OSError, match="hardlink"):
+        target.uninstall(context)
+    assert external.read_text(encoding="utf-8").endswith("Keep me\n")
+
+
+def test_usage_hints_load_aider_conventions_and_current_harness_commands() -> None:
+    for locale in ("en", "zh-CN"):
+        for name, expected in (
+            ("aider", "aider --read CONVENTIONS.md"),
+            ("antigravity-cli", "agy"),
+            ("pi", "/skill:ahadiff"),
+            ("deepseek-harness", "npx @deepseek-ai/dsh web"),
+            ("grok", "/ahadiff"),
+        ):
+            hint = get_usage_hint(name, locale)
+            assert hint is not None
+            assert expected in hint.invocation_pattern

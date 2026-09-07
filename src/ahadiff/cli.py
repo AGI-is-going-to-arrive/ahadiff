@@ -113,8 +113,9 @@ _APP.add_typer(_CONCEPTS_APP, name="concepts")
 _APP.add_typer(_EXPORT_APP, name="export")
 _APP.add_typer(_CHALLENGE_APP, name="challenge")
 _INSTALL_TARGET_HELP = (
-    "Install target: aider, antigravity, antigravity-cli, claude, cline, codex, continue, "
-    "copilot, cursor, gemini, github-action, hooks, opencode, roo, or windsurf. "
+    "Guidance target (use install --detect for the current catalogue). "
+    "Gemini is explicit-only for API-key/Enterprise accounts; "
+    "uninstall also accepts legacy roo and windsurf guidance. "
     "hooks uses POSIX shell hooks and is not supported on Windows."
 )
 
@@ -192,6 +193,7 @@ run_regenerate = _lazy_attr("improve", "run_regenerate")
 run_improve_loop = _lazy_attr("improve", "run_improve_loop")
 available_targets = _lazy_attr("install", "available_targets")
 get_target = _lazy_attr("install", "get_target")
+get_uninstall_target = _lazy_attr("install", "get_uninstall_target")
 manifest_preview_for = _lazy_attr("install", "manifest_preview_for")
 target_detection = _lazy_attr("install", "target_detection")
 probe_provider = _lazy_attr("llm", "probe_provider")
@@ -1511,7 +1513,7 @@ def uninstall_cmd(
     try:
         root = find_repo_root(repo_root)
         context = _install_context_cls()(repo_root=root)
-        installer = get_target(target)
+        installer = get_uninstall_target(target)
         if dry_run:
             console.print(installer.preview_uninstall(context))
             return
@@ -4023,6 +4025,8 @@ def provider_test_cmd(
             ),
         )
         model_limits_name: str | None = None
+        probe_thinking_level: str | None = None
+        probe_max_output_tokens: int | None = None
         raw_providers_table = snapshot.values.get("providers")
         if isinstance(raw_providers_table, dict):
             providers_table = cast("dict[str, Any]", raw_providers_table)
@@ -4032,6 +4036,20 @@ def provider_test_cmd(
                 raw_model_limits_name = provider_payload_typed.get("model_limits_name")
                 if isinstance(raw_model_limits_name, str) and raw_model_limits_name.strip():
                     model_limits_name = raw_model_limits_name
+                if (
+                    provider_payload_typed.get("provider_class") == provider_class
+                    and provider_payload_typed.get("model_name") == resolved_model
+                    and _normalize_provider_base_url(
+                        str(provider_payload_typed.get("base_url", "")),
+                        provider_class=provider_class,
+                    )
+                    == normalized_base_url
+                ):
+                    saved_level = provider_payload_typed.get("thinking_level")
+                    probe_thinking_level = saved_level if isinstance(saved_level, str) else None
+                    saved_cap = provider_payload_typed.get("max_output_tokens")
+                    if isinstance(saved_cap, int) and not isinstance(saved_cap, bool):
+                        probe_max_output_tokens = saved_cap
         _provider_config_from_payload(
             {
                 "provider_class": provider_class,
@@ -4084,6 +4102,8 @@ def provider_test_cmd(
                 base_url=normalized_base_url,
                 api_key=effective_api_key,
                 api_key_env=api_key_env,
+                thinking_level=probe_thinking_level,
+                max_output_tokens=probe_max_output_tokens,
                 workspace_root=root,
                 security_config=security_config,
                 max_concurrent=int(llm_config["max_concurrent"]),

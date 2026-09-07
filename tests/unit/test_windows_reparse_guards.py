@@ -1,21 +1,21 @@
 # pyright: reportReturnType=false
 from __future__ import annotations
 
+import importlib
+import os
+import sqlite3
 import stat
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 from unittest import mock
 
 import pytest
 
 from ahadiff.core import paths as paths_module
-from ahadiff.core import sqlite_util
+from ahadiff.core import sqlite_util, windows_sqlite
 from ahadiff.core.config import write_provider_env_var
 from ahadiff.core.errors import ConfigError, InputError
-
-if TYPE_CHECKING:
-    import os
 
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
@@ -67,17 +67,227 @@ def test_safe_sqlite_connect_rejects_leaf_reparse_point_on_windows(tmp_path: Pat
         sqlite_util.safe_sqlite_connect(db_path)
 
 
-def test_safe_sqlite_connect_missing_database_without_dir_fd_fails_closed(
+@pytest.mark.skipif(os.name == "nt", reason="native Windows has safe handle-based creation")
+def test_safe_sqlite_connect_missing_database_without_native_handles_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_path = tmp_path / "review.sqlite"
     _force_windows_without_fd_bound(monkeypatch)
 
-    with pytest.raises(PermissionError, match="fd-bound open support"):
+    with pytest.raises(PermissionError, match="native Windows handle support"):
         sqlite_util.safe_sqlite_connect(db_path)
 
     assert not db_path.exists()
+
+
+def test_windows_create_retains_directory_guards_through_sqlite_pragmas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "new.sqlite"
+    guard = mock.Mock(spec=windows_sqlite.WindowsDirectoryGuard)
+    opened_fds: list[int] = []
+    real_connect = sqlite_util.sqlite3.connect
+    guarded_statements: list[str] = []
+
+    def fake_native_create(path: Path) -> tuple[int, windows_sqlite.WindowsDirectoryGuard]:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+        opened_fds.append(fd)
+        return fd, guard
+
+    class RecordingConnection(sqlite3.Connection):
+        def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+            guard.close.assert_not_called()
+            guarded_statements.append(sql)
+            return super().execute(sql, parameters)
+
+    def recording_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        return real_connect(*args, **kwargs, factory=RecordingConnection)
+
+    _force_windows_without_fd_bound(monkeypatch)
+    monkeypatch.setattr(windows_sqlite, "create_windows_sqlite_file", fake_native_create)
+    monkeypatch.setattr(sqlite_util.sqlite3, "connect", recording_connect)
+
+    connection = sqlite_util.safe_sqlite_connect(db_path, journal_mode="WAL", foreign_keys=True)
+    connection.close()
+
+    assert "PRAGMA journal_mode = WAL" in guarded_statements
+    assert "PRAGMA foreign_keys = ON" in guarded_statements
+    guard.close.assert_called_once()
+    with pytest.raises(OSError):
+        os.fstat(opened_fds[0])
+
+
+def test_windows_create_releases_directory_guards_when_sqlite_open_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "new.sqlite"
+    guard = mock.Mock(spec=windows_sqlite.WindowsDirectoryGuard)
+    opened_fds: list[int] = []
+
+    def fake_native_create(path: Path) -> tuple[int, windows_sqlite.WindowsDirectoryGuard]:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+        opened_fds.append(fd)
+        return fd, guard
+
+    def failed_connect(*_args: Any, **_kwargs: Any) -> sqlite3.Connection:
+        raise sqlite3.OperationalError("test open failure")
+
+    _force_windows_without_fd_bound(monkeypatch)
+    monkeypatch.setattr(windows_sqlite, "create_windows_sqlite_file", fake_native_create)
+    monkeypatch.setattr(sqlite_util.sqlite3, "connect", failed_connect)
+
+    with pytest.raises(sqlite3.OperationalError, match="test open failure"):
+        sqlite_util.safe_sqlite_connect(db_path)
+
+    guard.close.assert_called_once()
+    with pytest.raises(OSError):
+        os.fstat(opened_fds[0])
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows handle APIs")
+def test_native_windows_create_reopen_and_wal_with_unicode_paths(tmp_path: Path) -> None:
+    parent = tmp_path / "space 中文 😀"
+    parent.mkdir()
+    db_path = parent / "学习 😀.sqlite"
+
+    connection = sqlite_util.safe_sqlite_connect(db_path, journal_mode="WAL")
+    try:
+        connection.execute("CREATE TABLE marker(value TEXT)")
+        connection.execute("INSERT INTO marker VALUES(?)", ("learned",))
+        connection.commit()
+    finally:
+        connection.close()
+
+    connection = sqlite_util.safe_sqlite_connect(db_path, journal_mode="WAL")
+    try:
+        assert connection.execute("SELECT value FROM marker").fetchone() == ("learned",)
+        assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
+    finally:
+        connection.close()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows handle APIs")
+def test_native_windows_create_collision_preserves_existing_file(tmp_path: Path) -> None:
+    db_path = tmp_path / "existing.sqlite"
+    db_path.write_bytes(b"existing data")
+
+    fd, guard = windows_sqlite.create_windows_sqlite_file(db_path)
+    try:
+        assert os.read(fd, 64) == b"existing data"
+        assert os.fstat(fd).st_ino == db_path.stat().st_ino
+    finally:
+        os.close(fd)
+        guard.close()
+
+    assert db_path.read_bytes() == b"existing data"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows path semantics")
+@pytest.mark.parametrize("component", ["NUL.sqlite", "CON", "COM1.db", "file:stream", "db."])
+def test_native_windows_create_rejects_ambiguous_win32_names(
+    tmp_path: Path,
+    component: str,
+) -> None:
+    with pytest.raises(PermissionError, match="unambiguous local Windows path"):
+        windows_sqlite.create_windows_sqlite_file(tmp_path / component)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows sharing semantics")
+@pytest.mark.parametrize("ancestor", [False, True])
+def test_native_windows_create_blocks_parent_and_ancestor_swap_before_leaf_create(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ancestor: bool,
+) -> None:
+    ancestor_path = tmp_path / "ancestor"
+    parent = ancestor_path / "db-parent"
+    parent.mkdir(parents=True)
+    protected = ancestor_path if ancestor else parent
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    db_path = parent / "new.sqlite"
+    api_class = windows_sqlite._WindowsFileApi  # pyright: ignore[reportPrivateUsage]
+    original_open = api_class.open
+    attempted = False
+
+    def swapping_open(
+        api: Any,
+        name: str,
+        *,
+        parent: int | None,
+        directory: bool,
+        create: bool = False,
+    ) -> int:
+        nonlocal attempted
+        if create:
+            attempted = True
+            with pytest.raises(PermissionError):
+                protected.rename(outside / "stolen")
+        return original_open(api, name, parent=parent, directory=directory, create=create)
+
+    monkeypatch.setattr(api_class, "open", swapping_open)
+    connection = sqlite_util.safe_sqlite_connect(db_path)
+    connection.close()
+
+    assert attempted
+    assert db_path.exists()
+    assert list(outside.iterdir()) == []
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows sharing semantics")
+def test_native_windows_file_and_parent_remain_locked_during_sqlite_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "db-parent"
+    parent.mkdir()
+    db_path = parent / "new.sqlite"
+    original_connect = sqlite_util.sqlite3.connect
+    attempted = False
+
+    def swapping_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        nonlocal attempted
+        attempted = True
+        with pytest.raises(PermissionError):
+            db_path.rename(parent / "stolen.sqlite")
+        with pytest.raises(PermissionError):
+            parent.rename(tmp_path / "stolen-parent")
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite_util.sqlite3, "connect", swapping_connect)
+    connection = sqlite_util.safe_sqlite_connect(db_path)
+    connection.close()
+
+    assert attempted
+    db_path.unlink()
+    parent.rmdir()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows handle APIs")
+def test_native_windows_fd_conversion_failure_releases_all_handles(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "db-parent"
+    parent.mkdir()
+    db_path = parent / "new.sqlite"
+
+    def failed_open_osfhandle(_handle: int, _flags: int) -> int:
+        raise OSError("test fd conversion failure")
+
+    monkeypatch.setattr(importlib.import_module("msvcrt"), "open_osfhandle", failed_open_osfhandle)
+
+    with pytest.raises(OSError, match="test fd conversion failure"):
+        windows_sqlite.create_windows_sqlite_file(db_path)
+
+    # Rename/delete would fail if either the leaf or directory handles leaked.
+    db_path.unlink()
+    parent.rename(tmp_path / "moved-parent")
 
 
 def test_safe_sqlite_connect_existing_database_without_dir_fd_allows_windows_path_connect(
@@ -113,7 +323,10 @@ def test_safe_sqlite_connect_windows_path_connect_still_rejects_symlink(
     target = tmp_path / "target.sqlite"
     target.touch()
     db_path = tmp_path / "review.sqlite"
-    db_path.symlink_to(target)
+    try:
+        db_path.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation unavailable: {exc}")
     _force_windows_without_fd_bound(monkeypatch)
 
     with pytest.raises(PermissionError, match="symlink"):
@@ -138,6 +351,7 @@ def test_safe_sqlite_connect_windows_path_connect_still_rejects_hardlink(
         sqlite_util.safe_sqlite_connect(db_path)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="native Windows has safe handle-based creation")
 def test_safe_sqlite_connect_missing_database_without_dir_fd_rejects_parent_swap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -219,8 +433,9 @@ def test_windows_path_connect_parent_change_keeps_sidecar_retry(
 ) -> None:
     db_path = tmp_path / "review.sqlite"
     db_path.write_bytes(b"")
+    file_stat = db_path.stat()
     state = sqlite_util._OpenVerificationState(  # pyright: ignore[reportPrivateUsage]
-        expected_identity=(101, 202),
+        expected_identity=(file_stat.st_dev, file_stat.st_ino),
         existing_path=True,
         path_change_token=(3, 4),
         parent_identity=(11, 22),

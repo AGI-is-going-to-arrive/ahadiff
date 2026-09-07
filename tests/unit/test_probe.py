@@ -11,6 +11,8 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ProviderCapabilities, ProviderConfig
+from ahadiff.core import config as config_module
+from ahadiff.core import paths as paths_module
 from ahadiff.core.config import load_config, read_config_data
 from ahadiff.core.errors import InputError
 from ahadiff.llm import persist_probe_result, probe_provider, schemas
@@ -27,7 +29,14 @@ def _init_git_repo(root: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_provider_runtime_state() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+def _reset_provider_runtime_state(  # pyright: ignore[reportUnusedFunction]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[None, None, None]:
+    def isolated_global_dir(**kwargs: object) -> Path:
+        return tmp_path / "global-config"
+
+    monkeypatch.setattr(paths_module, "global_config_dir", isolated_global_dir)
+    monkeypatch.setattr(config_module, "global_config_dir", isolated_global_dir)
     reset_provider_runtime_state()
     yield
     reset_provider_runtime_state()
@@ -783,3 +792,82 @@ def test_persist_probe_result_rejects_aliases_with_dot(tmp_path: Path) -> None:
                 api_key_env="AHADIFF_PROVIDER_API_KEY",
             ),
         )
+
+
+@pytest.mark.parametrize("saved_cap,expected_probe_cap", [(None, 256), (128, 128), (32000, 256)])
+def test_probe_preserves_explicit_disable_and_saved_cap(
+    tmp_path: Path, saved_cap: int | None, expected_probe_cap: int
+) -> None:
+    (tmp_path / ".ahadiff").mkdir()
+    (tmp_path / ".ahadiff" / "config.toml").write_text(
+        '[providers.demo]\navailable_models = ["gpt-5.6-luna"]\n'
+        "[providers.demo.capability_overrides]\nsupports_temperature = false\n",
+        encoding="utf-8",
+    )
+    requests: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(
+                200, json={"data": [{"id": "gpt-5.6-luna", "context_window": 1050000}]}
+            )
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"model": "gpt-5.6-luna", "output_text": "OK"})
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        report = probe_provider(
+            provider_name="demo",
+            provider_class="openai_responses",
+            model_name="gpt-5.6-luna",
+            base_url="http://127.0.0.1:8000",
+            api_key=None,
+            api_key_env="TEST_KEY",
+            workspace_root=tmp_path,
+            security_config=None,
+            client=client,
+            thinking_level="none",
+            max_output_tokens=saved_cap,
+            privacy_mode="strict_local",
+        )
+    assert requests[0]["reasoning"] == {"effort": "none"}
+    assert requests[0]["max_output_tokens"] == expected_probe_cap
+    assert report.config.thinking_level == "none"
+    assert report.config.max_output_tokens == saved_cap
+    persisted = read_config_data(tmp_path / ".ahadiff" / "config.toml")["providers"]["demo"]
+    assert persisted["thinking_level"] == "none"
+    assert persisted.get("max_output_tokens") == saved_cap
+    assert persisted["available_models"] == ["gpt-5.6-luna"]
+    assert persisted["capability_overrides"] == {"supports_temperature": False}
+
+
+def test_gemini_probe_reserves_manual_thinking_and_answer_budget(tmp_path: Path) -> None:
+    requests: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            return httpx.Response(200, json={"inputTokenLimit": 1048576, "outputTokenLimit": 65536})
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": "OK"}]}}]})
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        report = probe_provider(
+            provider_name="demo",
+            provider_class="gemini",
+            model_name="gemini-2.5-pro",
+            base_url="http://127.0.0.1:8000",
+            api_key=None,
+            api_key_env="TEST_KEY",
+            workspace_root=tmp_path,
+            security_config=None,
+            client=client,
+            thinking_level="high",
+            max_output_tokens=32000,
+            privacy_mode="strict_local",
+            persist_result=False,
+        )
+    assert requests[0]["generationConfig"] == {
+        "maxOutputTokens": 8448,
+        "thinkingConfig": {"thinkingBudget": 8192},
+    }
+    assert report.config.max_output_tokens == 32000
+    assert report.config.thinking_level == "high"

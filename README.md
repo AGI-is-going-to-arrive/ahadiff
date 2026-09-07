@@ -155,7 +155,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture modes, e
 - **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
 - **Export**: from the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg`; `.apkg` export uses the bundled `genanki`, available by default.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
-- **AI tool integration**: project-level guidance for 15 CLI / IDE / CI targets. Settings groups the targets, shows localized usage hints and a provider-free local demo, and keeps write/remove behind confirmation. Guide shows commands plus read-only cards that explain usage and preview the files AhaDiff would write. Supported targets include Claude, Codex, Gemini, Antigravity IDE, Antigravity CLI, Copilot, OpenCode, Cursor, Cline, Continue, Roo, Windsurf, Aider, GitHub Actions, and Git hooks (Git hooks stay reminder-only; add `--auto-learn` for background learn after each commit).
+- **AI tool integration**: one shared catalogue for 16 current CLI / IDE / CI targets, including Pi, DeepSeek Harness (developer preview), Grok Build, and Devin. Settings supports protected preview, write, update, and removal; Guide reads the same catalogue and reports loading/errors without inventing available targets. Gemini CLI remains an explicit install for API-key/Enterprise users; personal-account users should use Antigravity. Roo and old Windsurf guidance have cleanup-only entries.
 - **Auto-iteration**: `ahadiff improve-run <run_id>` regenerates a lesson on an existing run and keeps the new copy only when the deterministic score strictly improves, saving it as a separate run and leaving the original untouched — this works in any install, including `pip`. The separate `ahadiff improve` command tunes AhaDiff's own generation prompts and only runs inside an AhaDiff source checkout.
 - **Privacy**: three tiers: strict_local, redacted_remote, explicit_remote. The default is strict_local.
 - **i18n**: English and Chinese for the WebUI and prompt output language. CLI help and most CLI diagnostics are in English.
@@ -219,14 +219,16 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture modes, e
 <img src="./docs/video/public/screenshots/en/en-settings.png" alt="Settings page" width="800">
 </details>
 
+Model limits and thinking controls were reviewed on 2026-09-07. Model default and explicit thinking-off are separate settings; available controls depend on model and endpoint.
+
 ## AI tool integration
 
 AhaDiff writes repo-local guidance files for the current project; it does not install the AhaDiff CLI again or write global user directories:
 ```bash
 ahadiff install --detect        # auto-detect your tools
-ahadiff install claude          # also: cursor, copilot, codex, gemini, antigravity, antigravity-cli, aider, windsurf, cline, roo, continue, ...
+ahadiff install claude          # also: codex, pi, deepseek-harness, grok, devin, cursor, copilot, antigravity, ...
 ```
-15 targets supported. Run `ahadiff install --help` for the full list, or configure in the WebUI under Settings → AI Tool Guidance.
+16 current targets. Use `ahadiff install --detect` to inspect project guidance, or open Settings → AI Tool Guidance. Explicit legacy cleanup uses `ahadiff uninstall roo` or `ahadiff uninstall windsurf`.
 
 Git hooks stay reminder-only by default. `ahadiff install hooks --auto-learn` switches the post-commit hook to run `ahadiff learn --last` in the background (log: `.ahadiff/hooks.log`). GUI-client commits work too: the hook falls back to the install-time path, logs a skip if `ahadiff` is unreachable, and never blocks the commit. Prefer learning from saves instead of commits? `ahadiff watch` auto-learns on working-tree changes (2s debounce, 30s cooldown); `ahadiff serve --watch` runs the same watcher with the WebUI attached. Register the read-only MCP server (7 tools) with your agent:
 ```bash
@@ -238,7 +240,7 @@ Settings groups targets into CLI / IDE / CI, shows quick-start steps, example pr
 
 Guide and the New Run dialog keep cards, note markers, and footer actions readable in Windows high-contrast / forced-colors mode; usage hints use the same tokenized type scale as the rest of the viewer.
 
-Some targets write tool-native generated files. Examples include `.claude/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff/SKILL.md`, `.gemini/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff-antigravity/SKILL.md`, `.agents/skills/ahadiff-antigravity-cli/SKILL.md`, `.agents/rules/ahadiff.md`, `.github/instructions/ahadiff.instructions.md`, `.opencode/agents/ahadiff.md`, `.clinerules/ahadiff.md`, `.continue/rules/ahadiff.md`, `.cursor/rules/ahadiff.mdc`, `.roo/rules/ahadiff.md`, and `.windsurf/rules/ahadiff.md`. Repo guidance sections stay in user-managed files such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and `.github/copilot-instructions.md`. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
+Some targets write tool-native generated files. Examples include `.claude/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff/SKILL.md`, `.gemini/skills/ahadiff/SKILL.md`, `.agents/skills/ahadiff-antigravity/SKILL.md`, `.agents/skills/ahadiff-antigravity-cli/SKILL.md`, `.agents/rules/ahadiff.md`, `.github/instructions/ahadiff.instructions.md`, `.opencode/agents/ahadiff.md`, `.clinerules/ahadiff.md`, `.continue/rules/ahadiff.md`, `.cursor/rules/ahadiff.mdc`, `.pi/skills/ahadiff/SKILL.md`, `.dsh/skills/ahadiff/SKILL.md`, `.grok/skills/ahadiff/SKILL.md`, and `.devin/rules/ahadiff.md`. Repo guidance sections stay in user-managed files such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and `.github/copilot-instructions.md`. Uninstall only removes AhaDiff-generated files and AhaDiff marked sections.
 
 This repository ignores generated `.agents/` installs, so repo-local Codex / Antigravity skill output remains local unless a user explicitly tracks it.
 

@@ -106,7 +106,7 @@ jobs:
     name: Windows Runtime Guard
     runs-on: windows-latest
     env:
-      PYTHON_VERSION: "3.11"
+      PYTHON_VERSION: "3.13"
       NODE_VERSION: "22"
       PNPM_VERSION: "10.33.0"
     steps:
@@ -138,12 +138,43 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
+      - name: Check Windows viewer types and unit tests
+        working-directory: viewer
+        shell: bash
+        run: |
+          pnpm run typecheck
+          pnpm exec vitest run --maxWorkers=2 --minWorkers=1
+      - name: Install Chromium for Windows viewer smoke
+        working-directory: viewer
+        run: pnpm exec playwright install chromium
+      - name: Check Windows provider, guidance, and locale interactions
+        working-directory: viewer
+        env:
+          AHADIFF_VIEWER_E2E_PORT: "5174"
+        run: >-
+          pnpm exec playwright test
+          tests/e2e/provider-scope.spec.ts
+          tests/e2e/integrations.spec.ts
+          tests/e2e/cross-browser.spec.ts
+          tests/e2e/i18n.spec.ts
+          --project=chromium-desktop --project=chromium-mobile --workers=2
       - shell: bash
         run: uv sync --locked --dev --python ${{ env.PYTHON_VERSION }}
+      - name: Verify supported Windows SQLite runtime
+        shell: bash
+        run: uv run python -c "import sqlite3; from ahadiff.core.sqlite_util import sqlite_runtime_gate_ok; print(sqlite3.sqlite_version); assert sqlite_runtime_gate_ok()"
       - shell: bash
         run: |
           uv run pytest -q --tb=long \
             tests/unit/test_cross_platform_static.py \
+            tests/unit/test_windows_reparse_guards.py \
+            tests/unit/test_path_safety.py \
+            tests/unit/test_git_capture.py::test_patch_and_compare_modes_work_without_git_repo \
+            tests/unit/test_thinking.py \
+            tests/unit/test_install.py \
+            tests/unit/test_gate3_hardening.py::test_gate3_result_events_support_concurrent_writes \
+            tests/unit/test_serve_app.py::test_viewer_rejects_unsafe_static_paths_before_filesystem_lookup \
+            tests/unit/test_serve_app.py::test_viewer_static_guard_accepts_normalized_relative_asset_paths \
             tests/unit/test_core_utils.py::TestSafeSqliteConnect::test_windows_read_only_uri_preserves_drive_letter \
             tests/unit/test_core_utils.py::TestSafeSqliteConnect::test_rejects_ntfs_reparse_point_on_windows \
             tests/unit/test_provider.py::test_usage_db_rejects_unsupported_sqlite_runtime \

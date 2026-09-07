@@ -1151,16 +1151,18 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(tabs).toHaveCount(4);
     await expect(tabs.nth(0)).toContainText(/All|全部/);
 
-    // Initial card count in 'All' tab (15 targets)
-    await expect(page.locator('.guide-agent-card')).toHaveCount(15);
+    const catalogue = await page.evaluate(async () => (await fetch('/api/install/targets')).json()) as {
+      targets: Array<{ usage_hint: { tool_category: string } }>;
+    };
+    await expect(page.locator('.guide-agent-card')).toHaveCount(catalogue.targets.length);
 
-    // Click "IDE" tab and verify count filters correctly (IDE targets are 7)
+    // Filter by the categories in the returned catalogue.
     await tabs.nth(2).click();
-    await expect(page.locator('.guide-agent-card')).toHaveCount(7);
+    await expect(page.locator('.guide-agent-card')).toHaveCount(catalogue.targets.filter(target => target.usage_hint.tool_category === 'ide').length);
 
     // Switch back to "All"
     await tabs.nth(0).click();
-    await expect(page.locator('.guide-agent-card')).toHaveCount(15);
+    await expect(page.locator('.guide-agent-card')).toHaveCount(catalogue.targets.length);
 
     // Agent cards are collapsible: the usage panel and manifest preview only
     // render once a card is expanded. Expand a card by name, then assert its
@@ -1183,7 +1185,7 @@ test.describe('walkthrough: full-app functional test', () => {
     const antigravityCliCard = await expandCard('Antigravity CLI');
     await expect(antigravityCliCard).toContainText('.agents/skills/ahadiff-antigravity-cli/SKILL.md');
 
-    const codexCard = await expandCard('Codex CLI');
+    const codexCard = await expandCard('Codex');
     await expect(codexCard).toContainText('AGENTS.md');
 
     // Verify common workflows section
@@ -1254,9 +1256,9 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(page.getByRole('heading', { name: 'IDE Extensions' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'CI' })).toBeVisible();
 
-    const codexRow = page.getByRole('article', { name: 'Codex CLI' });
+    const codexRow = page.getByRole('article', { name: 'Codex' });
     await expect(codexRow).toBeVisible();
-    await expect(page.locator('.integration-intro')).toContainText('repo-local instruction files');
+    await expect(page.locator('.integration-intro').first()).toContainText('repo-local instruction files');
     await expect(codexRow).toContainText('Scope: current project');
     await expect(codexRow).toContainText('It does not write user-level or global CLI/IDE directories.');
 
@@ -1269,43 +1271,44 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(codexRow).toContainText('Removing guidance will');
     await expect(codexRow).toContainText('AGENTS.md');
     await expect(codexRow).toContainText('merge marked section');
-    await expect(codexRow.getByRole('button', { name: 'Write Codex CLI guidance to the current project' })).toBeVisible();
-    await expect(codexRow.getByRole('button', { name: 'Copy write-guidance command for Codex CLI' })).toBeVisible();
+    await expect(codexRow.getByRole('button', { name: 'Write Codex guidance to the current project' })).toBeVisible();
+    await expect(codexRow.getByRole('button', { name: 'Copy write-guidance command for Codex' })).toBeVisible();
 
     const collapseBtn = codexRow.getByRole('button', {
-      name: 'Collapse preview for Codex CLI',
+      name: 'Collapse preview for Codex',
     });
     await collapseBtn.focus();
     await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
-    await expect(codexRow.getByRole('button', { name: 'Show preview for Codex CLI' })).toBeVisible();
+    await expect(codexRow.getByRole('button', { name: 'Show preview for Codex' })).toBeVisible();
 
     const showPreviewBtn = codexRow.getByRole('button', {
-      name: 'Show preview for Codex CLI',
+      name: 'Show preview for Codex',
     });
     await showPreviewBtn.focus();
     await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toBeVisible();
 
     const writeBtn = codexRow.getByRole('button', {
-      name: 'Write Codex CLI guidance to the current project',
+      name: 'Write Codex guidance to the current project',
     });
     await writeBtn.focus();
     await page.keyboard.press('Enter');
     await expect(codexRow.getByRole('status')).toContainText('Guidance written to the current project');
     await expect(codexRow).toContainText('guidance written');
     await expect(codexRow.getByRole('region', { name: 'Inline preview' })).toHaveCount(0);
-    await expect(codexRow.getByRole('button', { name: 'Show preview for Codex CLI' })).toBeVisible();
-    await expect(codexRow).toContainText('$ ahadiff uninstall codex');
-    await expect(codexRow.getByRole('button', { name: 'Remove Codex CLI guidance from the current project' })).toBeVisible();
-    await expect(codexRow.getByRole('button', { name: 'Copy remove-guidance command for Codex CLI' })).toBeVisible();
-    const usageRegion = codexRow.getByRole('region', { name: 'Codex CLI usage guidance' });
+    await expect(codexRow.getByRole('button', { name: 'Show preview for Codex' })).toBeVisible();
+    await expect(codexRow).toContainText('$ ahadiff install codex');
+    await expect(codexRow.getByRole('button', { name: 'Update Codex guidance in this repository' })).toBeVisible();
+    await expect(codexRow.getByRole('button', { name: 'Remove Codex guidance from the current project' })).toBeVisible();
+    await expect(codexRow.getByRole('button', { name: 'Copy write-guidance command for Codex' })).toBeVisible();
+    const usageRegion = codexRow.getByRole('region', { name: 'Codex usage guidance' });
     await expect(usageRegion).toBeVisible();
     await expect(usageRegion).toBeFocused();
     await expect(usageRegion).toContainText('Quick start');
 
     const removeBtn = codexRow.getByRole('button', {
-      name: 'Remove Codex CLI guidance from the current project',
+      name: 'Remove Codex guidance from the current project',
     });
     await removeBtn.focus();
     await page.keyboard.press('Enter');

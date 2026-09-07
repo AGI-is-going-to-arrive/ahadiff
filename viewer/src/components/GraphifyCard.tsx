@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, type JSX } from 'react';
 import { useGraphStore } from '../state/graph-store';
 import { useTranslation } from '../i18n/useTranslation';
 import { FRESHNESS_TONE, FRESHNESS_LABEL_KEY } from './freshness-utils';
@@ -6,7 +6,7 @@ import GraphifySourceCard from './GraphifySourceCard';
 export { CopyButton } from './GraphifySourceCard';
 import './GraphifyCard.css';
 
-export default function GraphifyCard({ compact }: { compact?: boolean }) {
+export default function GraphifyCard({ compact, stable = false }: { compact?: boolean; stable?: boolean }): JSX.Element | null {
   const { t } = useTranslation();
   const status = useGraphStore((s) => s.status);
   const loading = useGraphStore((s) => s.loading);
@@ -16,6 +16,10 @@ export default function GraphifyCard({ compact }: { compact?: boolean }) {
   useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
+
+  if (stable && !compact) {
+    return <GraphifySourceCard status={status} error={error} stable />;
+  }
 
   if (!status) {
     if (error) return null;
@@ -56,5 +60,5 @@ export default function GraphifyCard({ compact }: { compact?: boolean }) {
     );
   }
 
-  return <GraphifySourceCard status={status} />;
+  return <GraphifySourceCard status={status} stable={stable} />;
 }

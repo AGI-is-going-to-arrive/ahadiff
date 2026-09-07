@@ -10,7 +10,7 @@ from ..provider import AdapterBase
 from ..schemas import ProbeContextResult, ProviderRequest, ProviderResponse
 from ._capability_overrides import apply_capability_overrides
 from .structured import gemini_response_format
-from .thinking import gemini_thinking_level
+from .thinking import thinking_payload_for
 
 if TYPE_CHECKING:
     import httpx
@@ -43,6 +43,7 @@ class GeminiAdapter(AdapterBase):
         *,
         api_key: str | None,
     ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
+        request = self.prepare_request(request)
         headers = {"content-type": "application/json"}
         if api_key:
             headers["x-goog-api-key"] = api_key
@@ -54,9 +55,9 @@ class GeminiAdapter(AdapterBase):
             generation_config["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             generation_config["maxOutputTokens"] = request.max_output_tokens
-        thinking = gemini_thinking_level(request.thinking_level)
-        if thinking is not None:
-            generation_config["thinkingConfig"] = {"thinkingLevel": thinking}
+        generation_config.update(
+            thinking_payload_for("gemini", request.model, request.thinking_level)
+        )
         response_format = gemini_response_format(request, capabilities=self.capabilities)
         if response_format is not None:
             generation_config.update(response_format)
@@ -69,13 +70,18 @@ class GeminiAdapter(AdapterBase):
         payload = response.json()
         candidate = payload["candidates"][0]
         content = candidate.get("content", {})
-        text = "".join(part.get("text", "") for part in content.get("parts", []))
+        parts = content.get("parts", [])
+        text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
+        reasoning = "".join(part.get("text", "") for part in parts if part.get("thought"))
         usage = payload.get("usageMetadata", {})
         return ProviderResponse(
             content=text,
             model_id=self.config.model_name,
             input_tokens=int(usage.get("promptTokenCount", 0)),
-            output_tokens=int(usage.get("candidatesTokenCount", 0)),
+            output_tokens=(
+                int(usage.get("candidatesTokenCount", 0)) + int(usage.get("thoughtsTokenCount", 0))
+            ),
+            reasoning_content=reasoning or None,
             finish_reason=candidate.get("finishReason"),
             request_id=response.headers.get("x-request-id"),
             raw_json=payload,

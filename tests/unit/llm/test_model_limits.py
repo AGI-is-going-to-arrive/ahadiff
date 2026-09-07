@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any, cast
@@ -879,6 +880,53 @@ def test_lookup_model_limits_supports_exact_and_provider_qualified_routes(
     assert openrouter_qualified.max_output_tokens == 32_768
 
 
+@pytest.mark.parametrize("provider", ["openai_compat", "newapi", "openai_responses"])
+def test_relay_model_identity_matches_across_protocols_without_claiming_route_limits(
+    temp_model_registry: Callable[[object | str], None], provider: str
+) -> None:
+    temp_model_registry(
+        _registry_payload(
+            [
+                _registry_entry("anthropic", "claude-sonnet-5", max_context_tokens=1_000_000),
+            ]
+        )
+    )
+    matched = lookup_model_limits(provider, "anthropic/claude-sonnet-5")
+    assert matched is not None
+    assert matched.max_context_tokens == 1_000_000
+    assert matched.context_policy == "route_specific"
+    assert matched.confidence == "medium"
+    assert matched.warnings
+    assert lookup_model_limits(provider, "claude-sonnet-99") is None
+    assert lookup_model_limits("ollama", "claude-sonnet-5") is None
+    assert lookup_model_limits("lmstudio", "claude-sonnet-5") is None
+
+
+def test_curator_keeps_recent_models_and_source_limits_without_silent_cap() -> None:
+    from scripts.curate_registry import _curate_entries
+
+    registry = {
+        f"model-{index:03}": {
+            "mode": "chat",
+            "provider": "openai",
+            "context_length": 200_000,
+        }
+        for index in range(100)
+    }
+    registry["deepseek-v4-flash"] = {
+        "mode": "chat",
+        "provider": "deepseek",
+        "context_length": 1_000_000,
+        "max_output_tokens": 384_000,
+    }
+    rows = _curate_entries(registry, source_tag="fixture")
+    assert len(rows) == 101
+    assert any(row["model"] == "model-099" for row in rows)
+    deepseek = next(row for row in rows if row["model"] == "deepseek-v4-flash")
+    assert deepseek["max_context_tokens"] == 1_000_000
+    assert deepseek["max_output_tokens"] == 384_000
+
+
 def test_lookup_model_limits_prefers_specific_provider_before_fallback_provider(
     temp_model_registry: Callable[[object | str], None],
 ) -> None:
@@ -1321,7 +1369,7 @@ def test_bundled_model_registry_is_v2_with_mandatory_context_metadata() -> None:
             ), label
         assert context_policy in _ALLOWED_CONTEXT_POLICIES, label
         assert isinstance(row.get("source"), str) and row["source"], label
-        assert "-2026-05-22" in row["source"], label
+        assert re.search(r"\d{4}-\d{2}-\d{2}", row["source"]), label
         assert row.get("confidence") in _ALLOWED_REGISTRY_CONFIDENCE, label
         provider = str(row["provider"]).lower()
         aliases_raw = row.get("aliases", [])
@@ -1507,7 +1555,7 @@ def test_openai_class_deepseek_endpoint_falls_back_to_alias_registry_limits(
     ("model_name", "expected_context", "expected_output"),
     [
         ("deepseek/deepseek-v4-flash:free", 1_048_576, 384_000),
-        ("deepseek/deepseek-v4-pro", 1_048_576, 384_000),
+        ("deepseek/deepseek-v4-pro", 1_048_576, 393_216),
     ],
 )
 def test_openai_class_openrouter_deepseek_routes_prefer_openrouter_limits(

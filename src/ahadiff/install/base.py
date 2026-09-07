@@ -279,12 +279,16 @@ def _read_text_no_follow_regular(path: Path, description: str) -> str:
     _ensure_no_symlink_or_reparse(path, path_stat, description)
     if not stat.S_ISREG(path_stat.st_mode):
         raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+    if path_stat.st_nlink != 1:
+        raise OSError(errno.ELOOP, f"refusing {description} hardlink", str(path))
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(str(path), flags)
     try:
         opened_stat = os.fstat(fd)
         if not stat.S_ISREG(opened_stat.st_mode):
             raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+        if opened_stat.st_nlink != 1:
+            raise OSError(errno.ELOOP, f"refusing {description} hardlink", str(path))
         _ensure_no_symlink_or_reparse(path, opened_stat, description)
         if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
             raise OSError(errno.ELOOP, f"{description} changed during validation", str(path))
@@ -302,12 +306,16 @@ def read_bytes_and_mode_no_follow_regular(path: Path, description: str) -> tuple
     _ensure_no_symlink_or_reparse(path, path_stat, description)
     if not stat.S_ISREG(path_stat.st_mode):
         raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+    if path_stat.st_nlink != 1:
+        raise OSError(errno.ELOOP, f"refusing {description} hardlink", str(path))
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(str(path), flags)
     try:
         opened_stat = os.fstat(fd)
         if not stat.S_ISREG(opened_stat.st_mode):
             raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+        if opened_stat.st_nlink != 1:
+            raise OSError(errno.ELOOP, f"refusing {description} hardlink", str(path))
         _ensure_no_symlink_or_reparse(path, opened_stat, description)
         if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
             raise OSError(errno.ELOOP, f"{description} changed during validation", str(path))
@@ -333,6 +341,8 @@ def _prepare_install_file_write(path: Path, description: str) -> None:
     _ensure_no_symlink_or_reparse(path, path_stat, description)
     if not stat.S_ISREG(path_stat.st_mode):
         raise OSError(errno.EINVAL, f"{description} must be a regular file", str(path))
+    if path_stat.st_nlink != 1:
+        raise OSError(errno.ELOOP, f"refusing {description} hardlink", str(path))
 
 
 def _ensure_safe_parent_dir(parent: Path, description: str) -> None:

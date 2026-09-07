@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from importlib.resources import files
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING
 
 from starlette.exceptions import HTTPException
@@ -16,15 +16,32 @@ if TYPE_CHECKING:
 
 class SpaStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
+        # Reject Windows UNC/device/drive paths before StaticFiles resolves them.
+        # Containment checks after realpath are too late for SMB/NTLM side effects
+        # (GHSA-wqp7-x3pw-xc5r). This is a pure lexical check on every platform.
+        requested_path = PurePosixPath(path.replace("\\", "/"))
+        if (
+            requested_path.is_absolute()
+            or PureWindowsPath(path).drive
+            or ".." in requested_path.parts
+            or any(character in path for character in ':<>"|?*')
+            or any(ord(character) < 32 for character in path)
+            or any(_is_windows_device_name(part) for part in requested_path.parts)
+        ):
+            raise HTTPException(status_code=404)
         try:
             return await super().get_response(path, scope)
         except HTTPException as exc:
             if exc.status_code != 404:
                 raise
-            requested_path = PurePosixPath(path.replace("\\", "/"))
-            if requested_path.is_absolute() or ".." in requested_path.parts:
-                raise
             return await super().get_response("index.html", scope)
+
+
+def _is_windows_device_name(part: str) -> bool:
+    stem = part.rstrip(" .").split(".", 1)[0].rstrip(" ").upper()
+    return stem in {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$"} or (
+        stem.startswith(("COM", "LPT")) and len(stem) == 4 and stem[-1] in "0123456789¹²³"
+    )
 
 
 def _resolve_viewer_dist() -> Path | None:

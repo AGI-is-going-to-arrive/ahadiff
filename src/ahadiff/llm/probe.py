@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import httpx
 
@@ -13,6 +13,7 @@ from ahadiff.core.config import (
 )
 from ahadiff.core.errors import InputError, ProviderError
 
+from .adapters.thinking import minimum_thinking_output_tokens, normalize_thinking_level
 from .cost import resolve_context_window
 from .probe_limits import safe_positive_int as _safe_positive_int
 from .provider import make_provider, transport_target_for_base_url
@@ -32,6 +33,8 @@ def probe_provider(
     provider_class: str,
     model_name: str,
     model_limits_name: str | None = None,
+    thinking_level: str | None = None,
+    max_output_tokens: int | None = None,
     base_url: str,
     api_key: str | None,
     api_key_env: str,
@@ -45,13 +48,26 @@ def probe_provider(
     persist_result: bool = True,
     privacy_mode: PrivacyMode = "explicit_remote",
 ) -> ProbeReport:
-    base_config = ProviderConfig(
-        provider_class=provider_class,  # pyright: ignore[reportArgumentType]
-        model_name=model_name,
-        model_limits_name=model_limits_name,
-        base_url=base_url,
-        api_key_env=api_key_env,
+    base_config = ProviderConfig.model_validate(
+        {
+            "provider_class": provider_class,
+            "model_name": model_name,
+            "model_limits_name": model_limits_name,
+            "base_url": base_url,
+            "api_key_env": api_key_env,
+            "thinking_level": normalize_thinking_level(thinking_level),
+            "max_output_tokens": max_output_tokens,
+        }
     )
+    if max_output_tokens is not None and max_output_tokens < 1:
+        raise InputError("max_output_tokens must be positive")
+    minimum = minimum_thinking_output_tokens(
+        provider_class, model_name, thinking_level, base_url=base_url
+    )
+    # A connectivity check never inherits a large saved generation allowance.
+    probe_output_tokens = max(256, minimum + 255 if minimum is not None else 256)
+    if max_output_tokens is not None:
+        probe_output_tokens = min(probe_output_tokens, max_output_tokens)
     provider = make_provider(
         base_config,
         api_key=api_key,
@@ -73,6 +89,8 @@ def probe_provider(
                 source_ref="provider_test",
                 payload_text="Reply with exactly OK.",
                 privacy_mode=privacy_mode,
+                thinking_level=base_config.thinking_level,
+                max_output_tokens=probe_output_tokens,
             )
         )
         context_result, context_source = _probe_context_window(
@@ -86,6 +104,8 @@ def probe_provider(
             model_limits_name=base_config.model_limits_name,
             base_url=base_config.base_url,
             api_key_env=base_config.api_key_env,
+            thinking_level=base_config.thinking_level,
+            max_output_tokens=base_config.max_output_tokens,
             probed_max_context=context_result.max_context_tokens,
             probed_max_input_tokens=context_result.max_input_tokens,
             probed_max_output_tokens=context_result.max_output_tokens,
@@ -124,26 +144,33 @@ def persist_probe_result(
         providers = payload.setdefault("providers", {})
         if not isinstance(providers, dict):
             raise ProviderError("config key [providers] must be a table")
-        providers[provider_name] = {
-            key: value
-            for key, value in {
-                "provider_class": config.provider_class,
-                "model_name": config.model_name,
-                "base_url": config.base_url,
-                "api_key_env": config.api_key_env,
-                "max_output_tokens": config.max_output_tokens,
-                "thinking_level": config.thinking_level,
-                "probed_max_context": config.probed_max_context,
-                "probed_max_input_tokens": config.probed_max_input_tokens,
-                "probed_max_output_tokens": config.probed_max_output_tokens,
-                "probed_limits_source": config.probed_limits_source,
-                "model_limits_name": config.model_limits_name,
-                "probed_tpm": config.probed_tpm,
-                "probed_rpm": config.probed_rpm,
-                "probe_timestamp": config.probe_timestamp,
-            }.items()
-            if value is not None
+        providers_table = cast("dict[str, Any]", providers)
+        previous = providers_table.get(provider_name)
+        provider_payload = (
+            dict(cast("dict[str, Any]", previous)) if isinstance(previous, dict) else {}
+        )
+        updates = {
+            "provider_class": config.provider_class,
+            "model_name": config.model_name,
+            "base_url": config.base_url,
+            "api_key_env": config.api_key_env,
+            "max_output_tokens": config.max_output_tokens,
+            "thinking_level": config.thinking_level,
+            "probed_max_context": config.probed_max_context,
+            "probed_max_input_tokens": config.probed_max_input_tokens,
+            "probed_max_output_tokens": config.probed_max_output_tokens,
+            "probed_limits_source": config.probed_limits_source,
+            "model_limits_name": config.model_limits_name,
+            "probed_tpm": config.probed_tpm,
+            "probed_rpm": config.probed_rpm,
+            "probe_timestamp": config.probe_timestamp,
         }
+        for key, value in updates.items():
+            if value is None:
+                provider_payload.pop(key, None)
+            else:
+                provider_payload[key] = value
+        providers_table[provider_name] = provider_payload
         return write_config_data(config_path, payload)
 
 
@@ -156,6 +183,8 @@ def _build_probe_request(
     payload_text: str,
     privacy_mode: PrivacyMode,
     temperature: float | None = None,
+    thinking_level: str | None = None,
+    max_output_tokens: int | None = None,
 ) -> ProviderRequest:
     redacted_payload_text = payload_text if privacy_mode == "redacted_remote" else None
     return ProviderRequest(
@@ -170,6 +199,8 @@ def _build_probe_request(
         privacy_mode=privacy_mode,
         redacted_payload_text=redacted_payload_text,
         temperature=temperature,
+        thinking_level=thinking_level,
+        max_output_tokens=max_output_tokens,
     )
 
 
