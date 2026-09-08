@@ -1478,7 +1478,7 @@ def test_hooks_git_path_uses_utf8_when_cjk_locale_would_fail(
     )
 
     assert len(calls["command"]) == 4
-    assert Path(calls["command"][0]).name in {"git", "git.exe"}
+    assert Path(calls["command"][0]).name.casefold() in {"git", "git.exe"}
     assert calls["command"][1:] == ["rev-parse", "--git-path", "hooks/pre-push"]
     assert calls["kwargs"]["text"] is True
     assert calls["kwargs"]["encoding"] == "utf-8"
