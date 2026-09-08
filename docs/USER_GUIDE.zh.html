@@ -1900,7 +1900,7 @@ ahadiff config show --resolved</span></div>
       <p>本指南里的截图仅为示例。它们不含任何真实 provider 凭证、仓库内容或用户数据。</p>
 
       <h3>平台支持</h3>
-      <p class="g-lead">macOS 是 v1.3.8 的本地验证平台；Windows 路径和全局配置行为由目标单测覆盖，真实 Windows runtime 状态以 release workflow 为准。Antigravity 在真实检查跑通前仍为 Unknown/blocked。两个功能仅限 POSIX。</p>
+      <p class="g-lead">2026-09-08 源码更新已在 macOS 和 Linux arm64 本地验证。Windows 原生未执行；目标 Windows 分支测试与准备好的验证包不构成原生通过结论。Antigravity 在真实检查跑通前仍为 Unknown/blocked。两个功能仅限 POSIX。</p>
       <div class="cmp-wrap">
         <table class="cmp-table">
           <thead><tr><th>功能</th><th>macOS &middot; Linux</th><th>Windows</th></tr></thead>
@@ -1918,17 +1918,19 @@ ahadiff config show --resolved</span></div>
       <p>表格说明设计支持面与明确的平台例外。浏览器检查和模拟 Windows 分支不等于 Windows 原生运行，执行结论需查看对应平台的当前结果。</p>
 
       <h3>当前源码验收</h3>
-      <p>五项功能仍是未发布源码，版本为 1.3.8。验收正在进行，下面的历史绿灯不代表这份最终源码已经通过。</p>
+      <p>五项功能仍是未发布源码，版本为 1.3.8。下列本地检查已经完成，Windows 原生缺口仍明确保留。详细日志、生成课程和本地验收报告继续保持 gitignore。</p>
       <div class="cmp-wrap"><table class="cmp-table">
-        <thead><tr><th>范围</th><th>本次需要检查</th><th>本文状态</th></tr></thead>
+        <thead><tr><th>范围</th><th>检查范围</th><th>当前状态</th></tr></thead>
         <tbody>
-          <tr><td>macOS</td><td>后端、来源完整性、CLI/API、快照与真实 serve</td><td>待本次验收记录确认</td></tr>
-          <tr><td>Linux</td><td>原生文件保护、锁、容器测试与打包</td><td>待本次平台结果确认</td></tr>
-          <tr><td>Windows</td><td>原生 NTFS/Unicode/reparse/锁与 CLI/WebUI</td><td>本文未建立原生通过结论</td></tr>
-          <tr><td>中英双语 WebUI</td><td>类型、单测、构建、桌面/移动交互、空错态与无障碍</td><td>待最终浏览器矩阵</td></tr>
-          <tr><td>真实模型 / wheel</td><td>单独预算的合成数据生成、安装后静态资源与来源元数据</td><td>需单独记录本次结果</td></tr>
+          <tr><td>macOS</td><td>后端、来源完整性、CLI/API、快照与真实 serve</td><td>已完成</td></tr>
+          <tr><td>Linux arm64</td><td>原生文件保护、锁、前后端测试、构建与真实 serve</td><td>已在隔离容器中完成</td></tr>
+          <tr><td>Windows</td><td>原生 NTFS/Unicode/reparse/锁与 CLI/WebUI</td><td>未执行；已准备验证包</td></tr>
+          <tr><td>中英双语 WebUI</td><td>类型、单测、构建、桌面/移动交互、空错态与无障碍</td><td>已完成；末尾文案调整单独复验</td></tr>
+          <tr><td>真实模型 / wheel</td><td>单独预算的合成数据生成、安装后静态资源与来源元数据</td><td>已完成；失败、重试和旧响应复用均有记录</td></tr>
         </tbody>
       </table></div>
+
+      <p>浏览器覆盖 macOS 三引擎、多视口矩阵和 Linux Chromium 桌面/移动端。末尾标题与文案调整做了目标检查，没有重跑全部 macOS 组合。真实用户学习效果尚未通过实验测量，练习指标仍是自报告。本轮仅本地提交，没有触发远端 CI、push 或发布。</p>
 
       <h3>历史验证快照</h3>
       <p class="g-lead">以下记录早于 2026-09-08 源码更新，不代表五来源、主动练习或新完整性契约已经通过验证。v1.3.8 本地 gate 覆盖后端 unit/integration/eval、ruff/format/pyright、viewer typecheck/Vitest/build、i18n parity、真实 serve 保存复现和一次 live DeepSeek learn。发布和 CI 状态以 GitHub Actions 为准。</p>

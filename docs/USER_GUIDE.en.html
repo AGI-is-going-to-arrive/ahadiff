@@ -1900,7 +1900,7 @@ ahadiff config show --resolved</span></div>
       <p>Screenshots in this guide are examples only. They carry no real provider credentials, repository contents, or user data.</p>
 
       <h3>Platform support</h3>
-      <p class="g-lead">macOS is the local validation platform for v1.3.8. Windows path and global-config behavior are covered by targeted unit tests; real Windows runtime status belongs to the release workflow. Antigravity stays Unknown/blocked until a real Antigravity check is run. Two features stay POSIX-only.</p>
+      <p class="g-lead">The 2026-09-08 source update was validated locally on macOS and Linux arm64. Native Windows was not run; targeted Windows branches and a prepared validation package do not establish a native pass. Antigravity stays Unknown/blocked until a real Antigravity check is run. Two features stay POSIX-only.</p>
       <div class="cmp-wrap">
         <table class="cmp-table">
           <thead><tr><th>Feature</th><th>macOS &middot; Linux</th><th>Windows</th></tr></thead>
@@ -1918,17 +1918,19 @@ ahadiff config show --resolved</span></div>
       <p>The table describes intended platform support and explicit exceptions. Browser checks and simulated Windows branches are not a native Windows run; use current platform-specific results to establish execution.</p>
 
       <h3>Current source acceptance</h3>
-      <p>The five-function update remains unpublished source code at version 1.3.8. Acceptance is in progress; historical green checks below do not establish a pass for this final source.</p>
+      <p>The five-function update remains unpublished source code at version 1.3.8. The current local checks below are complete, with an explicit native Windows gap. Detailed logs, generated courses, and local acceptance reports remain gitignored.</p>
       <div class="cmp-wrap"><table class="cmp-table">
-        <thead><tr><th>Area</th><th>Required current check</th><th>Status here</th></tr></thead>
+        <thead><tr><th>Area</th><th>Checked scope</th><th>Current status</th></tr></thead>
         <tbody>
-          <tr><td>macOS</td><td>Backend, source integrity, CLI/API, snapshots, and real serve</td><td>Awaiting current acceptance record</td></tr>
-          <tr><td>Linux</td><td>Native file guards, locking, container tests and packaging</td><td>Awaiting current platform result</td></tr>
-          <tr><td>Windows</td><td>Native NTFS/Unicode/reparse/locking and CLI/WebUI</td><td>No native result established here</td></tr>
-          <tr><td>English / Chinese WebUI</td><td>Type/unit/build, desktop/mobile interaction, empty/error states and accessibility</td><td>Awaiting final browser matrix</td></tr>
-          <tr><td>Real model / wheel</td><td>Budgeted synthetic-only generation, installed-wheel assets and source metadata</td><td>Requires a separately recorded current result</td></tr>
+          <tr><td>macOS</td><td>Backend, source integrity, CLI/API, snapshots, and real serve</td><td>Completed</td></tr>
+          <tr><td>Linux arm64</td><td>Native file guards, locking, backend/frontend tests, builds, and real serve</td><td>Completed in an isolated container</td></tr>
+          <tr><td>Windows</td><td>Native NTFS/Unicode/reparse/locking and CLI/WebUI</td><td>Not run; validation package prepared</td></tr>
+          <tr><td>English / Chinese WebUI</td><td>Type/unit/build, desktop/mobile interaction, empty/error states and accessibility</td><td>Completed; final copy changes checked separately</td></tr>
+          <tr><td>Real model / wheel</td><td>Budgeted synthetic-only generation, installed-wheel assets and source metadata</td><td>Completed; failures, retries, and reused responses recorded</td></tr>
         </tbody>
       </table></div>
+
+      <p>Browser coverage includes the macOS three-engine, multiple-viewport matrix and Linux Chromium desktop/mobile. The final title and copy changes had targeted checks, without repeating every macOS combination. Real-user learning gains were not measured; practice metrics remain self-reported. This work was committed locally without a remote CI run, push, or publication.</p>
 
       <h3>Historical validation snapshot</h3>
       <p class="g-lead">These records predate the 2026-09-08 source changes and do not validate the five sources, active exercises, or new integrity contracts. For v1.3.8, the recorded local gate covers backend unit/integration/eval, ruff/format/pyright, viewer typecheck/Vitest/build, i18n parity, real serve save reproduction, and a live DeepSeek learn run. Release and CI status belong in GitHub Actions.</p>
