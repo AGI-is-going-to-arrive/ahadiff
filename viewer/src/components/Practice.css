@@ -1,0 +1,77 @@
+/* Use the established Quiz and Review tokens for multiline active practice. */
+.srs-card__question,
+.srs-card__explanation-body,
+.srs-card__answer-meta {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.practice-error-select {
+  display: block;
+  max-width: 100%;
+  margin-block: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  background: var(--subtle);
+  font: inherit;
+}
+
+.srs-card__evidence-link {
+  color: var(--accent-ink);
+  text-decoration: underline;
+}
+
+.srs-card__evidence-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.practice-error-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.practice-metrics {
+  margin-block-start: var(--sp-6);
+}
+
+.practice-metrics__errors {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: var(--sp-3);
+}
+
+.practice-metrics__errors > div {
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+}
+
+.practice-metrics__errors dd {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 600px) {
+  .practice-metrics .kpi-grid--3col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (forced-colors: active) {
+  .practice-error-select {
+    border-color: ButtonText;
+    color: ButtonText;
+    background: Canvas;
+  }
+}
+
+@media print {
+  .practice-error-select,
+  .srs-card__answer-form,
+  .srs-card__rating {
+    display: none;
+  }
+}

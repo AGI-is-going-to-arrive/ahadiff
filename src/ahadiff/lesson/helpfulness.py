@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from ahadiff.core.json_util import safe_json_loads
-from ahadiff.review.database import connect_review_db
+from ahadiff.core.sqlite_util import safe_sqlite_connect
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,7 +42,9 @@ def aggregate_helpfulness(
         return []
 
     try:
-        with connect_review_db(db_path) as conn:
+        with closing(
+            safe_sqlite_connect(db_path, read_only=True, row_factory=sqlite3.Row, defensive=True)
+        ) as conn:
             rows = conn.execute(
                 """
                 SELECT payload_json

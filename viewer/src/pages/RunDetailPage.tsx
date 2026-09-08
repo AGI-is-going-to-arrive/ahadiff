@@ -686,8 +686,12 @@ export default function RunDetailPage() {
               </div>
               <div className="run-detail__meta-row">
                 <dt>{t('RunDetail.source_kind')}</dt>
-                <dd>{run.source_kind}</dd>
+                <dd>{run.source_kind === 'document' ? t('LearnDialog.source_document') : run.source_kind}</dd>
               </div>
+              {run.review_context_used && <div className="run-detail__meta-row">
+                <dt>{t('Evidence.review_context')}</dt>
+                <dd>{t('LearnDialog.review_context_used')}</dd>
+              </div>}
               {run.prompt_version && (
                 <div className="run-detail__meta-row">
                   <dt>{t('RunDetail.prompt_version')}</dt>

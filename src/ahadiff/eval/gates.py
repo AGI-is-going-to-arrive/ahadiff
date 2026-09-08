@@ -80,6 +80,7 @@ def evaluate_hard_gates(
     injection_unresolved: bool,
     safety_findings: Sequence[Mapping[str, object]] = (),
     diff_coverage_basis: Mapping[str, int] | None = None,
+    document_anchor_coverage: float | None = None,
 ) -> HardGateSummary:
     contradicted_count = sum(1 for claim in claims if claim.status == "contradicted")
     accuracy_dimension = rubric.dimension("accuracy")
@@ -95,6 +96,9 @@ def evaluate_hard_gates(
         float(diff_coverage_dimension.max_score) * evidence_coverage_ratio,
         2,
     )
+    if document_anchor_coverage is not None:
+        diff_coverage_score = document_anchor_coverage
+        evidence_coverage_threshold = 0.5
     critical_safety_count = _critical_safety_finding_count(safety_findings)
     mitigated_critical_safety_count = _mitigated_critical_safety_finding_count(safety_findings)
     adaptive_policy = _adaptive_accuracy_evidence_policy(diff_coverage_basis)
@@ -164,7 +168,9 @@ def evaluate_hard_gates(
             passed=diff_coverage_score is not None
             and diff_coverage_score >= evidence_coverage_threshold,
             detail=_minimum_threshold_detail(
-                "claim anchor coverage",
+                "document source anchor coverage"
+                if document_anchor_coverage is not None
+                else "claim anchor coverage",
                 score=diff_coverage_score,
                 threshold=evidence_coverage_threshold,
                 adaptive_ratio=evidence_coverage_ratio,

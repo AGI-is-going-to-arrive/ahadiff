@@ -48,6 +48,7 @@ export const sourceKindSchema = z.enum([
   'patch_file',
   'patch_stdin',
   'file_compare',
+  'document',
 ]);
 
 export const degradedFlagSchema = z.enum([
@@ -58,6 +59,131 @@ export const degradedFlagSchema = z.enum([
 ]);
 
 export const reviewAnswerSchema = z.enum(['easy', 'good', 'hard', 'wrong']);
+
+const sourceDigestSchema = z.string().length(64).regex(/^[0-9a-f]{64}$/);
+const snapshotIdSchema = z.string().length(37).regex(/^snap_[0-9a-f]{32}$/);
+const MAX_SOURCE_FILE_BYTES = 256 * 1024;
+
+// Python source contracts count Unicode code points, rather than UTF-16 units.
+function sourceTextSchema(minimum: number, maximum: number): z.ZodString {
+  return z.string().refine((value) => {
+    const count = Array.from(value).length;
+    return count >= minimum && count <= maximum;
+  }, { message: 'Source text length is outside the supported range' });
+}
+
+function normalizedSnapshotText(value: string): boolean {
+  return value.normalize('NFC') === value && !/[\r\u0000]/.test(value)
+    && !Array.from(value).some((character) => {
+      const point = character.codePointAt(0) ?? 0;
+      return point >= 0xd800 && point <= 0xdfff;
+    });
+}
+
+function portableSnapshotName(value: string): boolean {
+  return normalizedSnapshotText(value) && value === value.trim()
+    && !['.', '..', '.git', '.ahadiff'].includes(value.toLowerCase())
+    && !/[\\/:<>"|?*]/.test(value) && !/[. ]$/.test(value)
+    && !/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(value)
+    && !Array.from(value).some((character) => character !== ' ' && /[\p{C}\p{Z}]/u.test(character));
+}
+
+const snapshotTimestampSchema = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/)
+  .refine((value) => {
+    const time = Date.parse(value);
+    return value.endsWith('Z') && Number(value.slice(0, 4)) >= 1 && Number.isFinite(time)
+      && new Date(time).toISOString().slice(0, 19) === value.slice(0, 19);
+  }, { message: 'Snapshot creation time must be a valid UTC timestamp' });
+
+export const sourceAnchorSchema = z.object({
+  schema_version: z.literal(1),
+  source_kind: z.enum(['diff', 'document']),
+  format: z.enum(['markdown', 'notebook', 'json', 'toml', 'yaml', 'text']),
+  side: z.enum(['old', 'new', 'document']),
+  file: sourceTextSchema(1, 1024),
+  anchor_id: z.string().length(39).regex(/^anchor_[0-9a-f]{32}$/),
+  locator: z.object({
+    kind: z.enum(['heading', 'paragraph', 'cell', 'key_path', 'line']),
+    heading_path: z.array(sourceTextSchema(0, 512)).max(32).default([]),
+    paragraph_index: z.number().int().nonnegative().nullable().optional(),
+    cell_index: z.number().int().nonnegative().nullable().optional(),
+    cell_id: sourceTextSchema(0, 160).nullable().optional(),
+    key_path: z.array(z.union([sourceTextSchema(0, 512), z.number().int()])).max(48).default([]),
+    fallback_reason: sourceTextSchema(0, 120).nullable().optional(),
+  }).strict(),
+  content_hash: sourceDigestSchema,
+  start: z.number().int().positive(),
+  end: z.number().int().positive(),
+  quote: sourceTextSchema(0, 2048),
+}).strict().refine((anchor) => anchor.end >= anchor.start
+  && anchor.end - anchor.start < 120
+  && (anchor.source_kind === 'document' ? anchor.side === 'document' : anchor.side !== 'document'));
+
+export const evidenceAnchorsArtifactSchema = z.object({
+  schema: z.literal('ahadiff.evidence_anchors'),
+  schema_version: z.literal(1),
+  source_kind: z.enum(['diff', 'document']),
+  anchors: z.array(sourceAnchorSchema).max(4096).default([]),
+  truncated: z.boolean().default(false),
+  warnings: z.array(z.string()).max(20).default([]),
+  sources: z.array(z.object({
+    file: z.string().min(1),
+    side: z.enum(['old', 'new', 'document']),
+    format: z.enum(['markdown', 'notebook', 'json', 'toml', 'yaml', 'text']),
+    content_hash: sourceDigestSchema,
+  }).strict()).max(1000).default([]),
+}).strict();
+
+export const reviewContextArtifactSchema = z.object({
+  schema_version: z.literal(1),
+  kind: z.literal('auxiliary_untrusted'),
+  content: z.string(),
+  content_hash: sourceDigestSchema,
+  sanitized: z.boolean(),
+}).strict();
+
+export const snapshotRecordSchema = z.object({
+  schema_version: z.literal(1),
+  snapshot_id: snapshotIdSchema,
+  name: sourceTextSchema(1, 80).refine(portableSnapshotName),
+  file_name: sourceTextSchema(1, 255).refine(portableSnapshotName),
+  content: z.string().max(MAX_SOURCE_FILE_BYTES).refine(normalizedSnapshotText),
+  content_hash: sourceDigestSchema,
+  hash_scope: z.literal('sanitized_utf8_nfc_lf'),
+  created_at: snapshotTimestampSchema,
+  size_bytes: z.number().int().nonnegative().max(MAX_SOURCE_FILE_BYTES),
+  source: z.literal('explicit_file'),
+  sanitized: z.boolean(),
+}).strict().refine((record) => new TextEncoder().encode(record.content).byteLength === record.size_bytes,
+  { message: 'Snapshot content must match its declared UTF-8 byte count' });
+
+export const snapshotSummarySchema = z.object({
+  schema_version: z.number().int().nullable().default(null),
+  snapshot_id: snapshotIdSchema,
+  name: z.string().nullable().default(null),
+  file_name: z.string().nullable().default(null),
+  content_hash: sourceDigestSchema.nullable().default(null),
+  hash_scope: z.literal('sanitized_utf8_nfc_lf').default('sanitized_utf8_nfc_lf'),
+  created_at: z.string().nullable().default(null),
+  size_bytes: z.number().int().nonnegative().max(MAX_SOURCE_FILE_BYTES).nullable().default(null),
+  source: z.literal('explicit_file').default('explicit_file'),
+  sanitized: z.boolean().nullable().default(null),
+  status: z.enum(['ready', 'corrupt', 'unsupported']),
+  stored_bytes: z.number().int().nonnegative(),
+  record_hash: sourceDigestSchema.nullable().default(null),
+}).strict();
+
+export const snapshotListResponseSchema = z.object({
+  snapshots: z.array(snapshotSummarySchema),
+  max_count: z.number().int().positive().max(100).default(100),
+  max_bytes: z.number().int().positive().max(16 * 1024 * 1024).default(16 * 1024 * 1024),
+}).strict();
+
+export const snapshotDeleteResponseSchema = z.object({
+  snapshot_id: snapshotIdSchema,
+  deleted: z.literal(true),
+}).strict();
 
 /* ─────────────── 1. AuthTokenResponse ─────────────── */
 
@@ -108,6 +234,9 @@ const learnabilityInfoSchema = z.object({
 });
 
 export const runDetailSchema = runSummarySchema.extend({
+  active_practice: z.boolean().optional(),
+  review_context_used: z.boolean().optional(),
+  review_context_hash: sourceDigestSchema.nullable().optional(),
   base_ref: z.string().nullable(),
   prompt_version: z.string(),
   eval_bundle_version: z.string(),
@@ -664,6 +793,9 @@ const reviewChoicesSchema = z
   );
 
 export const dueReviewCardSchema = z.object({
+  question_id: z.string().nullable().optional(),
+  exercise_kind: z.enum(['prediction', 'completion', 'error_reason']).nullable().optional(),
+  source_anchors: z.array(sourceAnchorSchema).optional(),
   card_id: z.string().min(1),
   concept: z.string(),
   run_id: z.string().min(1),
@@ -1447,6 +1579,7 @@ export const taskCancelResponseSchema = z
 
 export const learnEstimateResponseSchema = z
   .object({
+    active_practice: z.boolean().optional(),
     patch_bytes: z.number().int().nonnegative(),
     file_count: z.number().int().nonnegative(),
     total_lines: z.number().int().nonnegative(),
@@ -1459,6 +1592,9 @@ export const learnEstimateResponseSchema = z
     diff_clipped: z.boolean().default(false),
     omitted_files_count: z.number().int().nonnegative().default(0),
     preview_patch: z.string().optional(),
+    preview_document: z.string().optional(),
+    source_bytes: z.number().int().nonnegative().nullable().optional(),
+    review_context_used: z.boolean().optional(),
     preview_truncated: z.boolean().optional(),
     source_kind: sourceKindSchema.nullable().optional(),
   })
@@ -1509,6 +1645,25 @@ export const transferConceptSchema = z
   })
   .strict();
 
+export const practiceAttemptSummarySchema = z.object({
+  attempts: z.number().int().nonnegative(),
+  independent_rate: z.number().finite().min(0).max(1).nullable(),
+}).strict().refine((value) => (value.attempts === 0) === (value.independent_rate === null));
+
+export const activePracticeSummarySchema = z.object({
+  initial: practiceAttemptSummarySchema,
+  delayed_recall: practiceAttemptSummarySchema,
+  unseen_variant: practiceAttemptSummarySchema,
+  error_types: z.object({
+    none: z.number().int().nonnegative(),
+    recall: z.number().int().nonnegative(),
+    application: z.number().int().nonnegative(),
+    reasoning: z.number().int().nonnegative(),
+    boundary: z.number().int().nonnegative(),
+  }).strict(),
+  feedback_kind: z.literal('self_reported'),
+}).strict();
+
 export const learningEffectivenessResponseSchema = z
   .object({
     total_concepts_reviewed: z.number().int().nonnegative(),
@@ -1518,6 +1673,7 @@ export const learningEffectivenessResponseSchema = z
     transfer_rate: z.number().finite(),
     helpfulness: z.array(helpfulnessAggregateSchema),
     transfer_metrics: z.array(transferConceptSchema),
+    active_practice: activePracticeSummarySchema.optional(),
   })
   .strict();
 

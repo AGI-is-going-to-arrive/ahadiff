@@ -20,6 +20,7 @@ class NotebookRender:
     text: str
     cell_count: int
     warnings: tuple[str, ...]
+    cell_spans: tuple[dict[str, object], ...] = ()
 
 
 def render_notebook_source_for_diff(data: bytes) -> NotebookRender | None:
@@ -28,7 +29,7 @@ def render_notebook_source_for_diff(data: bytes) -> NotebookRender | None:
     except UnicodeDecodeError:
         return None
     try:
-        payload: object = safe_json_loads(decoded)
+        payload: object = safe_json_loads(decoded, object_pairs_hook=_unique_notebook_keys)
     except RecursionError:
         raise InputError(_JSON_DEPTH_ERROR) from None
     except (json.JSONDecodeError, ValueError):
@@ -43,6 +44,7 @@ def render_notebook_source_for_diff(data: bytes) -> NotebookRender | None:
     cells = cast("list[object]", raw_cells)
 
     warnings: list[str] = []
+    cell_spans: list[dict[str, object]] = []
     lines = [
         "# Notebook source view",
         "# Metadata and outputs are intentionally ignored by AhaDiff.",
@@ -62,13 +64,38 @@ def render_notebook_source_for_diff(data: bytes) -> NotebookRender | None:
         suffix = f" id={_header_text(cell_id)}" if isinstance(cell_id, str) and cell_id else ""
         lines.append(f"# %% [{cell_type}] cell {index}{suffix}")
         if source_text:
+            source_start = len(lines) + 1
             lines.extend(source_text.splitlines())
+            cell_spans.append(
+                {
+                    "cell_index": index,
+                    "cell_id": _header_text(cell_id)
+                    if isinstance(cell_id, str) and cell_id
+                    else None,
+                    "start": source_start,
+                    "end": len(lines),
+                }
+            )
         lines.append("")
     if not cells:
         warnings.append("notebook has no cells")
         lines.append("# %% [empty] cell 0")
         lines.append("")
-    return NotebookRender(text="\n".join(lines), cell_count=len(cells), warnings=tuple(warnings))
+    return NotebookRender(
+        text="\n".join(lines),
+        cell_count=len(cells),
+        warnings=tuple(warnings),
+        cell_spans=tuple(cell_spans),
+    )
+
+
+def _unique_notebook_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError("Notebook JSON contains an ambiguous duplicate key")
+        payload[key] = value
+    return payload
 
 
 def _validate_json_depth(payload: object) -> None:

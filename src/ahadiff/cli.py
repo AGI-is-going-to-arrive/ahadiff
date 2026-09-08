@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, cast
 from urllib.parse import quote
 
+import click
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -77,6 +79,8 @@ if TYPE_CHECKING:
     from rich.status import Status
 
     from .contracts import PrivacyMode
+    from .contracts.source_anchor import SourceAnchor
+    from .quiz.schemas import QuizQuestion
     from .review.schemas import ReviewAnswer
     from .safety.gates import TransportTarget
 
@@ -112,6 +116,9 @@ _APP.add_typer(_DB_APP, name="db")
 _APP.add_typer(_CONCEPTS_APP, name="concepts")
 _APP.add_typer(_EXPORT_APP, name="export")
 _APP.add_typer(_CHALLENGE_APP, name="challenge")
+from .cli_snapshots import snapshot_app  # noqa: E402
+
+_APP.add_typer(snapshot_app, name="snapshot")
 _INSTALL_TARGET_HELP = (
     "Guidance target (use install --detect for the current catalogue). "
     "Gemini is explicit-only for API-key/Enterprise accounts; "
@@ -478,6 +485,8 @@ def _print_learn_pipeline_result(result: Any) -> None:
 
 
 def _empty_captured_diff_hint(metadata: dict[str, Any]) -> str | None:
+    if metadata.get("source_kind") == "document":
+        return None
     raw_stats = metadata.get("diff_stats")
     if not isinstance(raw_stats, dict):
         return None
@@ -1156,6 +1165,37 @@ def learn_cmd(
             help="Recursively compare two directories (macOS/Linux only).",
         ),
     ] = None,
+    document: Annotated[
+        Path | None,
+        typer.Option("--document", help="Learn from one local Markdown document, without a diff."),
+    ] = None,
+    snapshot_id: Annotated[
+        str | None,
+        typer.Option("--snapshot", help="Use a saved, sanitized local comparison baseline."),
+    ] = None,
+    snapshot_hash: Annotated[
+        str | None,
+        typer.Option("--snapshot-hash", help="Require this exact snapshot content SHA-256."),
+    ] = None,
+    after: Annotated[
+        Path | None,
+        typer.Option(
+            "--after", help="Current file to compare against --snapshot; never overwritten."
+        ),
+    ] = None,
+    review_context_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--review-context-file", help="Optional untrusted review notes, at most 8 KiB."
+        ),
+    ] = None,
+    active_practice: Annotated[
+        bool,
+        typer.Option(
+            "--active-practice",
+            help="Generate open transfer exercises: predict, complete, explain.",
+        ),
+    ] = False,
     against_spec: Annotated[
         Path | None,
         typer.Option(
@@ -1249,17 +1289,27 @@ def learn_cmd(
         quiz_mode_value = _quiz_mode_value(quiz_mode)
         if spec_semantic_review and against_spec is None:
             raise InputError("--spec-semantic-review requires --against-spec")
+        if (snapshot_id is None) != (after is None):
+            raise InputError("--snapshot and --after must be supplied together")
+        if snapshot_hash is not None and snapshot_id is None:
+            raise InputError("--snapshot-hash requires --snapshot")
+        if document is not None and snapshot_id is not None:
+            raise InputError("--document and --snapshot are mutually exclusive")
         allow_non_git = (
             patch is not None
             or compare is not None
             or compare_dir is not None
             or patch_url is not None
+            or document is not None
+            or snapshot_id is not None
         )
         workspace_hint_paths = (
             *((Path(patch),) if patch is not None and patch != "-" else ()),
             *(compare or ()),
             *(compare_dir or ()),
             *((against_spec,) if against_spec is not None else ()),
+            *((document,) if document is not None else ()),
+            *((after,) if after is not None else ()),
         )
         root, has_git_repo = _resolve_learn_workspace_root(
             repo_root,
@@ -1270,7 +1320,39 @@ def learn_cmd(
         apply_global_env_file()
         apply_repo_env_file(_state_dir_for_root(root, has_git_repo=has_git_repo) / ".env")
         _assert_sqlite_runtime_supported_for_learn()
+        from .contracts.run_source import (
+            REVIEW_CONTEXT_MAX_BYTES,
+            DocumentInput,
+            validate_review_context,
+        )
         from .core import orchestrator as orchestrator_module
+        from .core.learn_inputs import (
+            read_learning_file,
+            read_learning_text,
+            resolve_snapshot_comparison,
+        )
+
+        document_input = (
+            DocumentInput.model_validate(read_learning_file(root, document).model_dump())
+            if document is not None
+            else None
+        )
+        review_context = (
+            validate_review_context(
+                read_learning_text(root, review_context_file, max_bytes=REVIEW_CONTEXT_MAX_BYTES)
+            )
+            if review_context_file is not None
+            else None
+        )
+        snapshot_files = None
+        snapshot_provenance = None
+        if snapshot_id is not None and after is not None:
+            snapshot_files, snapshot_provenance = resolve_snapshot_comparison(
+                root,
+                snapshot_id,
+                expected_hash=snapshot_hash,
+                after=read_learning_file(root, after),
+            )
 
         request = orchestrator_module.LearnRequest(
             workspace_root=root,
@@ -1286,6 +1368,11 @@ def learn_cmd(
             if patch is not None and patch != "-"
             else patch,
             compare=_resolve_cli_path_pair_from_workspace(root, compare),
+            compare_files=snapshot_files,
+            snapshot_provenance=snapshot_provenance,
+            document=document_input,
+            review_context=review_context,
+            active_practice=active_practice,
             compare_dir=_resolve_cli_path_pair_from_workspace(root, compare_dir),
             against_spec=_resolve_cli_path_from_workspace(root, against_spec),
             spec_semantic_review=spec_semantic_review,
@@ -1364,17 +1451,22 @@ def quiz_cmd(
             if has_git_repo
             else load_workspace_config(root, cli_overrides=_cli_overrides(lang=lang))
         )
-        _ = resolve_locale(
+        output_locale = resolve_locale(
             cli_lang=lang,
             config_lang=str(snapshot.values["lang"]),
-        )  # wired in a future task.
+        )
         validate_run_id(run_id)
         run_path = run_dir(run_id, root) if has_git_repo else (root / ".ahadiff" / "runs" / run_id)
+        _validate_cli_source_run(run_path)
         questions = load_quiz_questions(run_path / "quiz" / "quiz.jsonl")
         correct = 0
+        scored_questions = 0
+        exercise_count = 0
         for index, question in enumerate(questions, start=1):
-            console.print(f"[bold]Question {index}[/bold]: {question.question}")
+            question_label = "题目" if output_locale == "zh-CN" else "Question"
+            console.print(f"{question_label} {index}: {question.question}", markup=False)
             if question.answer_mode == "multiple_choice" and question.choices:
+                scored_questions += 1
                 for choice in question.choices:
                     console.print(f"  [bold]{choice.label}[/bold]. {choice.text}")
                 selected_label = _prompt_quiz_choice_label()
@@ -1392,7 +1484,24 @@ def quiz_cmd(
                         f"[yellow]Expected[/yellow]: "
                         f"{expected_choice.label}. {expected_choice.text}"
                     )
+            elif question.exercise_kind is not None:
+                exercise_count += 1
+                answer_prompt = (
+                    "先独立作答" if output_locale == "zh-CN" else "Your independent answer"
+                )
+                # Keep the attempt in memory only. It is not a machine-scored answer.
+                answer = typer.prompt(answer_prompt)
+                while not answer.strip():
+                    answer = typer.prompt(answer_prompt)
+                console.print(
+                    "参考答案（语义反馈，未执行代码）"
+                    if output_locale == "zh-CN"
+                    else "Reference answer (semantic feedback; code was not executed)",
+                    markup=False,
+                )
+                console.print(question.expected_answer, markup=False)
             else:
+                scored_questions += 1
                 answer = typer.prompt("Your answer")
                 if _normalize_quiz_answer(answer) == _normalize_quiz_answer(
                     question.expected_answer
@@ -1405,14 +1514,141 @@ def quiz_cmd(
             evidence_text = ", ".join(f"{item.file}:{item.line}" for item in question.evidence)
             console.print(f"[bold]Claims[/bold]: {claims_text}")
             console.print(f"[bold]Evidence[/bold]: {evidence_text}")
+            for anchor in question.source_anchors:
+                console.print(
+                    f"{anchor.format} · {anchor.side} · {anchor.file}:"
+                    f"{anchor.start}-{anchor.end} · {anchor.anchor_id}",
+                    markup=False,
+                )
+                console.print(anchor.quote, markup=False)
+                console.print(f"SHA-256: {anchor.content_hash}", markup=False)
             if question.concepts:
                 console.print(f"[bold]Concepts[/bold]: {', '.join(question.concepts)}")
             if question.explanation:
                 console.print(f"[bold]Why[/bold]: {question.explanation}")
+            if question.exercise_kind is not None:
+                _record_cli_exercise(
+                    root,
+                    run_path,
+                    question,
+                    lang=output_locale,
+                    desired_retention=float(
+                        cast("dict[str, Any]", snapshot.values["learn"])["desired_retention"]
+                    ),
+                )
             console.print("")
-        console.print(f"[bold]Score[/bold]: {correct}/{len(questions)}")
+        if scored_questions:
+            label = "答案匹配结果" if output_locale == "zh-CN" else "Score (answer matches)"
+            console.print(f"[bold]{label}[/bold]: {correct}/{scored_questions}")
+        if exercise_count:
+            console.print(
+                f"已完成 {exercise_count} 项练习自评；Score/Judge 衡量产物质量，不代表学习效果。"
+                if output_locale == "zh-CN"
+                else (
+                    f"Self-assessed {exercise_count} exercises. "
+                    "Score/Judge measure artifact quality, not learning gains."
+                ),
+                markup=False,
+            )
     except Exception as error:  # pragma: no cover - exercised through CLI tests
         _handle_cli_error(error)
+
+
+def _validate_cli_source_run(run_path: Path) -> None:
+    from .claims.extract import read_artifact_text_no_follow
+    from .core.card_sources import declares_source_artifacts, require_finalized_source
+    from .core.paths import validate_state_path_no_symlinks
+    from .core.source_evidence import load_review_context, load_run_source_text
+
+    metadata_path = run_path / "metadata.json"
+    has_source_artifacts = declares_source_artifacts(run_path, {})
+    if not metadata_path.exists():
+        if has_source_artifacts:
+            raise InputError("source metadata is missing")
+        return
+    validate_state_path_no_symlinks(run_path, allow_missing_leaf=False)
+    payload = safe_json_loads(read_artifact_text_no_follow(metadata_path, max_bytes=1_000_000))
+    if not isinstance(payload, dict):
+        raise InputError("invalid source metadata")
+    metadata = cast("dict[str, Any]", payload)
+    if declares_source_artifacts(run_path, metadata):
+        require_finalized_source(run_path, metadata)
+        load_run_source_text(run_path, metadata)
+        load_review_context(run_path, metadata)
+
+
+def _record_cli_exercise(
+    root: Path,
+    run_path: Path,
+    question: QuizQuestion,
+    *,
+    lang: str,
+    desired_retention: float,
+) -> None:
+    from .claims.extract import read_artifact_text_no_follow
+    from .contracts.serve_app import QuizAnswerRequest
+    from .core.card_sources import require_finalized_source
+    from .core.ids import make_event_id
+    from .core.paths import validate_state_path_no_symlinks
+    from .review.database import record_card_review_once
+    from .serve.routes_signals import record_quiz_attempt
+
+    is_zh = lang == "zh-CN"
+    rating_prompt = (
+        "自评：1 重来，2 困难/有帮助，3 独立完成，4 独立且轻松"
+        if is_zh
+        else "Self-assessment: 1 Again, 2 Hard/assisted, 3 Independent, 4 Independent/easy"
+    )
+    rating = int(typer.prompt(rating_prompt, type=click.IntRange(1, 4)))
+    assessment = "independent" if rating >= 3 else "assisted" if rating == 2 else "not_yet"
+    error_type = "none"
+    if rating < 3:
+        error_prompt = (
+            "错误类型：1 回忆，2 应用，3 推理，4 边界"
+            if is_zh
+            else "Error type: 1 Recall, 2 Application, 3 Reasoning, 4 Boundary"
+        )
+        error_index = int(typer.prompt(error_prompt, type=click.IntRange(1, 4)))
+        error_type = ("recall", "application", "reasoning", "boundary")[error_index - 1]
+    attempt_id = f"quiz-cli:{make_event_id()}"
+    body = QuizAnswerRequest.model_validate(
+        {
+            "idempotency_key": attempt_id,
+            "quiz_id": question.question_id,
+            "run_id": run_path.name,
+            "exercise_kind": question.exercise_kind,
+            "feedback_kind": "semantic_self_assessment",
+            "correct": None,
+            "self_assessment": assessment,
+            "error_type": error_type,
+        }
+    )
+    state_dir = root / ".ahadiff"
+    db_path = state_dir / "review.sqlite"
+    with repo_write_lock(state_dir / "ahadiff.lock", command="quiz self-assessment"):
+        validate_state_path_no_symlinks(run_path, allow_missing_leaf=False)
+        metadata = safe_json_loads(
+            read_artifact_text_no_follow(run_path / "metadata.json", max_bytes=1_000_000)
+        )
+        if not isinstance(metadata, dict):
+            raise InputError("invalid source metadata")
+        require_finalized_source(run_path, cast("dict[str, Any]", metadata))
+        initialize_review_db(db_path)
+        if question.review_card_id is not None:
+            import_cards_from_jsonl(
+                db_path,
+                run_path / "quiz" / "cards.jsonl",
+                desired_retention=desired_retention,
+            )
+            record_card_review_once(
+                db_path,
+                card_id=question.review_card_id,
+                answer=("wrong", "hard", "good", "easy")[rating - 1],
+                idempotency_key=f"{attempt_id}:srs",
+                peeked_this_session=rating == 2,
+                desired_retention=desired_retention,
+            )
+        record_quiz_attempt(db_path, body, question)
 
 
 @_APP.command("install")
@@ -1605,6 +1841,52 @@ def _restore_artifact_from_backup(*, target: Path, backup_path: Path | None) -> 
     backup_path.replace(target)
 
 
+def _set_run_active_practice(run_path: Path, active_practice: bool) -> None:
+    from .claims.extract import read_artifact_text_no_follow
+    from .core.paths import atomic_write_state_text
+
+    metadata_path = run_path / "metadata.json"
+    metadata_text = read_artifact_text_no_follow(metadata_path, max_bytes=1_000_000)
+    metadata_value = safe_json_loads(metadata_text)
+    if not isinstance(metadata_value, dict):
+        raise InputError("invalid run metadata")
+    metadata = cast("dict[str, Any]", metadata_value)
+    metadata["active_practice"] = active_practice
+    updated_text = json.dumps(metadata, ensure_ascii=False, indent=2) + "\n"
+    manifest_path = run_path / "artifact_set.json"
+    manifest_text: str | None = None
+    if manifest_path.exists():
+        manifest_value = safe_json_loads(
+            read_artifact_text_no_follow(manifest_path, max_bytes=1_000_000)
+        )
+        if not isinstance(manifest_value, dict):
+            raise InputError("invalid artifact set")
+        manifest = cast("dict[str, Any]", manifest_value)
+        descriptors = manifest.get("artifacts")
+        if not isinstance(descriptors, list):
+            raise InputError("invalid artifact set descriptors")
+        matches: list[dict[str, Any]] = []
+        for item in cast("list[object]", descriptors):
+            if isinstance(item, dict):
+                item_map = cast("dict[str, Any]", item)
+                if item_map.get("path") == "metadata.json":
+                    matches.append(item_map)
+        if len(matches) != 1:
+            raise InputError("artifact set must contain one metadata descriptor")
+        descriptor = matches[0]
+        previous = metadata_text.encode("utf-8")
+        if descriptor.get("sha256") != hashlib.sha256(previous).hexdigest() or descriptor.get(
+            "bytes"
+        ) != len(previous):
+            raise InputError("artifact set metadata descriptor does not match the run")
+        updated = updated_text.encode("utf-8")
+        descriptor.update(sha256=hashlib.sha256(updated).hexdigest(), bytes=len(updated))
+        manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+    atomic_write_state_text(metadata_path, updated_text)
+    if manifest_text is not None:
+        atomic_write_state_text(manifest_path, manifest_text)
+
+
 def _run_content_lang(run_path: Path) -> str:
     return _run_content_lang_or_none(run_path) or "en"
 
@@ -1697,6 +1979,13 @@ def regenerate_cmd(
             help="Override quiz question count mode for regeneration.",
         ),
     ] = None,
+    active_practice: Annotated[
+        bool | None,
+        typer.Option(
+            "--active-practice/--mixed-practice",
+            help="Override the run's active-transfer or mixed quiz mode for this regeneration.",
+        ),
+    ] = None,
 ) -> None:
     try:
         quiz_mode_value = _quiz_mode_value(quiz_mode)
@@ -1733,12 +2022,20 @@ def regenerate_cmd(
                     "another ahadiff session is already running; "
                     "wait for it to finish before regenerating quiz"
                 ) from error
+            _validate_cli_source_run(run_path)
             quiz_path = run_path / "quiz" / "quiz.jsonl"
             cards_target_path = run_path / "quiz" / "cards.jsonl"
             misconception_target_path = run_path / "quiz" / "misconception_cards.jsonl"
-            quiz_backup = _backup_artifact_for_rollback(quiz_path)
-            cards_backup = _backup_artifact_for_rollback(cards_target_path)
-            misconception_backup = _backup_artifact_for_rollback(misconception_target_path)
+            mutable_artifacts = (
+                quiz_path,
+                cards_target_path,
+                misconception_target_path,
+                run_path / "quiz" / "distractor_gate.json",
+                run_path / "metadata.json",
+                run_path / "artifact_set.json",
+                run_path / "judge.json",
+                run_path / "judge_failure.json",
+            )
             (
                 provider_config,
                 effective_api_key,
@@ -1763,7 +2060,11 @@ def regenerate_cmd(
                 provider_selection_explicit=provider_selection_explicit,
             )
             cards_path: Path | None = None
+            backups: dict[Path, Path | None] = {}
+            artifacts_settled = False
             try:
+                for artifact in mutable_artifacts:
+                    backups[artifact] = _backup_artifact_for_rollback(artifact)
                 output_lang = _run_content_lang(run_path)
                 with console.status("[bold]Regenerating quiz...[/bold]", spinner="dots") as status:
                     quiz_artifacts, questions = generate_quiz_from_run(
@@ -1790,10 +2091,17 @@ def regenerate_cmd(
                             _run_diff_stats_or_none(run_path),
                         ),
                         overwrite=True,
+                        active_practice=active_practice,
                         structured_output_mode=_structured_output_mode(llm_config),
                         structured_validation_retries=_structured_validation_retries(llm_config),
                         on_sub_progress=_status_message_callback(status),
                     )
+                if active_practice is not None:
+                    _set_run_active_practice(run_path, active_practice)
+                # Judge input includes the old quiz. A new quiz invalidates that
+                # advisory result; regenerating it never starts another model call.
+                (run_path / "judge.json").unlink(missing_ok=True)
+                (run_path / "judge_failure.json").unlink(missing_ok=True)
                 report = evaluate_run(run_path)
                 cards_path = generate_cards_for_run(
                     run_path=run_path,
@@ -1803,28 +2111,53 @@ def regenerate_cmd(
                 )
                 if cards_path is None:
                     cards_target_path.unlink(missing_ok=True)
+                _outcome, publication_warnings = _persist_evaluated_run(
+                    run_path=run_path,
+                    report=report,
+                    workspace_root=root,
+                    event_type="verify",
+                    output_path=run_path / "score.json",
+                    force=True,
+                    note_payload={
+                        "regenerated_artifact": "quiz",
+                        "judge_status": "not_rerun_after_quiz_regeneration",
+                    },
+                )
+                artifacts_settled = True
+            except BaseException:
+                from .eval.results import result_artifacts_are_published
+
+                # Publication is the commit boundary. An interrupt after its
+                # return must keep the new quiz, score and event together.
+                if not result_artifacts_are_published(run_path):
+                    for artifact, backup in backups.items():
+                        _restore_artifact_from_backup(target=artifact, backup_path=backup)
+                artifacts_settled = True
+                raise
+            finally:
+                if artifacts_settled:
+                    for backup in backups.values():
+                        if backup is not None:
+                            backup.unlink(missing_ok=True)
+            for warning in publication_warnings:
+                error_console.print(warning, markup=False)
+            # As in learn, the sealed artifacts precede the derived review projection.
+            try:
+                if cards_path is None:
                     mark_run_cards_stale(state_dir / "review.sqlite", run_id=run_id)
                 else:
                     import_cards_from_jsonl(
                         state_dir / "review.sqlite",
                         cards_path,
                         desired_retention=float(learn_config["desired_retention"]),
+                        expected_run_id=run_id,
                     )
-            except Exception:
-                _restore_artifact_from_backup(target=quiz_path, backup_path=quiz_backup)
-                _restore_artifact_from_backup(target=cards_target_path, backup_path=cards_backup)
-                _restore_artifact_from_backup(
-                    target=misconception_target_path,
-                    backup_path=misconception_backup,
+            except AhaDiffError:
+                error_console.print(
+                    "Quiz was sealed; review-card synchronization is pending. "
+                    "Run ahadiff review to retry.",
+                    markup=False,
                 )
-                raise
-            finally:
-                if quiz_backup is not None:
-                    quiz_backup.unlink(missing_ok=True)
-                if cards_backup is not None:
-                    cards_backup.unlink(missing_ok=True)
-                if misconception_backup is not None:
-                    misconception_backup.unlink(missing_ok=True)
         console.print(f"[green]Regenerated quiz[/green]: {quiz_artifacts.quiz_path}")
         if quiz_artifacts.misconception_path is not None:
             console.print(f"[bold]Misconception cards[/bold]: {quiz_artifacts.misconception_path}")
@@ -1972,12 +2305,13 @@ def review_cmd(
         table.add_column("Scaffold", style="yellow")
         table.add_column("Path")
         for card in due_cards:
+            active_exercise = card.card_id.startswith("card_exercise_")
             table.add_row(
                 card.card_id,
-                card.concept,
+                ("Transfer practice" if active_exercise else card.concept),
                 card.due_date,
                 card.scaffolding_level,
-                card.display_path,
+                "" if active_exercise else card.display_path,
             )
         console.print(table)
     except Exception as error:  # pragma: no cover - exercised through CLI tests
@@ -2891,6 +3225,22 @@ def claims_cmd(
             )
         line_maps = load_line_map_records(line_map_path)
         symbols = load_symbol_records(symbols_path)
+        from .claims.extract import read_artifact_text_no_follow
+        from .core.source_evidence import load_evidence_anchors
+
+        metadata_path = run_path / "metadata.json"
+        source_kind = "diff"
+        source_anchors: tuple[SourceAnchor, ...] = ()
+        if metadata_path.exists() or (run_path / "evidence_anchors.json").exists():
+            source_anchors = load_evidence_anchors(run_path)
+            metadata = safe_json_loads(
+                read_artifact_text_no_follow(metadata_path, max_bytes=1_000_000)
+            )
+            if (
+                isinstance(metadata, dict)
+                and cast("dict[str, Any]", metadata).get("source_kind") == "document"
+            ):
+                source_kind = "document"
         before_text_by_path: dict[str, str] = {}
         after_text_by_path: dict[str, str] = {}
         if before_text_path.exists():
@@ -2903,7 +3253,7 @@ def claims_cmd(
                 after_text_path,
                 expected_artifact="after_text_by_path",
             )
-        if not before_text_by_path or not after_text_by_path:
+        if source_kind != "document" and (not before_text_by_path or not after_text_by_path):
             console.print(
                 "[yellow]Warning[/yellow]: some before/after text artifacts are missing; "
                 "structural negative scan is partially degraded"
@@ -2917,6 +3267,8 @@ def claims_cmd(
                 symbols=symbols,
                 before_text_by_path=before_text_by_path,
                 after_text_by_path=after_text_by_path,
+                source_anchors=source_anchors,
+                source_kind=source_kind,
             )
             write_verified_claims_jsonl(output_path, verified, overwrite=force)
             if pending_candidate_commit is not None:
@@ -3064,7 +3416,11 @@ def _persist_evaluated_run(
             score_path=output_path,
             overwrite=force,
         )
-    except Exception as exc:
+    except BaseException as exc:
+        from .eval.results import result_artifacts_are_published
+
+        if result_artifacts_are_published(run_path, event_id=outcome.event.event_id):
+            raise
         if outcome.sqlite_inserted:
             try:
                 rollback_result_event(run_path=run_path, event_id=outcome.event.event_id)
@@ -3073,6 +3429,8 @@ def _persist_evaluated_run(
                     "failed to publish score artifacts and failed to roll back "
                     f"result event {outcome.event.event_id}: {rollback_error}"
                 ) from rollback_error
+        if not isinstance(exc, Exception):
+            raise
         raise AhaDiffError(f"failed to publish score artifacts: {exc}") from exc
     return outcome, warnings
 

@@ -1,5 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '../components/AppShell';
+import SRSCard from '../components/SRSCard';
+import { revealQuizQuestion } from '../api/quiz';
+import { quizAnswer } from '../api/signals';
+import { createIdempotencyKey } from '../utils/idempotency';
 import CalendarHeatmap from '../components/CalendarHeatmap';
 import type { HeatmapCell } from '../components/CalendarHeatmap';
 import InfoHint from '../components/InfoHint';
@@ -18,6 +22,7 @@ import { useReviewStore } from '../state/review-store';
 import { useTranslation } from '../i18n/useTranslation';
 import { renderInline } from '../utils/markdown';
 import '../components/Review.css';
+import '../components/Quiz.css';
 
 type ReviewErrorKind = 'network' | 'auth' | 'unknown';
 
@@ -88,6 +93,55 @@ function countRatings(summary: RatingSummary): number {
   return REVIEW_RATING_ORDER.reduce((total, answer) => total + summary[answer], 0);
 }
 
+export function ActiveReviewExercise({ card, onRate }: {
+  card: DueReviewCard;
+  onRate: (answer: ReviewAnswer, binding: { cardId: string; idempotencyKey: string }) => Promise<boolean>;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const [failed, setFailed] = useState(false);
+  const attemptKey = useRef(createIdempotencyKey());
+  const attempted = useRef(false);
+  const generation = useRef(0);
+  const controller = useRef(new AbortController());
+  useEffect(() => {
+    generation.current += 1;
+    const current = new AbortController();
+    controller.current = current;
+    return () => { generation.current += 1; current.abort(); };
+  }, []);
+  if (!card.exercise_kind || !card.question_id || !card.question) {
+    return <p role="status">{t('Serve.empty')}</p>;
+  }
+  const questionId = card.question_id;
+  const exerciseKind = card.exercise_kind;
+  return <>
+    <p className="srs-card__peek-hint">{t('Review.exercise_hint')}</p>
+    <SRSCard runId={card.run_id} quiz={{
+      question_id: questionId, review_card_id: card.card_id, question: card.question,
+      quiz_kind: 'transfer', exercise_kind: exerciseKind, answer_mode: 'open',
+    }} onReveal={() => revealQuizQuestion(card.run_id, questionId, { attempted: true }, {
+      signal: controller.current.signal,
+    })} onAnswer={() => { attempted.current = true; }} onRate={async (rating, assessment) => {
+      if (!attempted.current || !assessment || (rating !== 'good' && rating !== 'hard' && rating !== 'wrong')) return false;
+      setFailed(false);
+      const startedGeneration = generation.current;
+      try {
+        await quizAnswer({
+          idempotency_key: attemptKey.current, run_id: card.run_id, quiz_id: questionId,
+          correct: null, exercise_kind: exerciseKind, feedback_kind: 'semantic_self_assessment',
+          self_assessment: assessment.selfAssessment, error_type: assessment.errorType,
+        });
+        if (generation.current !== startedGeneration || useReviewStore.getState().currentCard()?.card_id !== card.card_id) return false;
+        return await onRate(rating, { cardId: card.card_id, idempotencyKey: `${attemptKey.current}-srs` });
+      } catch {
+        setFailed(true);
+        return false;
+      }
+    }} />
+    {failed && <p className="quiz-page__signal-error" role="alert">{t('Review.practice_failed')}</p>}
+  </>;
+}
+
 export default function ReviewPage() {
   const { t } = useTranslation();
   const cards = useReviewStore((s) => s.cards);
@@ -101,6 +155,7 @@ export default function ReviewPage() {
   const selectCard = useReviewStore((s) => s.selectCard);
 
   const [flipped, setFlipped] = useState(false);
+  const [queueReady, setQueueReady] = useState(false);
   const [selectedChoiceLabel, setSelectedChoiceLabel] = useState<string | null>(null);
   const [sessionRatings, setSessionRatings] = useState<RatingSummary>(() => createRatingSummary());
   const [sessionStartTime] = useState(() => Date.now());
@@ -123,7 +178,9 @@ export default function ReviewPage() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    void loadQueue({ signal: controller.signal });
+    void loadQueue({ signal: controller.signal }).then(() => {
+      if (!controller.signal.aborted) setQueueReady(true);
+    });
     return () => {
       controller.abort();
       // Also abort any in-flight post-rating refresh requests on unmount
@@ -156,10 +213,11 @@ export default function ReviewPage() {
   }, []);
 
   useEffect(() => {
+    if (!queueReady || loading || cards.some((item) => item.exercise_kind || item.card_id.startsWith('card_exercise_'))) return;
     const ctrl = new AbortController();
     fetchOverviewData(ctrl.signal);
     return () => ctrl.abort();
-  }, [fetchOverviewData]);
+  }, [cards, fetchOverviewData, loading, queueReady]);
 
   useEffect(() => {
     const syncCardDeepLink = () => {
@@ -196,25 +254,27 @@ export default function ReviewPage() {
   }, [cards]);
 
   const handleRate = useCallback(
-    async (answer: ReviewAnswer) => {
+    async (answer: ReviewAnswer, binding?: { cardId: string; idempotencyKey: string }) => {
       const card = useReviewStore.getState().currentCard();
+      if (binding && card?.card_id !== binding.cardId) return false;
       const beforeIndex = useReviewStore.getState().currentIndex;
       // Review-page reveal is the normal flashcard flow, not the Quiz peek
       // guard. Keep peeked=false so all four SRS ratings remain available.
       const isChoice = card ? isChoiceCard(card) : false;
       const result = await rate(answer, {
+        ...(binding ? { cardId: binding.cardId, idempotencyKey: binding.idempotencyKey } : {}),
         peekedThisSession: false,
         selectedChoiceLabel: isChoice ? selectedChoiceLabel : null,
       });
       const afterIndex = useReviewStore.getState().currentIndex;
-      if (afterIndex > beforeIndex) {
+      if (result !== null && afterIndex > beforeIndex) {
         setSessionRatings((prev) => ({
           ...prev,
           [answer]: prev[answer] + 1,
         }));
       }
       // Refresh overview sidebar data when a new rating was persisted
-      if (result?.inserted) {
+      if (result?.inserted && !useReviewStore.getState().cards.some((item) => item.exercise_kind || item.card_id.startsWith('card_exercise_'))) {
         refreshAbortRef.current?.abort();
         const ctrl = new AbortController();
         refreshAbortRef.current = ctrl;
@@ -232,6 +292,7 @@ export default function ReviewPage() {
           }
         });
       }
+      return result !== null;
     },
     [rate, selectedChoiceLabel],
   );
@@ -303,6 +364,7 @@ export default function ReviewPage() {
         target?.isContentEditable
       ) return;
       const card = useReviewStore.getState().currentCard();
+      if (card?.exercise_kind) return;
       const isChoice = card ? isChoiceCard(card) : false;
       // Choice cards use answer_mode='multiple_choice'; question phase shows
       // ABCD buttons. After a selection (selectedChoiceLabel != null) the card
@@ -746,6 +808,9 @@ export default function ReviewPage() {
                 </span>
               )}
             </div>
+            {card?.exercise_kind ? (
+              <ActiveReviewExercise key={card.card_id} card={card} onRate={handleRate} />
+            ) : <>
             <div className="flashcard">
               {card!.scaffolding_level && (
                 <div className="flashcard__tag">
@@ -1111,6 +1176,7 @@ export default function ReviewPage() {
                 </button>
               </div>
             )}
+            </>}
           </div>
 
           {/* Right: Sidebar */}

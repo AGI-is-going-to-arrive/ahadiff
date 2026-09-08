@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <title>知返 AhaDiff：读懂这次改动</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="description" content="从 Git 改动、两份文件或粘贴的 diff 学习。普通文件夹也能开始，先预览变化，再读课程、查证据、测验和复习。" />
+<meta name="description" content="从 Git 改动、两份文件、diff、本地快照或单份 Markdown 学习。先本地预览，再读课程、查格式证据、尝试迁移练习与间隔复习。" />
 <meta name="theme-color" content="#FAF8F2" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -685,9 +685,9 @@ a.badge { text-decoration: none; }
 .cmd-table tr:last-child td { border-bottom: none; }
 .cmd-table tr:hover { background: var(--subtle); }
 .cmd-table td.cmd-name { white-space: nowrap; width: 1%; }
-.cmd-table td.cmd-name code { font-family: var(--font-mono); font-size: 13px; color: var(--accent-ink); background: var(--accent-soft); padding: 3px 8px; border-radius: 5px; }
+.cmd-table td.cmd-name code { overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 13px; color: var(--accent-ink); background: var(--accent-soft); padding: 3px 8px; border-radius: 5px; }
 .cmd-table td.cmd-desc { color: var(--muted); }
-@media (max-width: 600px) { .cmd-table, .cmd-table tbody, .cmd-table tr, .cmd-table td { display: block; width: auto; } .cmd-table td.cmd-name { border-bottom: none; padding-bottom: 4px; } .cmd-table td.cmd-desc { padding-top: 0; } }
+@media (max-width: 600px) { .cmd-table, .cmd-table tbody, .cmd-table tr, .cmd-table td { display: block; width: auto; } .cmd-table td.cmd-name { width: auto; white-space: normal; border-bottom: none; padding-bottom: 4px; } .cmd-table td.cmd-desc { padding-top: 0; } }
 
 .faq-list { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 .faq-item { background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
@@ -737,7 +737,7 @@ a.badge { text-decoration: none; }
   <h1 class="b-display"><span data-i18n="hero.title.pre">知返 Aha</span><span class="delta shout">Diff</span></h1>
   <p class="hero-tagline" data-i18n="hero.tagline">读懂<span class="b-mark">这次改动</span>。</p>
   <p class="hero-tagline-en" data-i18n="hero.tagline_en">Git 改动 · 两份文件 · 粘贴改动</p>
-  <p class="hero-desc" data-i18n="hero.desc">自己的修复、同事的修改、AI 生成的变化，都可以拿来学。提供修改前后的内容，先预览 diff，再读有证据可查的课程、做测验和复习。两份文件或粘贴 patch，无需创建 Git 仓库。</p>
+  <p class="hero-desc" data-i18n="hero.desc">自己的修复、同事和 AI 的修改，或一篇 Markdown，都可以拿来学。五种来源在本机预览，再读有证据的课程、先作答迁移练习并延后复习。文件、快照和文档无需 Git 仓库。</p>
   <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.8 · 当前源码入口更新，尚未发布</p>
   <div class="hero-ctas">
     <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
@@ -791,7 +791,7 @@ a.badge { text-decoration: none; }
     <h2 class="section-title reveal">
       <span data-i18n="problem.title">从你手头的材料开始</span>
     </h2>
-    <p class="section-subtitle reveal" data-i18n="problem.subtitle">欢迎、快速上手和使用指南都有这三个入口。安装 AI 工具指引是可选项。</p>
+    <p class="section-subtitle reveal" data-i18n="problem.subtitle">欢迎、快速上手和使用指南共用五个入口。AI 工具指引是可选项。</p>
     <div class="pain-grid">
       <div class="pain-card reveal">
         <div class="pain-icon red">
@@ -814,7 +814,18 @@ a.badge { text-decoration: none; }
         <h3 data-i18n="problem.p3.title">粘贴改动</h3>
         <p data-i18n="problem.p3.desc">粘贴从 review 或其他工具复制的统一 diff。先看安全处理后的变化预览，再决定是否生成课程。</p>
       </div>
+      <div class="pain-card reveal">
+        <div class="pain-icon amber"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 3v6h8V3M8 15h8"/></svg></div>
+        <h3 data-i18n="problem.p4.title">本地快照</h3>
+        <p data-i18n="problem.p4.desc">修改前选一个文件、命名并明确保存，下次选择修改后文件比较。仅保存过滤后的学习基准，不是完整备份，也不覆盖原文件。</p>
+      </div>
+      <div class="pain-card reveal reveal-delay-1">
+        <div class="pain-icon grey"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5"/></svg></div>
+        <h3 data-i18n="problem.p5.title">单份 Markdown</h3>
+        <p data-i18n="problem.p5.desc">选择一份 .md 或 .markdown，预览原文并从章节、段落引用中学习。不伪造 diff，引用只支持这篇文档写了什么。</p>
+      </div>
     </div>
+    <p class="start-tip" data-i18n="problem.notes">比较两版本时可补充人工 review 说明（最多 8 KiB）。说明按不可信辅助输入过滤，不生成伪来源行，也不能替代代码反证。</p>
   </div>
 </section>
 
@@ -827,30 +838,30 @@ a.badge { text-decoration: none; }
     <div class="steps-grid">
       <div class="step-card reveal">
         <div class="step-num">1</div>
-        <div class="step-cmd">Git / files / patch</div>
-        <h3 data-i18n="how.s1.title">捕获变更</h3>
-        <p data-i18n="how.s1.desc">选择 Git 改动、两份文件或粘贴改动。文件和 patch 的预览在本机完成，不调用 LLM；修改来源后需重新预览。</p>
+        <div class="step-cmd">Git / files / patch / snapshot / document</div>
+        <h3 data-i18n="how.s1.title">选择并预览来源</h3>
+        <p data-i18n="how.s1.desc">Git、两份文件、patch、快照或单篇 Markdown。先本地预览，修改输入后重新预览；保存快照需要明确操作。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-1">
         <div class="step-num">2</div>
         <div class="step-cmd">verify</div>
         <h3 data-i18n="how.s2.title">证据链路分析</h3>
-        <p data-i18n="how.s2.desc">解释链接到来源行，并区分已验证、证据较弱和未证明等状态。只有文本差异时，不冒充执行行为证明。</p>
+        <p data-i18n="how.s2.desc">Markdown 章节/段落、Notebook 单元、JSON/TOML/YAML 键路径带位置与哈希。解析不足时保留行级弱证据；4,096 锚点上限下，diff 可保留部分索引和 hunk，单文档超限则拒绝。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-2">
         <div class="step-num">3</div>
         <div class="step-cmd">learn</div>
         <h3 data-i18n="how.s3.title">生成学习材料</h3>
-        <p data-i18n="how.s3.desc">用已配置的 provider 生成课程、测验和复习卡。课程有 Full / Hint / Compact 三种提示程度。</p>
+        <p data-i18n="how.s3.desc">默认生成混合测验。需要主动练习时，在此来源的更多选项中勾选“主动迁移练习”，改为开放式 transfer 题；题数至少 3 时覆盖预测、补全和解释错误，不执行代码。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-3">
         <div class="step-num">4</div>
         <div class="step-cmd">ratchet</div>
         <h3 data-i18n="how.s4.title">棘轮质量追踪</h3>
-        <p data-i18n="how.s4.desc">记录确定性评分与硬门禁，比较课程质量。可选 LLM judge 提供建议，不覆盖最终判定。</p>
+        <p data-i18n="how.s4.desc">确定性评分与硬门禁衡量课程质量，可选 Judge 不覆盖判定。延迟回忆与未见变式另记样本，不能把高分写成学习增益。</p>
       </div>
     </div>
   </div>
@@ -871,15 +882,15 @@ a.badge { text-decoration: none; }
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         </div>
         <h3 data-i18n="feat.f1.title">Verified Claims</h3>
-        <p data-i18n="feat.f1.desc">每句解释都链接到 file:line 代码证据。5 种 claim 状态 (verified / weak / not_proven / contradicted / rejected) 确保可信。</p>
+        <p data-i18n="feat.f1.desc">断言附来源行、结构定位、前后侧、内容哈希和证据状态。源文本存在、语义解释和运行效果分别判断。</p>
       </div>
       <!-- 2: FSRS -->
       <div class="feat-card reveal reveal-delay-1">
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
-        <h3 data-i18n="feat.f2.title">FSRS Spaced Repetition</h3>
-        <p data-i18n="feat.f2.desc">采用 Anki 同源的 FSRS-6 算法，根据你的答题表现自动调整复习间隔。</p>
+        <h3 data-i18n="feat.f2.title">主动练习与间隔复习</h3>
+        <p data-i18n="feat.f2.desc">主动迁移练习需显式开启，默认仍为混合题。先尝试，再对照参考并自评，复用原有 SRS。Challenge 用于复现已看过的原解。</p>
       </div>
       <!-- 3: Scaffolding -->
       <div class="feat-card reveal reveal-delay-2">
@@ -895,7 +906,7 @@ a.badge { text-decoration: none; }
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
         </div>
         <h3 data-i18n="feat.f4.title">8-Dimension Rubric</h3>
-        <p data-i18n="feat.f4.desc">accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 分。</p>
+        <p data-i18n="feat.f4.desc">Accuracy、Evidence 等维度与安全门禁衡量产物质量。Score/Judge 不代表实际掌握度，也不能替代真实学习样本。</p>
       </div>
       <!-- 5: Ratchet -->
       <div class="feat-card reveal">
@@ -1032,7 +1043,7 @@ a.badge { text-decoration: none; }
         <a class="badge" href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:-2px"> <span data-i18n="video.zh">中文视频（B 站）</span></a>
       </div>
       <p class="video-link"><a id="tutorialVideoLink" href="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" target="_blank" rel="noopener" data-i18n="video.open">在新标签页打开视频 ↗</a> &middot; <a href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener" data-i18n="video.bilibili">中文版在 B 站观看 ↗</a></p>
-      <p class="video-note" data-i18n="video.note">视频展示较早界面，当前源码的三个学习来源请按下方步骤操作。安装已发布版本推荐使用 pipx 或 uv tool。</p>
+      <p class="video-note" data-i18n="video.note">视频展示较早界面。五来源、快照和主动练习请按当前源码指南操作；已发布安装仍推荐 pipx 或 uv tool。</p>
     </div>
   </div>
 </section>
@@ -1070,7 +1081,7 @@ a.badge { text-decoration: none; }
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="screens.eyebrow">WEBUI</div>
     <h2 class="section-title reveal" data-i18n="screens.title">界面预览</h2>
-    <p class="section-subtitle reveal" data-i18n="screens.subtitle">以下为已有界面示例；当前源码新增的三个学习入口见上方说明。</p>
+    <p class="section-subtitle reveal" data-i18n="screens.subtitle">以下为已有界面示例；五来源与主动练习按本页和用户指南操作。</p>
     <div class="shots-grid">
       <figure class="shot reveal"><img loading="lazy" data-shot="dashboard" src="./video/public/screenshots/en/en-dashboard.png" alt="Dashboard" width="3840" height="1892" /><figcaption data-i18n="shot.dashboard">运行面板：运行记录、分数、棘轮轨迹</figcaption></figure>
       <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="lesson" src="./video/public/screenshots/en/en-lesson.png" alt="Lesson" width="3840" height="1892" /><figcaption data-i18n="shot.lesson">课程页：带证据链的解释</figcaption></figure>
@@ -1098,11 +1109,13 @@ a.badge { text-decoration: none; }
           <tr><td data-i18n="cmp.r2.material">代码练习、SQL、配置、Markdown</td><td data-i18n="cmp.r2.input">两份文件：修改前与修改后</td><td data-i18n="cmp.r2.evidence">比较文本来源，证据不足的结论会标明状态。</td></tr>
           <tr><td data-i18n="cmp.r3.material">Notebook 两个版本</td><td data-i18n="cmp.r3.input">选择两份 .ipynb 文件</td><td data-i18n="cmp.r3.evidence">按单元格比较来源，不执行 Notebook。</td></tr>
           <tr><td data-i18n="cmp.r4.material">复制来的 review patch</td><td data-i18n="cmp.r4.input">粘贴改动：统一 diff 文本</td><td data-i18n="cmp.r4.evidence">只有 diff hunk 支持时使用较弱证据，不冒充仓库符号证明。</td></tr>
-          <tr><td data-i18n="cmp.r5.material">只有当前文件，或一份 PDF / 网页</td><td data-i18n="cmp.r5.input">目前需要提供前后版本</td><td data-i18n="cmp.r5.evidence">独立资料学习与持久快照尚未实现。</td></tr>
+          <tr><td data-i18n="cmp.r5.material">一份 Markdown 文档</td><td data-i18n="cmp.r5.input">单份 Markdown：.md / .markdown</td><td data-i18n="cmp.r5.evidence">独立 document 来源，章节与段落引用不证明外部事实。</td></tr>
+          <tr><td data-i18n="cmp.r6.material">希望下次继续比较的文件</td><td data-i18n="cmp.r6.input">显式保存本地快照，再选择修改后文件</td><td data-i18n="cmp.r6.evidence">过滤后的学习基准，最多 100 份 / 16 MiB；不是原文件备份。</td></tr>
+          <tr><td data-i18n="cmp.r7.material">PDF、网页或任意目录自动快照</td><td data-i18n="cmp.r7.input">不在本次试点范围</td><td data-i18n="cmp.r7.evidence">需要各自的采集、权限与证据契约。</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmp.footnote">课程分数衡量生成材料的质量，不代表程序已测试通过，也不证明你已掌握。目录对比和 Git hooks 仅限 macOS/Linux；文件与 patch 入口面向三端。</p>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmp.footnote">源引用可核对文本，不等于语义或执行效果已证实。新来源面向 Windows/macOS/Linux 与中英双语；实际平台验收需独立记录。目录对比和 Git hooks 仍仅限 macOS/Linux。</p>
   </div>
 </section>
 
@@ -1120,6 +1133,11 @@ a.badge { text-decoration: none; }
           <tr><td class="cmd-name"><code>ahadiff init</code></td><td class="cmd-desc" data-i18n="cmds.init">在仓库里初始化 .ahadiff/ 状态目录</td></tr>
           <tr><td class="cmd-name"><code>ahadiff provider test</code></td><td class="cmd-desc" data-i18n="cmds.provider">注册并探测一个 LLM 供应商</td></tr>
           <tr><td class="cmd-name"><code>ahadiff learn &lt;range&gt;</code></td><td class="cmd-desc" data-i18n="cmds.learn">把一段 diff 变成带证据的课程</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff snapshot save before.md --name "Baseline"</code></td><td class="cmd-desc" data-i18n="cmds.snapshot">显式保存过滤后的本地学习基准</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff learn --document reading.md</code></td><td class="cmd-desc" data-i18n="cmds.document">从一篇 Markdown 原文生成课程</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff learn --compare before.py after.py --review-context-file notes.md</code></td><td class="cmd-desc" data-i18n="cmds.context">为两版本比较补充不可信辅助说明</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff learn --document reading.md --active-practice</code></td><td class="cmd-desc" data-i18n="cmds.active_practice">显式生成主动迁移题；默认运行保留混合题</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff regenerate RUN_ID --only quiz --active-practice</code></td><td class="cmd-desc" data-i18n="cmds.practice_regenerate">替换所选 run 的测验/卡片、重算分数并重新封存。旧 Judge 失效、不自动重跑；可用 --mixed-practice 切回混合题。</td></tr>
           <tr><td class="cmd-name"><code>ahadiff quiz &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.quiz">对刚学的 run 做主动回忆测验</td></tr>
           <tr><td class="cmd-name"><code>ahadiff review</code></td><td class="cmd-desc" data-i18n="cmds.review">按 FSRS 复习到期卡片</td></tr>
           <tr><td class="cmd-name"><code>ahadiff verify &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.verify">重新校验 claims 与评分</td></tr>
@@ -1149,7 +1167,7 @@ a.badge { text-decoration: none; }
           <div class="start-step__n">1</div>
           <h3 data-i18n="start.c1.title">打开本地界面</h3>
           <p data-i18n="start.c1.desc">用 pipx 或 uv tool 安装已发布版本。在准备保存学习记录的文件夹运行 ahadiff serve，再到设置添加一个本地或远端 provider。普通目录也可以，Agent 集成是可选项。</p>
-          <div class="start-tip" data-i18n="start.c1.tip">本页三来源界面更新尚在当前源码中，版本仍为 1.3.8，尚未发布；已发布版本可先用 CLI 的 --compare 和 --patch。源码构建、Windows PowerShell 和 provider 配置见中英文使用指南。</div>
+          <div class="start-tip" data-i18n="start.c1.tip">五来源、快照、格式锚点、review 说明和主动练习属于未发布源码，版本仍为 1.3.8。源码构建、Windows PowerShell 与 provider 配置见中英用户指南。</div>
         </div>
         <div class="start-step__body">
           <div class="code-block"><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span><br/><span class="prompt">$ </span><span class="cmd">cd your-folder</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff serve</span></div>
@@ -1159,7 +1177,7 @@ a.badge { text-decoration: none; }
         <div class="start-step__head">
           <div class="start-step__n">2</div>
           <h3 data-i18n="start.c2.title">选来源，预览变化</h3>
-          <p data-i18n="start.c2.desc">在欢迎、快速上手或使用指南中选择来源。两份文件可点选或拖放，每份 UTF-8 文本最多 256 KiB；粘贴 diff 最多 64 KiB。预览不调用 LLM，开始学习时使用你的 provider 和隐私设置。</p>
+          <p data-i18n="start.c2.desc">选择五种来源之一。文件每份最多 256 KiB，粘贴 diff 最多 64 KiB。快照先显式保存，单份 Markdown 预览原文；预览不调用 LLM。开始学习使用你的 provider 与隐私设置。</p>
         </div>
         <div class="start-step__body">
           <p data-i18n="start.c2.flow">欢迎 → 两份文件 → 放入修改前后文件 → 预览变化 → 开始学习</p>
@@ -1169,7 +1187,7 @@ a.badge { text-decoration: none; }
         <div class="start-step__head">
           <div class="start-step__n">3</div>
           <h3 data-i18n="start.c3.title">读课、作答、复习</h3>
-          <p data-i18n="start.c3.desc">完成后读课程、点击证据回到差异，再独立作答。到期复习会带回旧卡片；小练习可勾选“变化较小时仍生成课程”。</p>
+          <p data-i18n="start.c3.desc">想要主动练习，先在“此来源的更多选项”勾选“主动迁移练习”，再预览并开始；默认是混合题。作答后才揭示参考并自评，到期复习会带回旧卡片。Score/Judge 不代表学习增益。</p>
         </div>
         <div class="start-step__body">
           <p data-i18n="start.c3.flow">课程 → 差异 → 测验 → 复习</p>
@@ -1186,9 +1204,9 @@ a.badge { text-decoration: none; }
     <h2 class="section-title reveal" data-i18n="faq.title">你可能会问</h2>
     <div class="faq-list reveal">
       <details class="faq-item"><summary data-i18n="faq.q1">我的代码会被上传吗？</summary><div class="faq-a" data-i18n="faq.a1">默认 strict_local，不向任何远端模型发送内容。要用远端模型时，必须显式切到 redacted_remote 或 explicit_remote；远端请求前会执行隐私与脱敏门禁。</div></details>
-      <details class="faq-item"><summary data-i18n="faq.q2">没有 Git 仓库或 AI 助手也能用吗？</summary><div class="faq-a" data-i18n="faq.a2">可以从两份文件或粘贴的统一 diff 开始。在普通文件夹运行 <code>ahadiff serve</code>，配置 provider，再选来源即可。CLI 的 <code>init</code>、<code>doctor</code> 仍要求 Git 仓库；无需为文件学习专门建仓库。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q2">没有 Git 仓库或 AI 助手也能用吗？</summary><div class="faq-a" data-i18n="faq.a2">可以从两份文件、粘贴 diff、本地快照或单份 Markdown 开始。在普通文件夹运行 <code>ahadiff serve</code> 并配置 provider。<code>init</code> 和 <code>doctor</code> 仍要求 Git；无需为这些来源专门建仓库。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q3">支持哪些模型？</summary><div class="faq-a" data-i18n="faq.a3">BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。</div></details>
-      <details class="faq-item"><summary data-i18n="faq.q4">要花钱吗？</summary><div class="faq-a" data-i18n="faq.a4">AhaDiff 本身免费、本地运行。文件和 patch 预览不调用 LLM；配置探测与生成课程可能向你选定的 provider 发请求，费用按该服务计。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q4">要花钱吗？</summary><div class="faq-a" data-i18n="faq.a4">AhaDiff 本身免费。预览与显式保存快照不调用 LLM；provider 探测和课程生成可能向所选服务发请求，费用按该服务计。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q5">高分代表我已经学会了吗？</summary><div class="faq-a" data-i18n="faq.a5">分数用于检查课程材料质量。是否学会要看你能否独立解释、作答和完成类似修改。最终判定来自确定性评分和硬门禁；可选 LLM judge 的建议不覆盖它。</div></details>
     </div>
   </div>
@@ -1237,7 +1255,7 @@ const T = {
   "hero.title.pre": { zh: "知返 Aha", en: "Aha" },
   "hero.tagline": { zh: "读懂<span class=\"b-mark\">这次改动</span>。", en: "Learn from <span class=\"b-mark\">what changed.</span>" },
   "hero.tagline_en": { zh: "Git 改动 · 两份文件 · 粘贴改动", en: "Git changes · Two files · Paste a diff" },
-  "hero.desc": { zh: "自己的修复、同事的修改、AI 生成的变化，都可以拿来学。提供修改前后的内容，先预览 diff，再读有证据可查的课程、做测验和复习。两份文件或粘贴 patch，无需创建 Git 仓库。", en: "Study your own fixes, a colleague's edits, or AI-generated changes. Bring the before and after versions, preview the diff, then read evidence-linked lessons and practice with quizzes and review. File and patch inputs work without a Git repository." },
+  "hero.desc": { zh: "自己的修复、同事和 AI 的修改，或一篇 Markdown，都可以拿来学。五种来源在本机预览，再读有证据的课程、先作答迁移练习并延后复习。文件、快照和文档无需 Git 仓库。", en: "Study your own fixes, peer or AI edits, or one Markdown document. Preview one of five sources locally, follow evidence-linked lessons, attempt transfer exercises, and review later. Files, snapshots, and documents need no Git repository." },
   "quote.core": { zh: "把解释和修改前后的内容放在一起看。", en: "Read the explanation alongside the before and after versions." },
   "hero.status": { zh: "v1.3.8 · 当前源码入口更新，尚未发布", en: "v1.3.8 · Source entry-point updates, pending publication" },
   "hero.cta1": { zh: "开始使用", en: "Get Started" },
@@ -1247,7 +1265,7 @@ const T = {
   "hero.claim3": { zh: "新增 jwt.InvalidTokenError 异常处理；运行行为仍需测试", en: "A jwt.InvalidTokenError handler was added; runtime behavior still needs testing" },
   "problem.eyebrow": { zh: "选择来源", en: "CHOOSE A SOURCE" },
   "problem.title": { zh: "从你手头的材料开始", en: "Start with what you have" },
-  "problem.subtitle": { zh: "欢迎、快速上手和使用指南都有这三个入口。安装 AI 工具指引是可选项。", en: "Welcome, Quick Start, and Guide share these three entry points. AI tool guidance is optional." },
+  "problem.subtitle": { zh: "欢迎、快速上手和使用指南共用五个入口。AI 工具指引是可选项。", en: "Welcome, Quick Start, and Guide share five entry points. AI tool guidance is optional." },
   "problem.p1.title": { zh: "Git 改动", en: "Git changes" },
   "problem.p1.desc": { zh: "已有 Git 仓库时，选择工作区修改或提交范围。可以学习自己的 bug 修复、同事的 commit 或 AI 编辑。", en: "In an existing Git repository, choose working-tree edits or a commit range. Study your own bug fix, a colleague's commit, or AI edits." },
   "problem.p2.title": { zh: "两份文件", en: "Two files" },
@@ -1257,37 +1275,28 @@ const T = {
   "how.eyebrow": { zh: "工作原理", en: "HOW IT WORKS" },
   "how.title": { zh: "从变化到课程和复习", en: "From changes to lessons and review" },
   "how.subtitle": { zh: "不同来源接入同一条学习流程，结论保留证据状态。", en: "Each source uses the same learning workflow, with evidence states attached to its claims." },
-  "how.s1.title": { zh: "捕获变更", en: "Capture Changes" },
-  "how.s1.desc": { zh: "选择 Git 改动、两份文件或粘贴改动。文件和 patch 的预览在本机完成，不调用 LLM；修改来源后需重新预览。", en: "Choose Git changes, Two files, or Paste a diff. File and patch previews use the local service without an LLM call; editing the source requires a new preview." },
+  "how.s1.title": { zh: "选择并预览来源", en: "Choose and preview a source" },
+  "how.s1.desc": { zh: "Git、两份文件、patch、快照或单篇 Markdown。先本地预览，修改输入后重新预览；保存快照需要明确操作。", en: "Git, two files, patch, snapshot, or one Markdown document. Preview locally and preview again after edits; saving a snapshot requires an explicit action." },
   "how.s2.title": { zh: "证据链路分析", en: "Evidence-Linked Analysis" },
-  "how.s2.desc": { zh: "解释链接到来源行，并区分已验证、证据较弱和未证明等状态。只有文本差异时，不冒充执行行为证明。", en: "Explanations link to source lines and distinguish verified, weak, and unproven states. Textual evidence does not establish execution behavior." },
+  "how.s2.desc": { zh: "Markdown 章节/段落、Notebook 单元、JSON/TOML/YAML 键路径带位置与哈希。解析不足时保留行级弱证据；4,096 锚点上限下，diff 可保留部分索引和 hunk，单文档超限则拒绝。", en: "Markdown sections/paragraphs, Notebook cells, and JSON/TOML/YAML paths carry locations and hashes. Unsupported parsing retains weak lines. At the 4,096-anchor cap, a diff can retain partial format indexes and hunks; oversized document indexes are rejected." },
   "how.s3.title": { zh: "生成学习材料", en: "Generate Learning Materials" },
-  "how.s3.desc": { zh: "用已配置的 provider 生成课程、测验和复习卡。课程有 Full / Hint / Compact 三种提示程度。", en: "Use your configured provider to generate lessons, quizzes, and review cards. Lessons offer Full, Hint, and Compact levels of help." },
+  "how.s3.desc": { zh: "默认生成混合测验。需要主动练习时，在此来源的更多选项中勾选“主动迁移练习”，改为开放式 transfer 题；题数至少 3 时覆盖预测、补全和解释错误，不执行代码。", en: "Quizzes are mixed by default. Enable “Active transfer practice” under More options for this source to request open transfer questions. With at least 3 questions, they cover prediction, completion, and error explanation; no code is executed." },
   "how.s4.title": { zh: "棘轮质量追踪", en: "Ratchet Quality Tracking" },
-  "how.s4.desc": { zh: "记录确定性评分与硬门禁，比较课程质量。可选 LLM judge 提供建议，不覆盖最终判定。", en: "Record deterministic scores and hard gates to compare lesson quality. An optional LLM judge offers feedback without overriding the final verdict." },
+  "how.s4.desc": { zh: "确定性评分与硬门禁衡量课程质量，可选 Judge 不覆盖判定。延迟回忆与未见变式另记样本，不能把高分写成学习增益。", en: "Deterministic scores and hard gates assess artifact quality; optional Judge never overrides the verdict. Delayed recall and unseen variants need separate samples, not a high score as a learning-gain claim." },
   "feat.eyebrow": { zh: "核心特性", en: "FEATURES" },
   "feat.title": { zh: "每个细节都为学习设计", en: "Every Detail Designed for Learning" },
   "feat.subtitle": { zh: "读解释、查证据、独立作答，再按计划复习。", en: "Read the explanation, inspect evidence, answer questions, and return for scheduled review." },
   "feat.f1.title": { zh: "Verified Claims", en: "Verified Claims" },
-  "feat.f1.desc": {
-    zh: "解释会链接到 file:line 代码证据，并显示 5 种 claim 状态 (verified / weak / not_proven / contradicted / rejected)。",
-    en: "Explanations link to file:line code evidence and show 5 claim states (verified / weak / not_proven / contradicted / rejected)."
-  },
-  "feat.f2.title": { zh: "FSRS 间隔重复", en: "FSRS Spaced Repetition" },
-  "feat.f2.desc": {
-    zh: "采用 Anki 同源的 FSRS-6 算法，根据你的答题表现自动调整复习间隔。",
-    en: "Powered by FSRS-6 (same algorithm family as Anki). Review intervals adapt automatically based on your answers."
-  },
+  "feat.f1.desc": { zh: "断言附来源行、结构定位、前后侧、内容哈希和证据状态。源文本存在、语义解释和运行效果分别判断。", en: "Claims carry source lines, structural locators, sides, content hashes, and evidence states. Source-text presence, semantic interpretation, and runtime effects are judged separately." },
+  "feat.f2.title": { zh: "主动练习与间隔复习", en: "Active Practice and Spaced Review" },
+  "feat.f2.desc": { zh: "主动迁移练习需显式开启，默认仍为混合题。先尝试，再对照参考并自评，复用原有 SRS。Challenge 用于复现已看过的原解。", en: "Active transfer practice is explicit opt-in; the default quiz remains mixed. Attempt first, compare the reference, and self-assess using the existing SRS flow. Challenge rehearses an original solution already viewed." },
   "feat.f3.title": { zh: "三阶段撤架", en: "Three-Stage Scaffolding" },
   "feat.f3.desc": {
     zh: "Full → Hint → Compact 三阶段学习撤架。由 FSRS 记忆稳定度自动驱动，越熟悉提示越少。",
     en: "Full → Hint → Compact progressive scaffolding. FSRS memory stability drives how much help you see."
   },
   "feat.f4.title": { zh: "8 维评估量规", en: "8-Dimension Rubric" },
-  "feat.f4.desc": {
-    zh: "accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 分。",
-    en: "accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 points."
-  },
+  "feat.f4.desc": { zh: "Accuracy、Evidence 等维度与安全门禁衡量产物质量。Score/Judge 不代表实际掌握度，也不能替代真实学习样本。", en: "Accuracy, Evidence, and the other dimensions assess artifact quality with safety gates. Score/Judge do not establish mastery or replace real learning samples." },
   "feat.f5.title": { zh: "课程质量记录", en: "Lesson Quality History" },
   "feat.f5.desc": { zh: "improve-run 可在已有运行上重新生成课程，仅在确定性评分提高时保留新结果；原运行保留。", en: "improve-run regenerates a lesson from an existing run and keeps the new result only when its deterministic score improves. The original run remains available." },
   "feat.f6.title": { zh: "隐私优先", en: "Privacy First" },
@@ -1336,7 +1345,7 @@ const T = {
   "cmp.eyebrow": { zh: "适用场景", en: "SUPPORTED INPUTS" },
   "cmp.title": { zh: "这些改动，可以怎么学", en: "Choose a workflow for your change" },
   "cmp.subtitle": { zh: "选择来源后，共用同一套课程、测验、复习和质量历史。", en: "Each source connects to the same lessons, quizzes, review, and quality history." },
-  "cmp.footnote": { zh: "课程分数衡量生成材料的质量，不代表程序已测试通过，也不证明你已掌握。目录对比和 Git hooks 仅限 macOS/Linux；文件与 patch 入口面向三端。", en: "Scores describe generated-material quality; they do not establish test results or mastery. Directory comparison and Git hooks are macOS/Linux-only; file and patch entry points target all three platforms." },
+  "cmp.footnote": { zh: "源引用可核对文本，不等于语义或执行效果已证实。新来源面向 Windows/macOS/Linux 与中英双语；实际平台验收需独立记录。目录对比和 Git hooks 仍仅限 macOS/Linux。", en: "Source citations check text, not semantic truth or runtime effects. New sources target Windows/macOS/Linux and both UI languages; platform execution requires separate results. Directory comparison and Git hooks remain macOS/Linux-only." },
   "cmp.col0": { zh: "你要学什么", en: "What you want to study" },
   "cmp.col1": { zh: "怎么输入", en: "How to start" },
   "cmp.col2": { zh: "证据边界", en: "Evidence boundary" },
@@ -1349,9 +1358,9 @@ const T = {
   "start.c1.title": { zh: "打开本地界面", en: "Open the local WebUI" },
   "start.c1.desc": { zh: "用 pipx 或 uv tool 安装已发布版本。在准备保存学习记录的文件夹运行 ahadiff serve，再到设置添加一个本地或远端 provider。普通目录也可以，Agent 集成是可选项。", en: "Install a published version with pipx or uv tool. Run ahadiff serve in the folder where you want to keep learning history, then add a local or remote provider in Settings. An ordinary folder works; agent integration is optional." },
   "start.c2.title": { zh: "选来源，预览变化", en: "Choose a source and preview" },
-  "start.c2.desc": { zh: "在欢迎、快速上手或使用指南中选择来源。两份文件可点选或拖放，每份 UTF-8 文本最多 256 KiB；粘贴 diff 最多 64 KiB。预览不调用 LLM，开始学习时使用你的 provider 和隐私设置。", en: "Choose a source in Welcome, Quick Start, or Guide. Select or drop two UTF-8 text files up to 256 KiB each, or paste a diff up to 64 KiB. Preview does not call an LLM; starting learning uses your provider and privacy settings." },
+  "start.c2.desc": { zh: "选择五种来源之一。文件每份最多 256 KiB，粘贴 diff 最多 64 KiB。快照先显式保存，单份 Markdown 预览原文；预览不调用 LLM。开始学习使用你的 provider 与隐私设置。", en: "Choose one of five sources. Each file is at most 256 KiB; pasted diffs are at most 64 KiB. Save snapshots explicitly; preview a Markdown document as original text. Preview makes no LLM call. Generation uses your provider and privacy settings." },
   "start.c3.title": { zh: "读课、作答、复习", en: "Read, answer, and review" },
-  "start.c3.desc": { zh: "完成后读课程、点击证据回到差异，再独立作答。到期复习会带回旧卡片；小练习可勾选“变化较小时仍生成课程”。", en: "After the run finishes, read the lesson, follow evidence links to the diff, and answer questions. Review brings back due cards. For a small exercise, enable “Generate a lesson even for small changes”." },
+  "start.c3.desc": { zh: "想要主动练习，先在“此来源的更多选项”勾选“主动迁移练习”，再预览并开始；默认是混合题。作答后才揭示参考并自评，到期复习会带回旧卡片。Score/Judge 不代表学习增益。", en: "For active exercises, enable “More options for this source → Active transfer practice”, then preview and start. The default stays mixed. Reveal the reference after attempting, self-assess, and return for due cards. Score/Judge do not establish learning gain." },
   "tech.eyebrow": { zh: "技术栈", en: "TECH STACK" },
   "tech.title": { zh: "技术选型", en: "Built On" },
   "footer.docsEn": { zh: "英文使用指南", en: "English User Guide" },
@@ -1373,12 +1382,12 @@ const T = {
   "video.subtitle": { zh: "从 learn 到复习，一个真实 run 的完整演示（带字幕）。", en: "From learn to review: a full walkthrough on a real run (subtitled)." },
   "video.open": { zh: "在新标签页打开视频 ↗", en: "Open the video in a new tab ↗" },
   "video.bilibili": { zh: "中文版在 B 站观看 ↗", en: "Watch the Chinese version on Bilibili ↗" },
-  "video.note": { zh: "视频展示较早界面，当前源码的三个学习来源请按下方步骤操作。安装已发布版本推荐使用 pipx 或 uv tool。", en: "The video shows an earlier interface. Follow the steps below for the current source entry points. Use pipx or uv tool for a published install." },
+  "video.note": { zh: "视频展示较早界面。五来源、快照和主动练习请按当前源码指南操作；已发布安装仍推荐 pipx 或 uv tool。", en: "The video shows an earlier interface. Follow the current source guide for five sources, snapshots, and active practice; pipx or uv tool remain recommended for published installs." },
   "video.en": { zh: "英文视频（YouTube）", en: "English video (YouTube)" },
   "video.zh": { zh: "中文视频（B 站）", en: "Chinese video (Bilibili)" },
   "screens.eyebrow": { zh: "界面", en: "WEBUI" },
   "screens.title": { zh: "界面预览", en: "Inside the WebUI" },
-  "screens.subtitle": { zh: "以下为已有界面示例；当前源码新增的三个学习入口见上方说明。", en: "These examples show the established interface; the current source adds the three learning entry points described above." },
+  "screens.subtitle": { zh: "以下为已有界面示例；五来源与主动练习按本页和用户指南操作。", en: "These examples show the established interface. Follow this page and the guides for five sources and active practice." },
   "shot.dashboard": { zh: "运行面板：运行记录、分数、棘轮轨迹", en: "Dashboard: runs, scores, ratchet trajectory" },
   "shot.lesson": { zh: "课程页：带证据链的解释", en: "Lesson: explanations with evidence chains" },
   "shot.diff": { zh: "差异查看器：claim 高亮", en: "Diff viewer: claim highlights" },
@@ -1409,16 +1418,16 @@ const T = {
   "faq.q1": { zh: "我的代码会被上传吗？", en: "Does my code get uploaded?" },
   "faq.a1": { zh: "默认 <code>strict_local</code>，不向任何远端模型发送内容。要用远端模型时，必须显式切到 <code>redacted_remote</code> 或 <code>explicit_remote</code>；远端请求前会执行隐私与脱敏门禁。", en: "The default is <code>strict_local</code>: nothing is sent to a remote model. Remote models require explicitly switching to <code>redacted_remote</code> or <code>explicit_remote</code>; privacy and redaction gates run before the request." },
   "faq.q2": { zh: "没有 Git 仓库或 AI 助手也能用吗？", en: "Can I use it without a Git repository or AI assistant?" },
-  "faq.a2": { zh: "可以从两份文件或粘贴的统一 diff 开始。在普通文件夹运行 <code>ahadiff serve</code>，配置 provider，再选来源即可。CLI 的 <code>init</code>、<code>doctor</code> 仍要求 Git 仓库；无需为文件学习专门建仓库。", en: "Yes. Start with two files or a pasted unified diff. Run <code>ahadiff serve</code> in an ordinary folder, configure a provider, and choose a source. CLI <code>init</code> and <code>doctor</code> still require a Git repository; file learning does not require creating one." },
+  "faq.a2": { zh: "可以从两份文件、粘贴 diff、本地快照或单份 Markdown 开始。在普通文件夹运行 <code>ahadiff serve</code> 并配置 provider。<code>init</code> 和 <code>doctor</code> 仍要求 Git；无需为这些来源专门建仓库。", en: "Yes. Start with two files, a pasted diff, a saved snapshot, or one Markdown document. Run <code>ahadiff serve</code> in an ordinary folder and configure a provider. <code>init</code> and <code>doctor</code> still require Git; these sources do not." },
   "faq.q3": { zh: "支持哪些模型？", en: "Which models are supported?" },
   "faq.a3": { zh: "BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。", en: "BYOK across 9 API formats (OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio, and more), with context-length auto-probing. DeepSeek BYOK uses OpenAI-compatible JSON object mode." },
   "faq.q4": { zh: "要花钱吗？", en: "Does it cost anything?" },
-  "faq.a4": { zh: "AhaDiff 本身免费、本地运行。文件和 patch 预览不调用 LLM；配置探测与生成课程可能向你选定的 provider 发请求，费用按该服务计。", en: "AhaDiff is free and runs locally. File and patch previews do not call an LLM. Provider probes and lesson generation may send requests to your chosen service, which sets its own fees." },
+  "faq.a4": { zh: "AhaDiff 本身免费。预览与显式保存快照不调用 LLM；provider 探测和课程生成可能向所选服务发请求，费用按该服务计。", en: "AhaDiff is free. Previews and explicit snapshot saves make no LLM calls. Provider probes and generation may send requests to your selected service, which sets its fees." },
   "faq.q5": { zh: "高分代表我已经学会了吗？", en: "Does a high score mean I have mastered the change?" },
   "faq.a5": { zh: "分数用于检查课程材料质量。是否学会要看你能否独立解释、作答和完成类似修改。最终判定来自确定性评分和硬门禁；可选 LLM judge 的建议不覆盖它。", en: "The score checks lesson-material quality. Assess your understanding by explaining the change, answering questions, and making a similar edit yourself. Deterministic scores and hard gates decide the verdict; an optional LLM judge does not override it." },
-  "start.c1.tip": { zh: "本页三来源界面更新尚在当前源码中，版本仍为 1.3.8，尚未发布；已发布版本可先用 CLI 的 --compare 和 --patch。源码构建、Windows PowerShell 和 provider 配置见中英文使用指南。", en: "The three-source UI updates are pending publication in the current source; the version remains 1.3.8. Published installs can use CLI --compare and --patch. See the bilingual guides for source builds, Windows PowerShell, and provider setup." },
+  "start.c1.tip": { zh: "五来源、快照、格式锚点、review 说明和主动练习属于未发布源码，版本仍为 1.3.8。源码构建、Windows PowerShell 与 provider 配置见中英用户指南。", en: "Five sources, snapshots, format anchors, review notes, and active practice are unpublished source additions; the version remains 1.3.8. See the bilingual guides for source builds, Windows PowerShell, and provider setup." },
   "page.title": { zh: "知返 AhaDiff：读懂这次改动", en: "AhaDiff: Learn from what changed" },
-  "page.description": { zh: "从 Git 改动、两份文件或粘贴的 diff 学习。普通文件夹也能开始，先预览变化，再读课程、查证据、测验和复习。", en: "Learn from Git changes, two file versions, or a pasted diff. Start in an ordinary folder, preview changes, then study evidence-linked lessons and practice with quizzes and review." },
+  "page.description": { zh: "从 Git 改动、两份文件、diff、本地快照或单份 Markdown 学习。先本地预览，再读课程、查格式证据、尝试迁移练习与间隔复习。", en: "Learn from Git changes, two files, diff, local snapshots, or one Markdown document. Preview locally, inspect format evidence, and practice with transfer exercises and spaced review." },
   "cmp.r1.material": { zh: "自己的修复、同事或 AI 的提交", en: "Your fixes, peer commits, or AI changes" },
   "cmp.r1.input": { zh: "Git 改动：工作区或提交范围", en: "Git changes: working tree or commit range" },
   "cmp.r1.evidence": { zh: "回查变化行；有可用代码上下文时补充符号证据。", en: "Inspect changed lines, with symbol evidence when code context is available." },
@@ -1431,11 +1440,27 @@ const T = {
   "cmp.r4.material": { zh: "复制来的 review patch", en: "A copied review patch" },
   "cmp.r4.input": { zh: "粘贴改动：统一 diff 文本", en: "Paste a diff: unified diff text" },
   "cmp.r4.evidence": { zh: "只有 diff hunk 支持时使用较弱证据，不冒充仓库符号证明。", en: "Claims with only diff-hunk support use weaker evidence, without claiming repository-symbol proof." },
-  "cmp.r5.material": { zh: "只有当前文件，或一份 PDF / 网页", en: "One current file, PDF, or web page" },
-  "cmp.r5.input": { zh: "目前需要提供前后版本", en: "A before/after pair is currently required" },
-  "cmp.r5.evidence": { zh: "独立资料学习与持久快照尚未实现。", en: "Standalone-document learning and durable snapshots are not implemented." },
+  "cmp.r5.material": { zh: "一份 Markdown 文档", en: "One Markdown document" },
+  "cmp.r5.input": { zh: "单份 Markdown：.md / .markdown", en: "One Markdown document: .md / .markdown" },
+  "cmp.r5.evidence": { zh: "独立 document 来源，章节与段落引用不证明外部事实。", en: "Independent document source; section and paragraph citations do not prove external facts." },
   "start.c2.flow": { zh: "欢迎 → 两份文件 → 放入修改前后文件 → 预览变化 → 开始学习", en: "Welcome → Two files → Select before and after → Preview changes → Start learning" },
   "start.c3.flow": { zh: "课程 → 差异 → 测验 → 复习", en: "Lesson → Diff → Quiz → Review" },
+  "problem.p4.title": { zh: "本地快照", en: "Saved snapshot" },
+  "problem.p4.desc": { zh: "修改前选一个文件、命名并明确保存，下次选择修改后文件比较。仅保存过滤后的学习基准，不是完整备份，也不覆盖原文件。", en: "Select a file before editing, name it, and save explicitly. Compare a later file next time. The filtered learning baseline is not a full backup and never overwrites the original." },
+  "problem.p5.title": { zh: "单份 Markdown", en: "One Markdown document" },
+  "problem.p5.desc": { zh: "选择一份 .md 或 .markdown，预览原文并从章节、段落引用中学习。不伪造 diff，引用只支持这篇文档写了什么。", en: "Choose one .md or .markdown file, preview its text, and learn through section and paragraph citations. No fabricated diff; citations support what this document says." },
+  "problem.notes": { zh: "比较两版本时可补充人工 review 说明（最多 8 KiB）。说明按不可信辅助输入过滤，不生成伪来源行，也不能替代代码反证。", en: "Add optional review notes to a change comparison (up to 8 KiB). Notes are filtered as untrusted auxiliary input, never become source lines, and cannot replace counterevidence." },
+  "cmp.r6.material": { zh: "希望下次继续比较的文件", en: "A file to compare again later" },
+  "cmp.r6.input": { zh: "显式保存本地快照，再选择修改后文件", en: "Save a local snapshot explicitly, then choose the later file" },
+  "cmp.r6.evidence": { zh: "过滤后的学习基准，最多 100 份 / 16 MiB；不是原文件备份。", en: "Filtered learning baselines, up to 100 records / 16 MiB; not source-file backups." },
+  "cmp.r7.material": { zh: "PDF、网页或任意目录自动快照", en: "PDF, a web page, or automatic directory snapshots" },
+  "cmp.r7.input": { zh: "不在本次试点范围", en: "Outside this pilot" },
+  "cmp.r7.evidence": { zh: "需要各自的采集、权限与证据契约。", en: "Require their own capture, access, and evidence contracts." },
+  "cmds.snapshot": { zh: "显式保存过滤后的本地学习基准", en: "Explicitly save a filtered local learning baseline" },
+  "cmds.document": { zh: "从一篇 Markdown 原文生成课程", en: "Generate a lesson from one Markdown document" },
+  "cmds.context": { zh: "为两版本比较补充不可信辅助说明", en: "Add untrusted auxiliary notes to a two-version comparison" },
+  "cmds.active_practice": { zh: "显式生成主动迁移题；默认运行保留混合题", en: "Explicitly request active transfer questions; ordinary runs stay mixed" },
+  "cmds.practice_regenerate": { zh: "替换所选 run 的测验/卡片、重算分数并重新封存。旧 Judge 失效、不自动重跑；可用 --mixed-practice 切回混合题。", en: "Replace the selected run’s quiz/cards, recompute scores, and reseal. Old Judge results are invalidated without rerunning; --mixed-practice returns to a mixed quiz." },
 };
 
 /* Language detection & toggle */

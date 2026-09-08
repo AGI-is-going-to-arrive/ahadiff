@@ -1,9 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { optionalArtifact, recommendScaffoldLevel } from './LessonPage';
+import { formatLessonSourceRef, optionalArtifact, recommendScaffoldLevel } from './LessonPage';
 import { ApiError } from '../api/client';
 import type { WeakConceptsResponse } from '../api/types';
+import enMessages from '../i18n/messages/en.json';
+import zhMessages from '../i18n/messages/zh-CN.json';
+
+describe('formatLessonSourceRef', () => {
+  it.each([
+    { locale: 'en', document: enMessages.Dashboard.source_document, compare: enMessages.Lesson.source_file_compare },
+    { locale: 'zh-CN', document: zhMessages.Dashboard.source_document, compare: zhMessages.Lesson.source_file_compare },
+  ])('shows localized source and actual content digest in $locale', ({ document, compare }) => {
+    const digest = 'abc1234' + '0'.repeat(57);
+    const t = (key: string): string => key === 'Dashboard.source_document' ? document : compare;
+    expect(formatLessonSourceRef({ source_kind: 'document', source_ref: `document:sha256:${digest}` }, t)).toBe(`${document} · abc1234`);
+    expect(formatLessonSourceRef({ source_kind: 'file_compare', source_ref: `sha256:${digest}` }, t)).toBe(`${compare} · abc1234`);
+  });
+
+  it('keeps Git identities compatible and never uses a document prefix as its short digest', () => {
+    const t = (key: string): string => key === 'Dashboard.source_document' ? 'Document' : 'File comparison';
+    expect(formatLessonSourceRef({ source_kind: 'git_ref', source_ref: '1234567890abcdef' }, t)).toBe('1234567');
+    expect(formatLessonSourceRef({ source_kind: 'patch_file', source_ref: `sha256:${'a'.repeat(64)}` }, t)).toBe('aaaaaaa');
+    expect(formatLessonSourceRef({ source_kind: 'document', source_ref: 'document:sha256:invalid' }, t)).toBe('Document');
+    expect(formatLessonSourceRef({ source_kind: 'file_compare', source_ref: 'sha256:invalid' }, t)).toBe('File comparison');
+  });
+});
 
 function weakWith(levels: string[]): WeakConceptsResponse {
   return {

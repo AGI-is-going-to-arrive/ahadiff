@@ -135,7 +135,13 @@ def extract_claim_candidates_from_run(
 ) -> tuple[Path, tuple[ClaimCandidate, ...]]:
     prompt_text = load_claim_extract_prompt()
     metadata = _load_run_json(run_path / "metadata.json")
-    patch_text = _read_required_text(run_path / "patch.diff")
+    from ahadiff.core.source_evidence import (
+        load_evidence_anchors,
+        load_review_context,
+        load_run_source_text,
+    )
+
+    patch_text = load_run_source_text(run_path, metadata)
     line_map_text = _read_required_text(run_path / "line_map.json")
     symbols_text = _read_required_text(run_path / "symbols.json")
     payload_text = build_claim_extract_payload(
@@ -145,6 +151,8 @@ def extract_claim_candidates_from_run(
         line_map_text=line_map_text,
         symbols_text=symbols_text,
         output_lang=output_lang,
+        source_anchors=load_evidence_anchors(run_path, metadata),
+        review_context=load_review_context(run_path, metadata),
     )
     prompt_fingerprint = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()[:12]
     metadata_privacy_mode = _privacy_mode_from_metadata(metadata)
@@ -425,7 +433,15 @@ def build_claim_extract_payload(
     line_map_text: str,
     symbols_text: str,
     output_lang: str = "en",
+    source_anchors: Any = (),
+    review_context: Any = None,
 ) -> str:
+    from ahadiff.core.source_evidence import (
+        evidence_prompt_section,
+        review_prompt_section,
+        source_prompt_section,
+    )
+
     context_metadata = _claim_extract_context_metadata(metadata)
     return "\n\n".join(
         (
@@ -434,7 +450,9 @@ def build_claim_extract_payload(
             "## Run metadata\n```json\n"
             + json.dumps(context_metadata, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```",
-            "## patch.diff\n```diff\n" + patch_text.rstrip() + "\n```",
+            source_prompt_section(patch_text, metadata),
+            evidence_prompt_section(source_anchors),
+            review_prompt_section(review_context),
             "## line_map.json\n```json\n" + line_map_text.rstrip() + "\n```",
             "## symbols.json\n```json\n" + symbols_text.rstrip() + "\n```",
         )

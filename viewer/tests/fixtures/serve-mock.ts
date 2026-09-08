@@ -1,4 +1,5 @@
 import type { Page, Request } from '@playwright/test';
+import type { QuizItem } from '../../src/utils/quiz-contract';
 
 const SAMPLE_DIFF = `diff --git a/demo.py b/demo.py
 index 0000001..0000002 100644
@@ -10,6 +11,9 @@ index 0000001..0000002 100644
 +    return "AhaDiff"
 +    # learn-from-diff
 `;
+
+const SAMPLE_QUIZ_JSONL = '{"question_id":"quiz_1","review_card_id":"card_quiz_explicit_1","question":"What does the new comment indicate?","expected_answer":"A learn-from-diff marker","quiz_kind":"recall","source_claims":["c1"],"concepts":["learn-from-diff"],"evidence":[{"file":"demo.py","line":4}],"explanation":"learn-from-diff marker tags the change for the lesson","answer_mode":"multiple_choice","choices":[{"label":"A","text":"A learn-from-diff marker","is_correct":true},{"label":"B","text":"A runtime debug flag","is_correct":false},{"label":"C","text":"A deprecation warning","is_correct":false},{"label":"D","text":"A type annotation","is_correct":false}]}\n{"question_id":"quiz_2","question":"Why was the return value changed?","expected_answer":"To brand the output as AhaDiff","quiz_kind":"transfer","source_claims":["c1"],"concepts":["branding"],"evidence":[{"file":"demo.py","line":3}],"explanation":"The string literal was updated from world to AhaDiff"}';
+const SAMPLE_QUIZ_ITEMS: QuizItem[] = SAMPLE_QUIZ_JSONL.split('\n').map((line) => JSON.parse(line) as QuizItem);
 
 function extractCookieLocale(req: Request): string {
   const cookie = req.headers()['cookie'] ?? '';
@@ -349,6 +353,41 @@ export async function installServeMock(page: Page): Promise<void> {
       }),
   );
   await page.route(
+    (url) => /^\/api\/run\/[^/]+\/quiz\/questions$/.test(url.pathname),
+    (route) => route.fulfill({ json: {
+      run_id: new URL(route.request().url()).pathname.split('/')[3] ?? 'test-run',
+      questions: SAMPLE_QUIZ_ITEMS.map((question) => ({
+        question_id: question.question_id,
+        review_card_id: question.review_card_id ?? null,
+        question: question.question,
+        quiz_kind: question.quiz_kind,
+        exercise_kind: question.exercise_kind ?? null,
+        scenario_kind: question.scenario_kind ?? null,
+        answer_mode: question.answer_mode ?? 'open',
+        choices: question.choices?.map(({ label, text }) => ({ label, text })) ?? null,
+      })),
+    } }),
+  );
+  await page.route(
+    (url) => /^\/api\/run\/[^/]+\/quiz\/[^/]+\/reveal$/.test(url.pathname),
+    (route) => {
+      const path = new URL(route.request().url()).pathname.split('/');
+      const question = SAMPLE_QUIZ_ITEMS.find((item) => item.question_id === path[5]);
+      const body = asRecord(route.request().postDataJSON());
+      if (!question || body.attempted !== true) return route.fulfill({ status: 400, json: {error: 'invalid attempt', status: 400} });
+      const selected = question.choices?.find((choice) => choice.label === body.selected_choice_label);
+      if (question.answer_mode === 'multiple_choice' && !selected) {
+        return route.fulfill({ status: 400, json: {error: 'select a choice', status: 400} });
+      }
+      return route.fulfill({ json: {
+        run_id: path[3] ?? 'test-run', question,
+        correct: selected?.is_correct ?? null,
+        feedback_kind: question.exercise_kind ? 'semantic_self_assessment'
+          : selected ? 'choice_check' : 'reference_comparison',
+      } });
+    },
+  );
+  await page.route(
     (url) => /^\/api\/run\/[^/]+\/quiz$/.test(url.pathname),
     (route) =>
       route.fulfill({
@@ -357,8 +396,7 @@ export async function installServeMock(page: Page): Promise<void> {
         body: JSON.stringify({
           run_id: 'test-run',
           artifact_type: 'quiz',
-          content:
-            '{"question_id":"quiz_1","review_card_id":"card_quiz_explicit_1","question":"What does the new comment indicate?","expected_answer":"A learn-from-diff marker","quiz_kind":"recall","source_claims":["c1"],"concepts":["learn-from-diff"],"evidence":[{"file":"demo.py","line":4}],"explanation":"learn-from-diff marker tags the change for the lesson","answer_mode":"multiple_choice","choices":[{"label":"A","text":"A learn-from-diff marker","is_correct":true},{"label":"B","text":"A runtime debug flag","is_correct":false},{"label":"C","text":"A deprecation warning","is_correct":false},{"label":"D","text":"A type annotation","is_correct":false}]}\n{"question_id":"quiz_2","question":"Why was the return value changed?","expected_answer":"To brand the output as AhaDiff","quiz_kind":"transfer","source_claims":["c1"],"concepts":["branding"],"evidence":[{"file":"demo.py","line":3}],"explanation":"The string literal was updated from world to AhaDiff"}',
+          content: SAMPLE_QUIZ_JSONL,
           content_lang: 'en',
         }),
       }),

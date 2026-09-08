@@ -1,12 +1,59 @@
 import { describe, expect, it } from 'vitest';
+import { activePracticeSummarySchema, practiceAttemptSummarySchema } from '../api/schemas';
 import {
   hasChoices,
   hasQuizReviewCard,
   isQuizAnswerCorrect,
   parseQuizJsonl,
+  parseQuizPrompts,
 } from './quiz-contract';
 
 describe('quiz contract helpers', () => {
+  it('keeps absent practice measurements distinct from observed zero', () => {
+    expect(practiceAttemptSummarySchema.parse({ attempts: 0, independent_rate: null }).independent_rate).toBeNull();
+    expect(practiceAttemptSummarySchema.parse({ attempts: 1, independent_rate: 0 }).independent_rate).toBe(0);
+    for (const value of [
+      { attempts: 0, independent_rate: 0 }, { attempts: 1, independent_rate: null },
+      { attempts: 1, independent_rate: Number.NaN }, { attempts: true, independent_rate: 1 },
+      { attempts: 1, independent_rate: Number.POSITIVE_INFINITY }, { attempts: 1, independent_rate: 1.1 },
+    ]) expect(practiceAttemptSummarySchema.safeParse(value).success).toBe(false);
+    expect(activePracticeSummarySchema.safeParse({
+      initial: {attempts:0,independent_rate:null}, delayed_recall:{attempts:0,independent_rate:null},
+      unseen_variant:{attempts:0,independent_rate:null},
+      error_types:{none:0,recall:0,application:0,reasoning:0,boundary:0}, feedback_kind:'executed_tests',
+    }).success).toBe(false);
+  });
+
+  it('accepts multiline active prompts and rejects answer-bearing public fields', () => {
+    const prompt = {
+      question_id: 'quiz_exercise_1', question: 'Complete:\nif failed:\n    ____',
+      quiz_kind: 'transfer', exercise_kind: 'completion', scenario_kind: 'new_variant',
+      answer_mode: 'open', choices: null,
+    };
+    expect(parseQuizPrompts([prompt])[0]?.question).toBe(prompt.question);
+    for (const field of ['expected_answer', 'explanation', 'evidence', 'source_anchors', 'concepts', 'source_claims']) {
+      expect(() => parseQuizPrompts([{ ...prompt, [field]: 'private reference' }])).toThrow();
+    }
+    expect(() => parseQuizPrompts([{ ...prompt, exercise_kind: 'execute' }])).toThrow();
+    expect(() => parseQuizPrompts([prompt, prompt])).toThrow();
+  });
+
+  it('rejects correctness flags inside public choices', () => {
+    const prompt = {
+      question_id: 'quiz_1', question: 'Choose a path', quiz_kind: 'recall', answer_mode: 'multiple_choice',
+      choices: ['A', 'B', 'C', 'D'].map(label => ({ label, text: `Path ${label}` })),
+    };
+    expect(parseQuizPrompts([prompt])[0]?.choices).toHaveLength(4);
+    expect(() => parseQuizPrompts([{ ...prompt, choices: prompt.choices.map((choice, index) => ({ ...choice, is_correct: index === 0 })) }])).toThrow();
+  });
+
+  it('does not reinterpret corrupt active metadata as legacy text grading', () => {
+    const row = {question_id:'quiz_exercise_1',question:'Example',expected_answer:'Reference',
+      quiz_kind:'transfer',answer_mode:'open',exercise_kind:'unknown',source_claims:['claim-1'],
+      evidence:[{file:'sample.py',line:1}]};
+    expect(parseQuizJsonl(JSON.stringify(row))).toEqual([]);
+  });
+
   it('parses real quiz.jsonl rows and rejects legacy choice rows', () => {
     const realRow = JSON.stringify({
       question_id: 'quiz_1',

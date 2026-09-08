@@ -97,6 +97,8 @@ class RedactedRunBundle:
     symbols_text: str
     claims_text: str
     privacy_mode: PrivacyMode
+    source_anchors: tuple[Any, ...] = ()
+    review_context: Any = None
 
 
 @dataclass(frozen=True)
@@ -117,16 +119,38 @@ def load_redacted_run_bundle(
 ) -> RedactedRunBundle:
     metadata = _load_run_json(run_path / "metadata.json")
     claims_text = _read_required_text(run_path / "claims.jsonl")
+    # Rejected model references remain in the immutable diagnostic artifact,
+    # but cannot become teaching material or quiz evidence.
+    accepted_lines: list[str] = []
+    for line in claims_text.splitlines():
+        if not line.strip():
+            continue
+        payload: object = safe_json_loads(line)
+        if (
+            isinstance(payload, dict)
+            and cast("dict[str, object]", payload).get("status") == "rejected"
+        ):
+            continue
+        accepted_lines.append(line)
+    claims_text = "\n".join(accepted_lines) + ("\n" if accepted_lines else "")
+    from ahadiff.core.source_evidence import (
+        load_evidence_anchors,
+        load_review_context,
+        load_run_source_text,
+    )
+
     return RedactedRunBundle(
         run_id=run_id,
         run_path=run_path,
         workspace_root=workspace_root,
         metadata=metadata,
-        patch_text=_read_required_text(run_path / "patch.diff"),
+        patch_text=load_run_source_text(run_path, metadata),
         line_map_text=_read_required_text(run_path / "line_map.json"),
         symbols_text=_read_required_text(run_path / "symbols.json"),
         claims_text=claims_text,
         privacy_mode=_privacy_mode_from_metadata(metadata),
+        source_anchors=load_evidence_anchors(run_path, metadata),
+        review_context=load_review_context(run_path, metadata),
     )
 
 
@@ -575,9 +599,15 @@ def _fallback_sources_from_claims_text(claims_text: str) -> list[str]:
         if not isinstance(payload, dict):
             continue
         payload_map = cast("Mapping[str, object]", payload)
-        source_hunks = payload_map.get("source_hunks")
+        source_hunks = payload_map.get("source_hunks", [])
+        source_anchors = payload_map.get("source_anchors", [])
         if not isinstance(source_hunks, list):
             continue
+        if isinstance(source_anchors, list):
+            source_hunks = [
+                *cast("list[object]", source_hunks),
+                *cast("list[object]", source_anchors),
+            ]
         for hunk in cast("list[object]", source_hunks):
             if not isinstance(hunk, dict):
                 continue
@@ -719,6 +749,8 @@ def generate_lessons_from_run(
             hint=hint,
             compact=compact,
             overwrite=overwrite,
+            source_kind=str(bundle.metadata["source_kind"]),
+            output_lang=output_lang,
         )
     return write_selected_lesson_artifacts(
         run_path=run_path,
@@ -726,6 +758,8 @@ def generate_lessons_from_run(
         hint=hint,
         compact=compact,
         overwrite=overwrite,
+        source_kind=str(bundle.metadata["source_kind"]),
+        output_lang=output_lang,
     )
 
 
@@ -736,6 +770,8 @@ def write_lesson_artifacts(
     hint: LessonHint,
     compact: LessonCompact,
     overwrite: bool = False,
+    source_kind: str = "diff",
+    output_lang: str = "en",
 ) -> LessonArtifactPaths:
     lesson_dir = run_path / "lesson"
     paths = LessonArtifactPaths(
@@ -747,7 +783,9 @@ def write_lesson_artifacts(
         not_proven_path=lesson_dir / "not_proven.md",
     )
     artifact_texts = {
-        paths.full_path: full.render_markdown(),
+        paths.full_path: _render_full_lesson(
+            full, source_kind=source_kind, output_lang=output_lang
+        ),
         paths.hint_path: hint.render_markdown(),
         paths.compact_path: compact.render_markdown(),
         paths.misconception_path: full.render_misconceptions_markdown(),
@@ -769,6 +807,8 @@ def write_selected_lesson_artifacts(
     hint: LessonHint | None = None,
     compact: LessonCompact | None = None,
     overwrite: bool = False,
+    source_kind: str = "diff",
+    output_lang: str = "en",
 ) -> LessonArtifactPaths:
     lesson_dir = run_path / "lesson"
     paths = LessonArtifactPaths(
@@ -781,7 +821,9 @@ def write_selected_lesson_artifacts(
     )
     artifact_texts: dict[Path, str] = {}
     if full is not None:
-        artifact_texts[paths.full_path] = full.render_markdown()
+        artifact_texts[paths.full_path] = _render_full_lesson(
+            full, source_kind=source_kind, output_lang=output_lang
+        )
         artifact_texts[paths.misconception_path] = full.render_misconceptions_markdown()
         artifact_texts[paths.not_proven_path] = full.render_not_proven_markdown()
     if hint is not None:
@@ -797,6 +839,14 @@ def write_selected_lesson_artifacts(
         overwrite=overwrite,
     )
     return paths
+
+
+def _render_full_lesson(full: LessonFull, *, source_kind: str, output_lang: str) -> str:
+    rendered = full.render_markdown()
+    if source_kind == "document":
+        heading = "内容概览" if output_lang.casefold().startswith("zh") else "Source overview"
+        rendered = rendered.replace("\n## What Changed\n", f"\n## {heading}\n", 1)
+    return rendered
 
 
 def _write_lesson_artifact_texts(
@@ -834,6 +884,12 @@ def build_lesson_payload(
     steering_context: str | None = None,
 ) -> str:
     prompt_header = f"## Requested Output\nTarget: {_VARIANT_TITLES[variant]}"
+    from ahadiff.core.source_evidence import (
+        evidence_prompt_section,
+        review_prompt_section,
+        source_prompt_section,
+    )
+
     metadata_payload = {
         "run_id": bundle.metadata["run_id"],
         "source_kind": bundle.metadata["source_kind"],
@@ -849,13 +905,22 @@ def build_lesson_payload(
     ]
     if steering_context:
         sections.append("## Regeneration steering\n" + steering_context.strip())
+    if bundle.metadata.get("source_kind") == "document":
+        sections.append(
+            "## Independent document contract\n"
+            "The input has one source and no before/after versions. "
+            "Use the compatible what_changed field for a source overview; "
+            "describe the document's content without inventing edits or runtime proof."
+        )
     sections.extend(
         [
             "## Run metadata\n```json\n"
             + json.dumps(metadata_payload, ensure_ascii=False, indent=2, sort_keys=True)
             + "\n```",
             "## claims.jsonl\n```json\n" + bundle.claims_text.rstrip() + "\n```",
-            "## patch.diff\n```diff\n" + bundle.patch_text.rstrip() + "\n```",
+            source_prompt_section(bundle.patch_text, bundle.metadata),
+            evidence_prompt_section(bundle.source_anchors),
+            review_prompt_section(bundle.review_context),
             "## line_map.json\n```json\n" + bundle.line_map_text.rstrip() + "\n```",
             "## symbols.json\n```json\n" + bundle.symbols_text.rstrip() + "\n```",
         ]

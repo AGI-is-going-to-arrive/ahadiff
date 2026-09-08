@@ -499,13 +499,14 @@ describe('learn store', () => {
         { name: 'query.sql', content: 'SELECT id FROM private_table;' },
       ],
       force_learn: true,
+      active_practice: true,
     };
     mockedEstimateLearn.mockResolvedValue(makeEstimate({ risk_level: 'warn' }));
     mockedStartLearnTask.mockRejectedValue(new Error('submit failed'));
 
     await useLearnStore.getState().requestLearn(payload);
-    expect(useLearnStore.getState().pendingPayload).toEqual({ force_learn: true });
-    expect(useLearnStore.getState().lastPayload).toEqual({ force_learn: true });
+    expect(useLearnStore.getState().pendingPayload).toEqual({ force_learn: true, active_practice: true });
+    expect(useLearnStore.getState().lastPayload).toEqual({ force_learn: true, active_practice: true });
     expect(useLearnStore.getState().retryable).toBe(false);
 
     await useLearnStore.getState().confirmLearn();
@@ -516,6 +517,27 @@ describe('learn store', () => {
   });
 
   // ---------- cancelLearn ----------
+
+  it.each<LearnSubmitPayload>([
+    { document: { name: 'private.md', content: '# Synthetic private document' } },
+    { snapshot_id: `snap_${'1'.repeat(32)}`, snapshot_hash: 'a'.repeat(64), snapshot_after: { name: 'private.md', content: 'Synthetic after content' } },
+    { last: true, review_context: 'Synthetic private reviewer notes' },
+  ])('keeps source and reviewer content out of observable pending and retry state', async (payload) => {
+    mockedEstimateLearn.mockResolvedValue(makeEstimate({ risk_level: 'warn' }));
+    mockedStartLearnTask.mockRejectedValue(new ApiError(400, { error_code: 'INPUT_BAD_FIELD' }));
+    await useLearnStore.getState().requestLearn(payload);
+    const beforeConfirmation = useLearnStore.getState();
+    for (const field of ['document', 'snapshot_after', 'review_context']) {
+      expect(beforeConfirmation.pendingPayload).not.toHaveProperty(field);
+      expect(beforeConfirmation.lastPayload).not.toHaveProperty(field);
+    }
+    expect(beforeConfirmation.retryable).toBe(false);
+    await useLearnStore.getState().confirmLearn();
+    expect(mockedStartLearnTask).toHaveBeenCalledWith(payload);
+    expect(useLearnStore.getState().pendingPayload).toBeNull();
+    await useLearnStore.getState().retryLearn();
+    expect(mockedStartLearnTask).toHaveBeenCalledOnce();
+  });
 
   it('cancelLearn transitions from running to cancelling', async () => {
     mockedCancelTask.mockResolvedValue({ cancelled: true });

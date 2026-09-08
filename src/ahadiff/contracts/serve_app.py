@@ -1,8 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, TypeAlias, cast
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    StrictInt,
+    model_serializer,
+    model_validator,
+)
 
 from ahadiff.core.budget import CaptureRecommendation  # noqa: TC001
 
@@ -10,6 +18,7 @@ from . import event_log as event_log_contract
 from . import run_source as run_source_contract
 from .quiz_choice import AnswerMode, QuizChoice, QuizChoiceLabel  # noqa: TC001
 from .serve_providers import ModelLimitsResponse  # noqa: TC001
+from .source_anchor import SourceAnchor  # noqa: TC001
 
 DegradedFlag: TypeAlias = run_source_contract.DegradedFlag
 DegradedFlagsMap: TypeAlias = run_source_contract.DegradedFlagsMap
@@ -127,6 +136,10 @@ class LearnEstimateResponse(BaseModel):
     risk_level: LearnEstimateRiskLevel
     warnings: list[str]
     preview_patch: str = ""
+    preview_document: str = ""
+    active_practice: bool = False
+    source_bytes: int | None = Field(default=None, ge=0)
+    review_context_used: bool = False
     preview_truncated: bool = False
     source_kind: SourceKind | None = None
 
@@ -170,6 +183,9 @@ class RunDetail(RunSummary):
     graphify_status: str | None = None
     graphify_notes: list[str] | None = None
     learnability: LearnabilityInfo | None = None
+    review_context_used: bool = False
+    review_context_hash: str | None = None
+    active_practice: bool = False
 
 
 class RunArtifactEnvelope(BaseModel):
@@ -221,6 +237,9 @@ class DueReviewCardResponse(BaseModel):
     answer: str | None = None
     answer_mode: AnswerMode = "open"
     choices: list[QuizChoice] | None = None
+    question_id: str | None = None
+    exercise_kind: Literal["prediction", "completion", "error_reason"] | None = None
+    source_anchors: list[SourceAnchor] = Field(default_factory=list[SourceAnchor])
 
 
 class ReviewMasteryItem(BaseModel):
@@ -286,9 +305,35 @@ class ReviewQueueStateResponse(BaseModel):
 
 class QuizAnswerRequest(LearningSignalRequest):
     quiz_id: str
-    choice: str
-    correct: bool
+    choice: str = ""
+    correct: bool | None = None
     selected_choice_label: QuizChoiceLabel | None = None
+    run_id: str | None = Field(default=None, max_length=64)
+    exercise_kind: Literal["prediction", "completion", "error_reason"] | None = None
+    feedback_kind: (
+        Literal["choice_check", "reference_comparison", "semantic_self_assessment"] | None
+    ) = None
+    self_assessment: Literal["independent", "assisted", "not_yet"] | None = None
+    error_type: Literal["none", "recall", "application", "reasoning", "boundary"] | None = None
+    attempt_kind: Literal["initial", "delayed_recall", "unseen_variant"] | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_optional_practice_metadata(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        payload = cast("dict[str, Any]", handler(self))
+        for name in (
+            "run_id",
+            "exercise_kind",
+            "feedback_kind",
+            "self_assessment",
+            "error_type",
+            "attempt_kind",
+        ):
+            if payload.get(name) is None:
+                payload.pop(name, None)
+        # correct:null is meaningful for semantic feedback; keep it and all legacy fields.
+        return payload
 
 
 class HelpfulnessRequest(LearningSignalRequest):

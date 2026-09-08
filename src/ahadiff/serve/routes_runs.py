@@ -52,6 +52,8 @@ from .locale import request_locale
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from ahadiff.contracts.source_anchor import ReviewContextArtifact
+
     from .state import ServeState
 else:
     Request = Any
@@ -61,6 +63,9 @@ _ARTIFACT_PATHS = {
     "claims": "claims.jsonl",
     "concepts": "concepts.jsonl",
     "diff": "patch.diff",
+    "document": "document.md",
+    "anchors": "evidence_anchors.json",
+    "review_context": "review_context.json",
     "distractor_gate": "quiz/distractor_gate.json",
     "graphify_signoff": "graphify_signoff.json",
     "judge": "judge.json",
@@ -155,6 +160,9 @@ _ALLOWED_ARTIFACTS = frozenset(
         "judge.json",
         "judge_failure.json",
         "patch.diff",
+        "document.md",
+        "evidence_anchors.json",
+        "review_context.json",
         "quiz/distractor_gate.json",
         "quiz/misconception_cards.jsonl",
         "quiz/quiz.jsonl",
@@ -250,7 +258,27 @@ async def get_distractor_gate(request: Request) -> JSONResponse:
 
 
 async def get_diff(request: Request) -> JSONResponse:
-    return await _artifact_response(request, _ARTIFACT_PATHS["diff"], "diff")
+    return await _artifact_response(
+        request, _ARTIFACT_PATHS["diff"], "diff", not_found_status_code=404
+    )
+
+
+async def get_document(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request, _ARTIFACT_PATHS["document"], "document", not_found_status_code=404
+    )
+
+
+async def get_anchors(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request, _ARTIFACT_PATHS["anchors"], "anchors", not_found_status_code=404
+    )
+
+
+async def get_review_context(request: Request) -> JSONResponse:
+    return await _artifact_response(
+        request, _ARTIFACT_PATHS["review_context"], "review_context", not_found_status_code=404
+    )
 
 
 async def get_score(request: Request) -> JSONResponse:
@@ -386,6 +414,8 @@ def _artifact_payload(
 ) -> dict[str, Any]:
     run_path = _finalized_run_path(state.runs_dir, run_id)
     event = _event_for_finalized_run(state.review_db_path, run_path)
+    metadata = _load_json_object(run_path / "metadata.json")
+    _validate_source_artifacts_for_read(run_path, metadata)
     artifact_path = _artifact_path_for_read(run_path, relative_path)
     if artifact_path is None:
         if not_found_status_code is not None:
@@ -457,6 +487,7 @@ def _run_detail_payload(
     run_path = _finalized_run_path(runs_dir, run_id)
     event = _event_for_finalized_run(db_path, run_path)
     metadata = _load_json_object(run_path / "metadata.json")
+    auxiliary = _validate_source_artifacts_for_read(run_path, metadata)
     summary = _summary_from_event(event, metadata, default_locale=default_locale)
     if summary is None:
         raise InputError(f"run metadata is invalid: {run_id}")
@@ -473,8 +504,23 @@ def _run_detail_payload(
         graphify_status=graphify_status,
         graphify_notes=graphify_notes,
         learnability=learnability_info,
+        review_context_used=auxiliary is not None,
+        review_context_hash=auxiliary.content_hash if auxiliary is not None else None,
+        active_practice=metadata.get("active_practice") is True,
     )
     return detail.model_dump(mode="json")
+
+
+def _validate_source_artifacts_for_read(
+    run_path: Path, metadata: dict[str, Any]
+) -> ReviewContextArtifact | None:
+    from ahadiff.core.card_sources import declares_source_artifacts
+    from ahadiff.core.source_evidence import load_review_context, load_run_source_text
+
+    if declares_source_artifacts(run_path, metadata):
+        load_run_source_text(run_path, metadata)
+        return load_review_context(run_path, metadata)
+    return None
 
 
 def _concepts_payload(state_dir: Path, limit: int, cursor: str | None) -> dict[str, Any]:

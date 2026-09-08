@@ -1,6 +1,8 @@
 import { useTranslation } from '../i18n/useTranslation';
 import ClaimBadge from './ClaimBadge';
 import type { ClaimVerdict } from './ClaimBadge';
+import type { SourceAnchor } from '../api/types';
+import SourceAnchors from './SourceAnchors';
 
 export interface Claim {
   claim_id: string;
@@ -11,6 +13,8 @@ export interface Claim {
   statement: string;
   evidence?: string;
   source_hunks?: ReadonlyArray<ClaimSourceHunk>;
+  source_anchors?: ReadonlyArray<SourceAnchor>;
+  assertion_kind?: 'source_fact' | 'semantic' | 'runtime_effect' | null;
 }
 
 export interface ClaimSourceHunk {
@@ -23,6 +27,7 @@ export interface ClaimSourceHunk {
 
 interface EvidencePanelProps {
   claim: Claim | null;
+  onJumpToAnchor?: (anchor: SourceAnchor) => void;
 }
 
 function formatLocation(file: string, start: number, end: number): string {
@@ -40,7 +45,7 @@ function getClaimLocations(claim: Claim): string[] {
   return [formatLocation(claim.file, claim.line_start, claim.line_end)].filter(Boolean);
 }
 
-export default function EvidencePanel({ claim }: EvidencePanelProps) {
+export default function EvidencePanel({ claim, onJumpToAnchor }: EvidencePanelProps) {
   const { t } = useTranslation();
 
   return (
@@ -53,6 +58,8 @@ export default function EvidencePanel({ claim }: EvidencePanelProps) {
             <ClaimBadge verdict={claim.verdict} />
           </div>
           <p className="evidence-panel__statement">{claim.statement}</p>
+          {claim.assertion_kind && <p className="source-anchors__assertion" role="note">{t(`Evidence.assertion_${claim.assertion_kind}`)}</p>}
+          <SourceAnchors anchors={claim.source_anchors ?? []} onJump={onJumpToAnchor} />
           <div className="evidence-panel__location">
             {getClaimLocations(claim).map((location) => (
               <code key={location}>{location}</code>

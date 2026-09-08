@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Literal, TypeAlias, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
@@ -14,6 +15,7 @@ SourceKind: TypeAlias = Literal[
     "patch_file",
     "patch_stdin",
     "file_compare",
+    "document",
 ]
 DegradedFlag: TypeAlias = Literal[
     "diff_clipped",
@@ -68,6 +70,7 @@ class CompareFileInput(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
+        value = unicodedata.normalize("NFC", value)
         if (
             value != value.strip()
             or value.endswith(".")
@@ -95,6 +98,55 @@ class CompareFileInput(BaseModel):
         if size > COMPARE_FILE_MAX_BYTES:
             raise ValueError(f"file content exceeds {COMPARE_FILE_MAX_BYTES} UTF-8 bytes")
         return value
+
+
+class DocumentInput(CompareFileInput):
+    """One explicitly selected Markdown document; never an implicit diff."""
+
+    @field_validator("name")
+    @classmethod
+    def validate_markdown_name(cls, value: str) -> str:
+        if not value.casefold().endswith((".md", ".markdown")):
+            raise ValueError("document input must be a Markdown file (.md or .markdown)")
+        return value
+
+
+class SnapshotProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    schema_version: Literal[1] = 1
+    snapshot_id: str = Field(pattern=r"^snap_[0-9a-f]{32}$")
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    hash_scope: Literal["sanitized_utf8_nfc_lf"]
+    name: str = Field(min_length=1, max_length=80)
+    file_name: str
+    sanitized: bool
+
+    @field_validator("file_name")
+    @classmethod
+    def validate_file_name(cls, value: str) -> str:
+        return CompareFileInput(name=value, content="").name
+
+
+REVIEW_CONTEXT_MAX_BYTES = 8 * 1024
+
+
+def validate_review_context(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or "\x00" in value:
+        raise ValueError("review context must be UTF-8 text without NUL")
+    if any(unicodedata.category(char) == "Cc" and char not in "\t\r\n" for char in value):
+        raise ValueError("review context contains unsupported control characters")
+    normalized = unicodedata.normalize("NFC", value).replace("\r\n", "\n").replace("\r", "\n")
+    try:
+        size = len(normalized.encode("utf-8"))
+        raw_size = len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        raise ValueError("review context must be valid Unicode") from None
+    if size > REVIEW_CONTEXT_MAX_BYTES or raw_size > REVIEW_CONTEXT_MAX_BYTES:
+        raise ValueError("review context exceeds 8192 UTF-8 bytes")
+    return normalized if normalized.strip() else None
 
 
 def empty_degraded_flags() -> DegradedFlagsMap:
@@ -185,6 +237,10 @@ __all__ = [
     "COMPARE_FILE_MAX_BYTES",
     "COMPARE_FILES_MAX_BYTES",
     "CompareFileInput",
+    "DocumentInput",
+    "SnapshotProvenance",
+    "REVIEW_CONTEXT_MAX_BYTES",
+    "validate_review_context",
     "SourceKind",
     "DegradedFlag",
     "PrivacyMode",

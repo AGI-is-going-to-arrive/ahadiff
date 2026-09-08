@@ -1228,3 +1228,43 @@
   .learn-dialog__preview-diff,
   .learn-dialog__file-choose { border-color: ButtonText; }
 }
+.learn-dialog__snapshots,
+.learn-dialog__snapshot-save,
+.learn-dialog__review-context {
+  display: grid;
+  gap: var(--sp-3);
+  margin-block: var(--sp-4);
+  min-width: 0;
+}
+
+.learn-dialog__snapshot-list {
+  display: grid;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.learn-dialog__snapshot-item {
+  padding: var(--sp-4);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.learn-dialog__snapshot-actions,
+.learn-dialog__snapshot-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-block-start: var(--sp-3);
+}
+
+.learn-dialog__snapshot-confirm p { flex-basis: 100%; }
+.learn-dialog__snapshot-item [aria-pressed="true"] { border-color: var(--accent-ink); }
+
+@media (forced-colors: active) {
+  .learn-dialog__snapshot-item { border-color: CanvasText; }
+  .learn-dialog__snapshot-item [aria-pressed="true"] { outline: 2px solid Highlight; }
+}

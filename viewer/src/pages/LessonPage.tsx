@@ -1,3 +1,4 @@
+import { parseAssertionKind, parseSourceAnchors } from '../utils/source-anchors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, Printer } from 'lucide-react';
@@ -7,7 +8,7 @@ import EvidencePanel from '../components/EvidencePanel';
 import ClaimBadge from '../components/ClaimBadge';
 import FreshnessBadge from '../components/FreshnessBadge';
 import ScaffoldingTabs from '../components/ScaffoldingTabs';
-import { useTranslation } from '../i18n/useTranslation';
+import { useTranslation, type TranslateFn } from '../i18n/useTranslation';
 import { useRunsStore } from '../state/runs-store';
 import { getRunLesson, getRunArtifact, getRunScore } from '../api/runs';
 import { scorePayloadSchema } from '../api/schemas';
@@ -26,6 +27,17 @@ interface TocEntry {
   id: string;
   label: string;
   level: number;
+}
+
+export function formatLessonSourceRef(
+  run: Pick<RunDetail, 'source_kind' | 'source_ref'>,
+  t: TranslateFn,
+): string {
+  const digest = run.source_ref.match(/(?:^|:)sha256:([a-f0-9]{64})(?:$|:)/i)?.[1];
+  const label = run.source_kind === 'document' ? t('Dashboard.source_document')
+    : run.source_kind === 'file_compare' ? t('Lesson.source_file_compare') : null;
+  if (label) return digest ? `${label} · ${digest.slice(0, 7)}` : label;
+  return (digest ?? run.source_ref).slice(0, 7) || '—';
 }
 
 
@@ -270,7 +282,8 @@ function collectEvidenceRefs(claims: Claim[]): EvidenceRef[] {
   const seen = new Set<string>();
   const refs: EvidenceRef[] = [];
   for (const claim of claims) {
-    const hunks =
+    const formatAnchors = claim.source_anchors ?? [];
+    const hunks = formatAnchors.length > 0 ? formatAnchors.map((anchor) => ({ file: anchor.file, display_path: anchor.file, start: anchor.start, end: anchor.end })) :
       claim.source_hunks && claim.source_hunks.length > 0
         ? claim.source_hunks
         : claim.file && claim.line_start > 0
@@ -335,6 +348,8 @@ function parseClaims(content: string): Claim[] {
         statement: String(raw.text ?? raw.statement ?? ''),
         evidence: raw.evidence != null ? String(raw.evidence) : undefined,
         source_hunks: sourceHunks,
+        source_anchors: parseSourceAnchors(raw.source_anchors),
+        assertion_kind: parseAssertionKind(raw.assertion_kind),
       });
     } catch {
       // Skip malformed JSONL lines
@@ -383,6 +398,7 @@ export default function LessonPage() {
   // hint badge near the tabs.
   const [autoSelected, setAutoSelected] = useState<boolean>(false);
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
+  const sourceDisplayRef = runDetail ? formatLessonSourceRef(runDetail, t) : '—';
   const [lessonContent, setLessonContent] = useState<string>('');
   const [claims, setClaims] = useState<Claim[]>([]);
   const [concepts, setConcepts] = useState<ConceptSummaryItem[]>([]);
@@ -768,13 +784,13 @@ export default function LessonPage() {
         <header className="lesson-page__header">
           <div className="lesson-page__header-left">
             <div className="lesson-page__eyebrow">
-              {t('Lesson.eyebrow', { ref: runDetail?.source_ref?.slice(0, 7) ?? '—' })}
+              {t('Lesson.eyebrow', { ref: sourceDisplayRef })}
             </div>
             <h1 className="lesson-page__title">
               {runDetail
                 ? t('Lesson.title_with_ref', {
                     title: t('Lesson.title'),
-                    ref: runDetail.source_ref.slice(0, 7),
+                    ref: sourceDisplayRef,
                   })
                 : t('Lesson.title')}
             </h1>
@@ -834,6 +850,8 @@ export default function LessonPage() {
                 {t('Lesson.mark_learned_failed')}
               </p>
             )}
+            {runDetail?.source_kind === 'document' && <p className="lesson-page__sub" role="note">{t('Evidence.document_scope')}</p>}
+            {runDetail?.review_context_used && <p className="lesson-page__artifact-warning" role="note">{t('LearnDialog.review_context_used')}</p>}
             {artifactFailureText && (
               <p className="lesson-page__artifact-warning" role="status">
                 {artifactFailureText}

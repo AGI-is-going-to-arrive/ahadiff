@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import string
 import unicodedata
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+from pydantic import ValidationError
+
+from ahadiff.contracts.source_anchor import SourceAnchor
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -256,7 +260,9 @@ def evidence_for_fragments(
                 continue
             score = len(matched) / max(len(claim_tokens), 1)
             source_hunks = _truncate_source_hunks(claim.get("source_hunks"))
+            source_anchors = _bounded_source_anchors(claim.get("source_anchors"))
             primary_hunk = source_hunks[0] if source_hunks else {}
+            primary_source = primary_hunk or (source_anchors[0] if source_anchors else {})
             bucket.setdefault(section_id, []).append(
                 {
                     "section_id": section_id,
@@ -264,11 +270,18 @@ def evidence_for_fragments(
                     "status": str(claim.get("status", "")),
                     "confidence": str(claim.get("confidence", "")),
                     "text": claim_text,
-                    "file": str(primary_hunk.get("file", "")),
-                    "line_start": int(primary_hunk.get("start", 0)),
-                    "line_end": int(primary_hunk.get("end", 0)),
+                    "file": str(primary_source.get("file", "")),
+                    "line_start": int(primary_source.get("start", 0)),
+                    "line_end": int(primary_source.get("end", 0)),
                     "hunk_hash": str(primary_hunk.get("hunk_hash", "")),
                     "source_hunks": source_hunks,
+                    **({"source_anchors": source_anchors} if source_anchors else {}),
+                    **(
+                        {"assertion_kind": claim["assertion_kind"]}
+                        if claim.get("assertion_kind")
+                        in {"source_fact", "semantic", "runtime_effect"}
+                        else {}
+                    ),
                     "matched_tokens": matched,
                     "score": float(score),
                 }
@@ -282,6 +295,19 @@ def evidence_for_fragments(
         )
         evidence.extend(ranked[:per_fragment_limit])
     return evidence[:total_limit]
+
+
+def _bounded_source_anchors(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    anchors: list[dict[str, Any]] = []
+    for raw in cast("list[object]", value)[:3]:
+        try:
+            anchor = SourceAnchor.model_validate(raw)
+        except ValidationError:
+            continue
+        anchors.append(anchor.model_dump(mode="json"))
+    return anchors
 
 
 def _heading_text(line: str) -> str | None:

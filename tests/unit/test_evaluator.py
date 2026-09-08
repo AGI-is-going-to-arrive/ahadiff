@@ -14,7 +14,7 @@ from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, ProviderConfig, SourceHunk, compute_eval_bundle_version
 from ahadiff.contracts.eval_bundle import compute_runtime_eval_bundle_version
 from ahadiff.core.config import SecurityConfig
-from ahadiff.core.errors import InputError
+from ahadiff.core.errors import InputError, ProviderError
 from ahadiff.eval import evaluate_run, write_score_report
 from ahadiff.eval import evaluator as evaluator_module
 from ahadiff.eval.evaluator import evaluate_run_for_replay_calibration, run_llm_judge_for_run
@@ -1472,6 +1472,24 @@ def test_semantic_alignment_request_stays_json_object_without_schema_metadata(
     assert seen_requests[0].output_schema is None
 
 
+# Exact malformed content from the synthetic Luna run; no credentials or response metadata.
+_LUNA_TRUNCATED_JUDGE_RESPONSE = (
+    '{"dimensions":{"accuracy":{"score":20,"reason":"All lesson and quiz claims match the'
+    ' three verified source claims without contradiction."},"evidence":{"score":17,"reaso'
+    'n":"Claims and quiz items are well anchored to source paragraphs, though some lesson'
+    ' summaries aggregate multiple claims."},"diff_coverage":{"score":0,"reason":"Not app'
+    'licable: the run contains an independent document with no diff."},"learnability":{"s'
+    'core":0,"reason":"Not applicable: the deterministic context marks learnability as un'
+    'available for a document without change novelty."},"quiz_transfer":{"score":10,"reas'
+    'on":"Quiz items cover all core concepts, use valid choices, and include correct sour'
+    'ce anchors and explanations."},"spec_alignment":{"score":0,"reason":"Not applicable:'
+    ' no specification constraint is attached to this run."},"conciseness":{"score":8,"re'
+    'ason":"The lesson is structured, focused, and within the expected artifact scope wit'
+    'hout unnecessary elaboration."},"safety_privacy":{"score":6,"reason":"No sensitive i'
+    'nformation, unsafe guidance, or unresolved prompt-injection content is present."}}'
+)
+
+
 def test_run_llm_judge_for_run_writes_judge_artifact(tmp_path: Path) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_run_fixture(
@@ -1624,6 +1642,172 @@ def test_high_llm_judge_scores_do_not_change_deterministic_score_json_verdict(
     assert score_after == score_before
     assert score_after["verdict"] == "FAIL"
     assert score_after["hard_gates"]["contradicted_claims"]["passed"] is False
+
+
+def _judge_retry_fixture(tmp_path: Path) -> tuple[Path, Path, evaluator_module.ScoreReport]:
+    workspace = tmp_path / "workspace"
+    run_path = _write_run_fixture(
+        workspace,
+        run_id="run-judge-format-retry",
+        claims=_standard_quiz_claims("run-judge-format-retry"),
+        patch_text=_standard_quiz_patch_text(),
+        learnability_score=0.9,
+        with_lesson=True,
+        with_quiz=True,
+    )
+    return workspace, run_path, evaluate_run(run_path)
+
+
+def _invoke_judge_retry_fixture(
+    workspace: Path, run_path: Path, report: evaluator_module.ScoreReport
+) -> evaluator_module.LlmJudgeReport:
+    return run_llm_judge_for_run(
+        run_path=run_path,
+        workspace_root=workspace,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.6-luna",
+            base_url="http://127.0.0.1:8317",
+            api_key_env="AHADIFF_SYNTHETIC_KEY",
+            thinking_level="low",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        privacy_mode="strict_local",
+        output_lang="en",
+        deterministic_report=report,
+        request_timeout_seconds=30,
+        max_concurrent=1,
+        qps_limit=10,
+        retry_attempts=0,
+    )
+
+
+def test_judge_retries_actual_truncated_luna_response_without_repairing_answer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace, run_path, report = _judge_retry_fixture(tmp_path)
+    score_path = write_score_report(run_path / "score.json", report)
+    score_before = score_path.read_bytes()
+    requests: list[ProviderRequest] = []
+    corrected = json.dumps(
+        {
+            "dimensions": {
+                dimension.name: {
+                    "score": dimension.max_score / 2,
+                    "reason": "Valid second provider response.",
+                }
+                for dimension in report.dimensions
+                if dimension.max_score > 0
+            }
+        }
+    )
+
+    class Provider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            requests.append(request)
+            return ProviderResponse(
+                content=_LUNA_TRUNCATED_JUDGE_RESPONSE if len(requests) == 1 else corrected,
+                model_id="gpt-5.6-luna",
+                input_tokens=10,
+                output_tokens=20,
+            )
+
+        def close(self) -> None:
+            pass
+
+    def factory(*_args: object, **_kwargs: object) -> Provider:
+        return Provider()
+
+    monkeypatch.setattr("ahadiff.llm.provider.make_provider", factory)
+    judge = _invoke_judge_retry_fixture(workspace, run_path, report)
+    assert len(requests) == 2
+    assert "The previous response" not in requests[0].payload_text
+    assert "eval_judge.v1" in requests[1].payload_text
+    assert "The previous response" in requests[1].payload_text
+    assert _LUNA_TRUNCATED_JUDGE_RESPONSE not in requests[1].payload_text
+    assert judge.overall == 50.0
+    assert "judge_format_validation_retried_once" in judge.notes
+    assert all(
+        dimension.reason == "Valid second provider response."
+        for dimension in judge.dimensions
+        if dimension.max_score > 0
+    )
+    assert score_path.read_bytes() == score_before
+
+
+def test_judge_persistent_json_failure_stops_after_one_format_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace, run_path, report = _judge_retry_fixture(tmp_path)
+    requests: list[ProviderRequest] = []
+
+    class Provider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            requests.append(request)
+            return ProviderResponse(
+                content=_LUNA_TRUNCATED_JUDGE_RESPONSE,
+                model_id="gpt-5.6-luna",
+                input_tokens=10,
+                output_tokens=20,
+            )
+
+        def close(self) -> None:
+            pass
+
+    def factory(*_args: object, **_kwargs: object) -> Provider:
+        return Provider()
+
+    monkeypatch.setattr("ahadiff.llm.provider.make_provider", factory)
+    with pytest.raises(InputError, match="structured output validation failed after 2 attempt"):
+        _invoke_judge_retry_fixture(workspace, run_path, report)
+    assert len(requests) == 2
+    assert not (run_path / "judge.json").exists()
+
+
+@pytest.mark.parametrize("failure", ["authentication", "transport", "parser_bug"])
+def test_judge_format_retry_does_not_retry_transport_authentication_or_parser_bugs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    workspace, run_path, report = _judge_retry_fixture(tmp_path)
+    requests: list[ProviderRequest] = []
+    error: Exception = (
+        ProviderError("synthetic authentication failure")
+        if failure == "authentication"
+        else httpx.ConnectError("synthetic transport failure")
+        if failure == "transport"
+        else RuntimeError("synthetic parser bug")
+    )
+
+    class Provider:
+        def generate(self, request: ProviderRequest) -> ProviderResponse:
+            requests.append(request)
+            if failure != "parser_bug":
+                raise error
+            return ProviderResponse(
+                content="{}", model_id="gpt-5.6-luna", input_tokens=10, output_tokens=20
+            )
+
+        def close(self) -> None:
+            pass
+
+    def factory(*_args: object, **_kwargs: object) -> Provider:
+        return Provider()
+
+    def broken_parser(*_args: object, **_kwargs: object) -> tuple[()]:
+        raise error
+
+    monkeypatch.setattr("ahadiff.llm.provider.make_provider", factory)
+    if failure == "parser_bug":
+        monkeypatch.setattr(evaluator_module, "parse_llm_judge_output", broken_parser)
+    with pytest.raises(type(error)):
+        _invoke_judge_retry_fixture(workspace, run_path, report)
+    assert len(requests) == 1
+    assert not (run_path / "judge.json").exists()
 
 
 def test_llm_judge_request_stays_json_object_without_schema_metadata(

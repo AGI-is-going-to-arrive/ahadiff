@@ -9,6 +9,7 @@ from ahadiff.contracts.quiz_choice import (  # noqa: TC001
     QuizChoice,
     validate_quiz_choices,
 )
+from ahadiff.contracts.source_anchor import AssertionKind, SourceAnchor  # noqa: TC001
 from ahadiff.core.json_util import safe_json_loads
 
 ClaimStatus = Literal["verified", "weak", "not_proven", "contradicted", "rejected"]
@@ -74,6 +75,7 @@ class ReviewCard(BaseModel):
     answer: str | None = None
     answer_mode: AnswerMode = "open"
     choices: list[QuizChoice] | None = None
+    source_anchors: list[SourceAnchor] = Field(default_factory=lambda: list[SourceAnchor]())
 
     @field_validator("fsrs_state")
     @classmethod
@@ -125,7 +127,9 @@ class ClaimRecord(BaseModel):
     status: ClaimStatus
     reason_code: RejectReasonCode | None = None
     confidence: ClaimConfidence = "medium"
-    source_hunks: list[SourceHunk]
+    source_hunks: list[SourceHunk] = Field(default_factory=lambda: list[SourceHunk]())
+    source_anchors: list[SourceAnchor] = Field(default_factory=lambda: list[SourceAnchor]())
+    assertion_kind: AssertionKind | None = None
     symbols: list[str] = Field(default_factory=list)
     negative_evidence: list[str] = Field(default_factory=list)
     extractor: ClaimExtractor | None = None

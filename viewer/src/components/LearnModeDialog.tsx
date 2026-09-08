@@ -12,11 +12,12 @@ import { useLearnStore } from '../state/learn-store';
 import { useLocaleStore } from '../state/locale-store';
 import { estimateLearn } from '../api/tasks';
 import { ApiError } from '../api/client';
-import type { LearnEstimateResponse, LearnFileInput, LearnSubmitPayload, Locale } from '../api/types';
+import type { LearnEstimateResponse, LearnFileInput, LearnSubmitPayload, Locale, SnapshotSummary } from '../api/types';
 import { getErrorMessage } from '../utils/error-codes';
 import { buildFormatTexts, formatBytes } from '../utils/format';
 import LearnSourcePicker, { type LearnSource } from './LearnSourcePicker';
 import LearnFilePicker from './LearnFilePicker';
+import LearnSnapshotPicker from './LearnSnapshotPicker';
 import './LearnModeDialog.css';
 
 type CaptureMode =
@@ -29,6 +30,8 @@ type CaptureMode =
   | 'patch_url'
   | 'compare'
   | 'compare_files'
+  | 'snapshot'
+  | 'document'
   | 'compare_dir'
   | 'patch';
 
@@ -72,10 +75,15 @@ interface BuildPayloadArgs {
   compareA: string;
   compareB: string;
   compareFiles: [LearnFileInput, LearnFileInput] | null;
+  document: LearnFileInput | null;
+  snapshot: SnapshotSummary | null;
+  snapshotAfter: LearnFileInput | null;
+  reviewContext: string;
   compareDirA: string;
   compareDirB: string;
   changedPaths: string[];
   forceLearn: boolean;
+  activePractice: boolean;
   useGraphify: boolean;
   dryRun: boolean;
   lang: LangOption;
@@ -93,10 +101,15 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
     compareA,
     compareB,
     compareFiles,
+    document: documentInput,
+    snapshot,
+    snapshotAfter,
+    reviewContext,
     compareDirA,
     compareDirB,
     changedPaths,
     forceLearn,
+    activePractice,
     useGraphify,
     dryRun,
     lang,
@@ -138,6 +151,16 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
     case 'compare_files':
       if (compareFiles) base.compare_files = compareFiles;
       break;
+    case 'document':
+      if (documentInput) base.document = documentInput;
+      break;
+    case 'snapshot':
+      if (snapshot?.content_hash && snapshotAfter) {
+        base.snapshot_id = snapshot.snapshot_id;
+        base.snapshot_hash = snapshot.content_hash;
+        base.snapshot_after = snapshotAfter;
+      }
+      break;
     case 'compare_dir':
       base.compare_dir = [compareDirA.trim(), compareDirB.trim()];
       break;
@@ -146,7 +169,9 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
       throw new Error(`Unhandled learn capture mode: ${String(exhaustive)}`);
     }
   }
+  if (mode !== 'document' && reviewContext.trim()) base.review_context = reviewContext;
   if (forceLearn) base.force_learn = true;
+  if (activePractice) base.active_practice = true;
   if (useGraphify) base.use_graphify = true;
   if (dryRun) base.dry_run = true;
   base.lang = lang;
@@ -226,12 +251,14 @@ function gitFilterIsValid(value: string): boolean {
 }
 
 function sourceForMode(mode: CaptureMode): LearnSource {
+  if (mode === 'snapshot' || mode === 'document') return mode;
   if (mode === 'compare' || mode === 'compare_dir' || mode === 'compare_files') return 'files';
   if (mode === 'patch' || mode === 'patch_url') return 'patch';
   return 'git';
 }
 
 function defaultMode(source: LearnSource): CaptureMode {
+  if (source === 'snapshot' || source === 'document') return source;
   return source === 'files' ? 'compare_files' : source === 'patch' ? 'patch' : 'working';
 }
 
@@ -256,12 +283,17 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
   const [compareB, setCompareB] = useState('');
   const [beforeFile, setBeforeFile] = useState<LearnFileInput | null>(null);
   const [afterFile, setAfterFile] = useState<LearnFileInput | null>(null);
+  const [documentFile, setDocumentFile] = useState<LearnFileInput | null>(null);
+  const [snapshot, setSnapshot] = useState<SnapshotSummary | null>(null);
+  const [snapshotPending, setSnapshotPending] = useState(false);
+  const [reviewContext, setReviewContext] = useState('');
   const [readingBefore, setReadingBefore] = useState(false);
   const [readingAfter, setReadingAfter] = useState(false);
   const [compareDirA, setCompareDirA] = useState('');
   const [compareDirB, setCompareDirB] = useState('');
   const [pathScope, setPathScope] = useState('');
   const [forceLearn, setForceLearn] = useState(false);
+  const [activePractice, setActivePractice] = useState(false);
   const [useGraphify, setUseGraphify] = useState(false);
   const [dryRun, setDryRun] = useState(false);
   const viewerLocale = useLocaleStore((s) => s.locale);
@@ -278,7 +310,8 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
   const source = sourceForMode(mode);
 
   const isTaskBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling' || learnPhase === 'estimating' || learnPhase === 'confirming';
-  const isBusy = isTaskBusy || previewLoading || readingBefore || readingAfter;
+  const isBusy = isTaskBusy || previewLoading || readingBefore || readingAfter || snapshotPending;
+  const reviewContextInvalid = source !== 'document' && (utf8ByteLength(reviewContext) > 8192 || reviewContext.includes('\0'));
   const patchTextBytes = useMemo(() => utf8ByteLength(patchText), [patchText]);
   const patchTooLarge = patchTextBytes > MAX_PATCH_TEXT_BYTES;
   const patchUsesStdinSentinel = patchText.trim() === '-';
@@ -333,6 +366,11 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
     setPatchUrl('');
     setBeforeFile(null);
     setAfterFile(null);
+    setDocumentFile(null);
+    setSnapshot(null);
+    setReviewContext('');
+    setSnapshotPending(false);
+    setActivePractice(false);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -358,6 +396,12 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
     case 'compare':
       needsValidInput = compareA.trim().length > 0 && compareB.trim().length > 0;
       break;
+    case 'document':
+      needsValidInput = documentFile !== null && documentFile.content.trim().length > 0;
+      break;
+    case 'snapshot':
+      needsValidInput = snapshot?.status === 'ready' && Boolean(snapshot.content_hash) && afterFile !== null;
+      break;
     case 'compare_files':
       needsValidInput = beforeFile !== null && afterFile !== null;
       break;
@@ -371,16 +415,17 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
   const payload = useMemo(() => buildPayload({
     mode, since, author, revision, patchUrl, patchText, compareA, compareB,
     compareFiles: beforeFile && afterFile ? [beforeFile, afterFile] : null,
+    document: documentFile, snapshot, snapshotAfter: afterFile, reviewContext,
     compareDirA, compareDirB, changedPaths: pathScopeResult.paths,
-    forceLearn, useGraphify, dryRun, lang, privacyMode,
+    forceLearn, activePractice, useGraphify, dryRun, lang, privacyMode,
   }), [mode, since, author, revision, patchUrl, patchText, compareA, compareB,
-    beforeFile, afterFile, compareDirA, compareDirB, pathScopeResult.paths,
-    forceLearn, useGraphify, dryRun, lang, privacyMode]);
+    beforeFile, afterFile, documentFile, snapshot, reviewContext, compareDirA, compareDirB, pathScopeResult.paths,
+    forceLearn, activePractice, useGraphify, dryRun, lang, privacyMode]);
   const payloadKey = JSON.stringify(payload);
   const requestTooLarge = utf8ByteLength(payloadKey) > MAX_REQUEST_BYTES;
-  const canPreview = !isBusy && needsValidInput && !pathScopeInvalid && !requestTooLarge;
+  const canPreview = !isBusy && needsValidInput && !pathScopeInvalid && !reviewContextInvalid && !requestTooLarge;
   const hasCurrentPreview = preview !== null && previewKey === payloadKey;
-  const canSubmit = canPreview && hasCurrentPreview && preview.file_count > 0 && Boolean(preview.preview_patch?.trim());
+  const canSubmit = canPreview && hasCurrentPreview && preview.file_count > 0 && Boolean((source === 'document' ? preview.preview_document : preview.preview_patch)?.trim());
 
   useEffect(() => {
     previewAbortRef.current?.abort();
@@ -453,12 +498,17 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
       setCompareB('');
       setBeforeFile(null);
       setAfterFile(null);
+      setDocumentFile(null);
+      setSnapshot(null);
+      setReviewContext('');
+      setSnapshotPending(false);
       setReadingBefore(false);
       setReadingAfter(false);
       setCompareDirA('');
       setCompareDirB('');
       setPathScope('');
       setForceLearn(initialSource !== 'git');
+      setActivePractice(false);
       setUseGraphify(false);
       setDryRun(false);
       setLang(viewerLocaleRef.current);
@@ -526,6 +576,12 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
 
   const handleSourceSelect = (next: LearnSource): void => {
     if (next !== source) {
+      abortEstimate();
+      setActivePractice(false);
+      setDocumentFile(null);
+      setSnapshot(null);
+      setReviewContext('');
+      setSnapshotPending(false);
       setBeforeFile(null);
       setAfterFile(null);
       setPatchText('');
@@ -550,7 +606,8 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
     try {
       const result = await estimateLearn(payload, { signal: controller.signal });
       if (controller.signal.aborted || previewAbortRef.current !== controller) return;
-      if (typeof result.preview_patch !== 'string') throw new Error('Preview unavailable');
+      if ((source === 'document') !== (result.source_kind === 'document')) throw new Error('Preview source mismatch');
+      if (typeof (source === 'document' ? result.preview_document : result.preview_patch) !== 'string') throw new Error('Preview unavailable');
       setPreview(result);
       setPreviewKey(payloadKey);
     } catch (error: unknown) {
@@ -638,6 +695,18 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
             </div>
 
             )}
+            {mode === 'document' && (
+              <>
+                <p className="learn-dialog__preview-hint">{t('LearnDialog.document_scope')}</p>
+                <LearnFilePicker side="document" value={documentFile} disabled={isTaskBusy} onChange={setDocumentFile} onPendingChange={setReadingBefore} />
+              </>
+            )}
+            {mode === 'snapshot' && (
+              <>
+                <LearnSnapshotPicker value={snapshot} disabled={isTaskBusy} onChange={setSnapshot} onPendingChange={setSnapshotPending} />
+                <LearnFilePicker side="after" value={afterFile} disabled={isTaskBusy} onChange={setAfterFile} onPendingChange={setReadingAfter} />
+              </>
+            )}
             {mode === 'compare_files' && (
               <div className="learn-dialog__file-pair">
                 <LearnFilePicker side="before" value={beforeFile} disabled={isTaskBusy} onChange={setBeforeFile} onPendingChange={setReadingBefore} />
@@ -685,6 +754,16 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
                     </div>
                   </div>
                 )}
+            {source !== 'document' && (
+              <div className="learn-dialog__review-context">
+                <label htmlFor="learn-review-context">{t('LearnDialog.review_context')}</label>
+                <p id="learn-review-context-hint" className="learn-dialog__file-hint">{t('LearnDialog.review_context_hint')}</p>
+                <textarea id="learn-review-context" className="learn-dialog__textarea" value={reviewContext}
+                  onChange={(event) => setReviewContext(event.target.value)} rows={3} maxLength={8192}
+                  aria-describedby="learn-review-context-hint" aria-invalid={reviewContextInvalid || undefined} />
+                {reviewContextInvalid && <p className="learn-dialog__error" role="status">{t('LearnDialog.review_context_error')}</p>}
+              </div>
+            )}
             {source !== 'git' && (
               <div className="learn-dialog__explicit-learn">
                 <label className="learn-dialog__checkbox">
@@ -1230,6 +1309,22 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
                     </span>
                   </span>
                 </label>
+                <label className="learn-dialog__checkbox">
+                  <input
+                    id="learn-opt-active-practice"
+                    type="checkbox"
+                    checked={activePractice}
+                    aria-label={t('LearnDialog.opt_active_practice')}
+                    aria-describedby="learn-opt-active-practice-hint"
+                    onChange={(event) => setActivePractice(event.target.checked)}
+                  />
+                  <span className="learn-dialog__checkbox-copy">
+                    <span className="learn-dialog__checkbox-label">{t('LearnDialog.opt_active_practice')}</span>
+                    <span id="learn-opt-active-practice-hint" className="learn-dialog__checkbox-hint">
+                      {t('LearnDialog.opt_active_practice_hint')}
+                    </span>
+                  </span>
+                </label>
                 <div className="learn-dialog__select-row">
                   <label htmlFor="learn-opt-lang" className="learn-dialog__select-label">
                     {t('LearnDialog.opt_lang')}
@@ -1276,16 +1371,20 @@ export default function LearnModeDialog({ open, onClose, initialSource = 'git' }
           {previewLoading && <p role="status" aria-live="polite">{t('LearnDialog.preview_loading')}</p>}
           {hasCurrentPreview && preview && (
             <section className="learn-dialog__preview" aria-labelledby="learn-preview-title">
-              <h3 id="learn-preview-title">{t('LearnDialog.preview_title')}</h3>
+              <h3 id="learn-preview-title">{t(source === 'document' ? 'LearnDialog.document_preview' : 'LearnDialog.preview_title')}</h3>
               <p className="learn-dialog__preview-stats" role="status">
                 {t('Learn.preflight_files', { count: preview.file_count })}
-                {' · '}{formatBytes(preview.patch_bytes, locale, buildFormatTexts(t))}
+                {' · '}{formatBytes(preview.source_bytes ?? preview.patch_bytes, locale, buildFormatTexts(t))}
               </p>
               {preview.preview_truncated && <p>{t('LearnDialog.preview_truncated')}</p>}
               {(preview.diff_clipped || (preview.omitted_files_count ?? 0) > 0) && <p className="learn-dialog__error">{t('LearnDialog.preview_capture_clipped')}</p>}
               {preview.risk_level !== 'ok' && <p>{t('LearnDialog.preview_risk')}</p>}
-              {preview.preview_patch?.trim()
-                ? <pre className="learn-dialog__preview-diff" tabIndex={0} aria-label={t('LearnDialog.preview_title')}>{preview.preview_patch}</pre>
+              {preview.warnings.length > 0 && <ul className="learn-dialog__preview-warnings">
+                {preview.warnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}
+              </ul>}
+              {preview.review_context_used && <p role="note">{t('LearnDialog.review_context_used')}</p>}
+              {(source === 'document' ? preview.preview_document : preview.preview_patch)?.trim()
+                ? <pre className="learn-dialog__preview-diff" tabIndex={0} aria-label={t(source === 'document' ? 'LearnDialog.document_preview' : 'LearnDialog.preview_title')}>{source === 'document' ? preview.preview_document : preview.preview_patch}</pre>
                 : <p>{t('LearnDialog.preview_empty')}</p>}
             </section>
           )}

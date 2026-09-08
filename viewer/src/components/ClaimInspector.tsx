@@ -33,7 +33,7 @@ export interface ClaimInspectorProps {
    * Receives the claim's file path, 1-based line number, and optional source
    * side so the caller can scroll the diff viewport to the corresponding line.
    */
-  onJumpToCode?: (file: string, line: number, side?: 'old' | 'new' | 'either') => void;
+  onJumpToCode?: (file: string, line: number, side?: 'old' | 'new' | 'either', endLine?: number) => void;
 }
 
 type ClaimFilter = 'shipped' | 'verified' | 'weak' | 'not_proven' | 'rejected';
@@ -193,7 +193,7 @@ export default memo(function ClaimInspector({
   const selectedJumpTargets: ReadonlyArray<ClaimSourceLineGroup> = selectedClaim
     ? selectedSourceGroups.length > 0
       ? selectedSourceGroups
-      : hasSourceHunk(selectedClaim)
+      : hasSourceHunk(selectedClaim) && !selectedClaim.source_anchors?.length
         ? [
             {
               file: selectedClaim.file,
@@ -241,7 +241,9 @@ export default memo(function ClaimInspector({
           )}
       </div>
 
-      <EvidencePanel claim={selectedClaim} />
+      <EvidencePanel claim={selectedClaim} onJumpToAnchor={onJumpToCode
+        ? (anchor) => onJumpToCode(anchor.file, anchor.start, anchor.side === 'document' ? undefined : anchor.side, anchor.end)
+        : undefined} />
 
       {selectedConcepts.length > 0 && (
         <div className="claim-inspector__concepts-row">
@@ -304,7 +306,7 @@ export default memo(function ClaimInspector({
           </ul>
         </div>
       ) : (
-        hasSourceHunk(selectedClaim) ? null : (
+        hasSourceHunk(selectedClaim) || selectedClaim.source_anchors?.length ? null : (
           <p className="claim-inspector__source-empty">
             {t('Claim_inspector.source_unavailable')}
           </p>

@@ -244,6 +244,57 @@ class TestSerialization:
             "selected_choice_label": "B",
         }
 
+    def test_absent_practice_metadata_preserves_legacy_null_serialization(self) -> None:
+        request = QuizAnswerRequest(
+            idempotency_key="legacy-open",
+            quiz_id="quiz-legacy",
+            choice="legacy response",
+            correct=False,
+            run_id=None,
+            feedback_kind=None,
+        )
+        payload = request.model_dump(mode="json")
+        assert payload["selected_choice_label"] is None
+        assert payload["correct"] is False
+        assert set(payload).isdisjoint(
+            {
+                "run_id",
+                "exercise_kind",
+                "feedback_kind",
+                "self_assessment",
+                "error_type",
+                "attempt_kind",
+            }
+        )
+        assert request.model_dump() == payload
+        assert QuizAnswerRequest.model_validate_json(request.model_dump_json()) == request
+
+    def test_active_practice_serialization_retains_null_correct_and_finite_metadata(self) -> None:
+        request = QuizAnswerRequest(
+            idempotency_key="practice-attempt",
+            quiz_id="quiz_exercise_1",
+            run_id="run-1",
+            exercise_kind="prediction",
+            feedback_kind="semantic_self_assessment",
+            self_assessment="independent",
+            error_type="none",
+            correct=None,
+        )
+        payload = request.model_dump(mode="json")
+        assert payload == {
+            "idempotency_key": "practice-attempt",
+            "quiz_id": "quiz_exercise_1",
+            "choice": "",
+            "correct": None,
+            "selected_choice_label": None,
+            "run_id": "run-1",
+            "exercise_kind": "prediction",
+            "feedback_kind": "semantic_self_assessment",
+            "self_assessment": "independent",
+            "error_type": "none",
+        }
+        assert QuizAnswerRequest.model_validate_json(request.model_dump_json()) == request
+
     @pytest.mark.parametrize(
         ("model_type", "payload"),
         [

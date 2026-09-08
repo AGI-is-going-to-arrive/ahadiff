@@ -753,6 +753,11 @@ test.describe('walkthrough: full-app functional test', () => {
   test('Quiz — question, answer, SRS rating gate, next button', async ({ page }) => {
     await holdPeekGuardTimer(page);
     const srsReviewRequests: Array<Record<string, unknown>> = [];
+    const answerArtifactRequests: string[] = [];
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (/^\/api\/run\/[^/]+\/(quiz|misconceptions)$/.test(path)) answerArtifactRequests.push(path);
+    });
     page.on('request', (request) => {
       if (new URL(request.url()).pathname !== '/api/signals/srs-review') return;
       const postData = request.postData();
@@ -802,7 +807,8 @@ test.describe('walkthrough: full-app functional test', () => {
       /#\/run\/test-run\/diff\?focus=demo.py%3A4$/,
     );
     await expect(page.locator('.quiz-evidence__anchor-note')).toBeVisible();
-    await expect(page.locator('.quiz-page__misconceptions')).toBeVisible();
+    await expect(page.locator('.quiz-page__misconceptions')).toHaveCount(0);
+    expect(answerArtifactRequests).toEqual([]);
 
     // Rating buttons appear but are disabled during peek guard (1.5s).
     // The timer is held by the test to avoid slow-browser timing flakes.
@@ -867,6 +873,8 @@ test.describe('walkthrough: full-app functional test', () => {
 
     // After both quiz items answered, summary appears
     await expect(page.locator('.quiz-page__progress--summary')).toBeVisible();
+    await expect(page.locator('.quiz-page__misconceptions')).toBeVisible();
+    expect(answerArtifactRequests).toEqual(['/api/run/test-run/misconceptions']);
 
     await page.screenshot({ path: `${SCREENSHOT_DIR}/04-quiz.png`, fullPage: true });
   });
@@ -1116,7 +1124,7 @@ test.describe('walkthrough: full-app functional test', () => {
     // Exercise each real step. Commands belong to setup; the learning step
     // offers source selection and preview instead of assuming a Git commit.
     const activeCard = page.locator('[data-testid="onboarding-active-card"]');
-    await expect(activeCard.locator('[data-learn-source]')).toHaveCount(3);
+    await expect(activeCard.locator('[data-learn-source]')).toHaveCount(5);
     await activateControlWithKeyboard(page, page.locator('[data-testid="onboarding-step-jump-1"]'));
     await expect(activeCard.getByRole('heading', { level: 2 })).toHaveText(/Choose a work folder|选择工作目录/);
     const setupCommands = activeCard.locator('.command-block__code');
@@ -1149,7 +1157,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await expect(activeCard.getByRole('link')).toHaveAttribute('href', '#/settings?tab=integrations');
 
     await activateControlWithKeyboard(page, page.locator('[data-testid="onboarding-step-jump-4"]'));
-    await expect(activeCard.locator('[data-learn-source]')).toHaveCount(3);
+    await expect(activeCard.locator('[data-learn-source]')).toHaveCount(5);
     await expect(activeCard.locator('[data-learn-source="files"]')).toContainText(/Two files|两份文件/);
     await expect(activeCard.locator('pre')).toHaveCount(0);
 
@@ -1555,7 +1563,7 @@ test.describe('walkthrough: full-app functional test', () => {
     await page.keyboard.press('Escape');
 
     // All primary sources are visible without opening CLI documentation.
-    await expect(page.locator('.hero [data-learn-source]')).toHaveCount(3);
+    await expect(page.locator('.hero [data-learn-source]')).toHaveCount(5);
     await expect(page.locator('.hero [data-learn-source="files"]')).toContainText(/Two files|两份文件/);
     await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
 

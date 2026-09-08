@@ -68,6 +68,7 @@ def generate_with_validation_retry(
     fallback_parse: Callable[[str], T] | None = None,
     post_parse_validate: Callable[[Any], None] | None = None,
     max_validation_retries: int,
+    validation_error_types: tuple[type[Exception], ...] = (Exception,),
 ) -> StructuredCallResult[T]:
     if max_validation_retries < 0 or max_validation_retries > _MAX_VALIDATION_RETRIES:
         raise InputError("structured validation retries must be between 0 and 2")
@@ -80,12 +81,16 @@ def generate_with_validation_retry(
         try:
             value = parse(response.content)
         except Exception as exc:
+            if not isinstance(exc, validation_error_types):
+                raise
             last_error = exc
             errors = _errors_from_exception(exc)
             if fallback_parse is not None:
                 try:
                     value = fallback_parse(response.content)
                 except Exception as fallback_exc:
+                    if not isinstance(fallback_exc, validation_error_types):
+                        raise
                     last_error = fallback_exc
                 else:
                     try:
@@ -94,6 +99,8 @@ def generate_with_validation_retry(
                             post_parse_validate=post_parse_validate,
                         )
                     except Exception as validation_exc:
+                        if not isinstance(validation_exc, validation_error_types):
+                            raise
                         last_error = validation_exc
                         errors = _errors_from_exception(validation_exc)
                     else:
@@ -107,6 +114,8 @@ def generate_with_validation_retry(
             try:
                 _run_post_parse_validation(value, post_parse_validate=post_parse_validate)
             except Exception as validation_exc:
+                if not isinstance(validation_exc, validation_error_types):
+                    raise
                 last_error = validation_exc
                 errors = _errors_from_exception(validation_exc)
             else:

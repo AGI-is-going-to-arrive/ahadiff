@@ -107,7 +107,7 @@ function resetPollState(): void {
 }
 
 function stripSensitivePayload(payload: LearnSubmitPayload): LearnSubmitPayload {
-  const { patch: _p, patch_url: _u, compare_files: _f, ...safePayload } = payload;
+  const { patch: _p, patch_url: _u, compare_files: _f, document: _d, snapshot_after: _a, review_context: _r, ...safePayload } = payload;
   return safePayload;
 }
 
@@ -299,7 +299,7 @@ export const useLearnStore = create<LearnState>(() => ({
     const generation = ++submitGeneration;
     const effectivePayload = payload ?? {};
     const safePayload = stripSensitivePayload(effectivePayload);
-    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined && effectivePayload.compare_files === undefined;
+    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined && effectivePayload.compare_files === undefined && effectivePayload.document === undefined && effectivePayload.snapshot_after === undefined && effectivePayload.review_context === undefined;
     pendingSubmitPayload = effectivePayload;
     useLearnStore.setState({
       phase: 'estimating',
@@ -366,7 +366,7 @@ export const useLearnStore = create<LearnState>(() => ({
     const generation = ++submitGeneration;
     const effectivePayload = payload ?? {};
     const safePayload = stripSensitivePayload(effectivePayload);
-    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined && effectivePayload.compare_files === undefined;
+    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined && effectivePayload.compare_files === undefined && effectivePayload.document === undefined && effectivePayload.snapshot_after === undefined && effectivePayload.review_context === undefined;
     pendingSubmitPayload = null;
     pendingCancelGeneration = null;
     useLearnStore.setState({

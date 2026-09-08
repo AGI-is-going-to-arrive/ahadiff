@@ -18,7 +18,11 @@ import type { ClaimSourceHunk } from '../components/EvidencePanel';
 import type { ClaimVerdict } from '../components/ClaimBadge';
 import { useTranslation } from '../i18n/useTranslation';
 import { copyToClipboard } from '../utils/clipboard';
-import { getRunArtifact } from '../api/runs';
+import { getRunAnchors, getRunArtifact, getRunReviewContext } from '../api/runs';
+import type { ReviewContextArtifact } from '../api/types';
+import { parseAssertionKind, parseSourceAnchors } from '../utils/source-anchors';
+import DocumentView from '../components/DocumentView';
+import { useRunsStore } from '../state/runs-store';
 import { ApiError } from '../api/client';
 import '../components/Diff.css';
 
@@ -27,7 +31,7 @@ const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 type Phase = 'loading' | 'error' | 'empty' | 'ready';
 type SourceHunkSide = 'old' | 'new' | 'either';
 type DiffPageClaim = ClaimInspectorClaim & {
-  source_anchors: DiffClaimAnchor[];
+  diff_anchors: DiffClaimAnchor[];
 };
 type ClaimsLoadResult = {
   content: string;
@@ -36,6 +40,11 @@ type ClaimsLoadResult = {
 interface FocusTarget {
   file: string;
   line: number;
+}
+interface DocumentFocus {
+  start: number;
+  end: number;
+  request: number;
 }
 
 function prefersReducedMotion(): boolean {
@@ -165,6 +174,17 @@ function parseClaims(content: string): DiffPageClaim[] {
         ...anchor,
         verdict,
       }));
+      const sourceAnchors = parseSourceAnchors(raw.source_anchors);
+      for (const sourceAnchor of sourceAnchors) {
+        if (sourceAnchor.source_kind !== 'diff' || sourceAnchor.side === 'document') continue;
+        if (anchors.some((entry) => entry.file === sourceAnchor.file
+          && entry.line_start === sourceAnchor.start && entry.line_end === sourceAnchor.end
+          && entry.source_side === sourceAnchor.side)) continue;
+        anchors.push({
+          claim_id: claimId, file: sourceAnchor.file, line_start: sourceAnchor.start,
+          line_end: sourceAnchor.end, source_side: sourceAnchor.side, verdict,
+        });
+      }
       const firstAnchor = anchors[0];
       const confidence = parseConfidence(raw.confidence);
       const concepts = parseConcepts(raw);
@@ -174,7 +194,9 @@ function parseClaims(content: string): DiffPageClaim[] {
         file: firstAnchor?.file ?? '',
         line_start: firstAnchor?.line_start ?? 0,
         line_end: firstAnchor?.line_end ?? 0,
-        source_anchors: anchors,
+        diff_anchors: anchors,
+        source_anchors: sourceAnchors,
+        assertion_kind: parseAssertionKind(raw.assertion_kind),
         source_hunks: hunks,
         statement: String(raw.text ?? raw.statement ?? ''),
         evidence: raw.evidence != null ? String(raw.evidence) : undefined,
@@ -195,6 +217,12 @@ export default function DiffViewerPage() {
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [content, setContent] = useState('');
+  const [isDocument, setIsDocument] = useState(false);
+  const [documentName, setDocumentName] = useState('document.md');
+  const [documentFocus, setDocumentFocus] = useState<DocumentFocus | undefined>();
+  const [anchorsTruncated, setAnchorsTruncated] = useState(false);
+  const [reviewContext, setReviewContext] = useState<ReviewContextArtifact | null>(null);
+  const [reviewContextFailed, setReviewContextFailed] = useState(false);
   const [stats, setStats] = useState<DiffStats | null>(null);
   const [claims, setClaims] = useState<DiffPageClaim[]>([]);
   const [claimsUnavailable, setClaimsUnavailable] = useState(false);
@@ -216,13 +244,36 @@ export default function DiffViewerPage() {
     abortRef.current = controller;
     setPhase('loading');
     setContent('');
+    setIsDocument(false);
+    setDocumentName('document.md');
+    setDocumentFocus(undefined);
+    setAnchorsTruncated(false);
+    setReviewContext(null);
+    setReviewContextFailed(false);
     setStats(null);
     setClaims([]);
     setSelectedClaimId(null);
     setClaimsUnavailable(false);
 
     Promise.all([
-      getRunArtifact(runId, 'diff', { signal: controller.signal }),
+      useRunsStore.getState().loadDetail(runId, { signal: controller.signal })
+        .then(async (detail) => {
+          const document = detail?.source_kind === 'document';
+          const [envelope, anchors, auxiliary] = await Promise.all([
+            getRunArtifact(runId, document ? 'document' : 'diff', { signal: controller.signal }),
+            detail.artifacts.includes('evidence_anchors.json')
+              ? getRunAnchors(runId, { signal: controller.signal }) : Promise.resolve(null),
+            detail.review_context_used || detail.artifacts.includes('review_context.json')
+              ? getRunReviewContext(runId, { signal: controller.signal })
+                  .then((value) => ({ value, failed: false }))
+                  .catch((error: unknown) => {
+                    if (controller.signal.aborted) throw error;
+                    return { value: null, failed: true };
+                  })
+              : Promise.resolve({ value: null, failed: false }),
+          ]);
+          return { envelope, document, anchors, auxiliary };
+        }),
       getRunArtifact(runId, 'claims', { signal: controller.signal })
         .then((envelope): ClaimsLoadResult => ({
           content: envelope.content ?? '',
@@ -238,9 +289,14 @@ export default function DiffViewerPage() {
           };
         }),
     ])
-      .then(([diffEnv, claimsEnv]) => {
+      .then(([source, claimsEnv]) => {
         if (controller.signal.aborted) return;
-        const text = diffEnv.content ?? '';
+        const text = source.envelope.content ?? '';
+        setIsDocument(source.document);
+        setDocumentName(source.anchors?.sources.find((entry) => entry.side === 'document')?.file ?? 'document.md');
+        setAnchorsTruncated(source.anchors?.truncated ?? false);
+        setReviewContext(source.auxiliary.value);
+        setReviewContextFailed(source.auxiliary.failed);
         setClaimsUnavailable(claimsEnv.unavailable);
         setClaims(parseClaims(claimsEnv.content));
         if (text.trim().length === 0) {
@@ -281,7 +337,8 @@ export default function DiffViewerPage() {
    * Falls back to the file header when no exact line anchor is found (e.g.
    * the line is outside the visible diff range — common for large diffs).
    */
-  const handleJumpToCode = useCallback((file: string, line: number, side?: SourceHunkSide) => {
+  const handleJumpToCode = useCallback((file: string, line: number, side?: SourceHunkSide, endLine?: number) => {
+    setDocumentFocus((current) => ({ start: line, end: endLine ?? line, request: (current?.request ?? 0) + 1 }));
     const tryScroll = (attempt = 0) => {
       const root = document.querySelector<HTMLElement>('.diff-view');
       if (!root) return false;
@@ -339,10 +396,12 @@ export default function DiffViewerPage() {
     handleJumpToCode(focusTarget.file, focusTarget.line);
   }, [focusTarget, handleJumpToCode, phase]);
 
-  const diffLines = useMemo(() => parseUnifiedDiff(content), [content]);
+  const diffLines = useMemo(() => isDocument ? [] : parseUnifiedDiff(content), [content, isDocument]);
   const diffSections = useMemo(() => parseDiffFileSections(diffLines), [diffLines]);
   const headerFile = diffSections[headerFileIndex] ?? diffSections[0] ?? null;
-  const headerFileName = headerFile?.filePath?.split('/').pop() ?? t('Diff.title');
+  const documentFile = claims.flatMap((claim) => claim.source_anchors ?? []).find((anchor) => anchor.source_kind === 'document')?.file ?? documentName;
+  const selectedDocumentAnchor = claims.find((claim) => claim.claim_id === selectedClaimId)?.source_anchors?.find((anchor) => anchor.source_kind === 'document');
+  const headerFileName = isDocument ? documentFile : headerFile?.filePath?.split('/').pop() ?? t('Diff.title');
 
   useEffect(() => {
     setHeaderFileIndex(0);
@@ -351,7 +410,7 @@ export default function DiffViewerPage() {
   const claimsWithSource = useMemo(
     () =>
       claims.map((claim) => {
-        const groups: ClaimSourceLineGroup[] = claim.source_anchors
+        const groups: ClaimSourceLineGroup[] = claim.diff_anchors
           .map((anchor) => ({
             file: anchor.file,
             line_start: anchor.line_start,
@@ -369,7 +428,7 @@ export default function DiffViewerPage() {
     [claims, diffLines],
   );
   const claimAnchors = useMemo(
-    () => claims.flatMap((claim) => claim.source_anchors),
+    () => claims.flatMap((claim) => claim.diff_anchors),
     [claims],
   );
   const handleActiveFileChange = useCallback((index: number | null) => {
@@ -378,7 +437,19 @@ export default function DiffViewerPage() {
 
   const handleSelect = useCallback((claimId: string) => {
     setSelectedClaimId((prev) => (prev === claimId ? null : claimId));
+    setDocumentFocus(undefined);
   }, []);
+
+  useEffect(() => {
+    if (phase !== 'ready') return;
+    const anchorId = new URLSearchParams(search).get('anchor');
+    if (!anchorId) return;
+    const claim = claims.find((entry) => entry.source_anchors?.some((anchor) => anchor.anchor_id === anchorId));
+    const anchor = claim?.source_anchors?.find((entry) => entry.anchor_id === anchorId);
+    if (!claim || !anchor) return;
+    setSelectedClaimId(claim.claim_id);
+    handleJumpToCode(anchor.file, anchor.start, anchor.side === 'document' ? undefined : anchor.side, anchor.end);
+  }, [claims, handleJumpToCode, phase, search]);
 
   useEffect(() => {
     if (!selectedClaimId || phase !== 'ready') return;
@@ -410,18 +481,19 @@ export default function DiffViewerPage() {
               {t('Diff.header_eyebrow', { run: runId ?? 'run' })}
             </div>
             <h1>
-              {t('Diff.title')} ·{' '}
+              {t(isDocument ? 'Evidence.document_title' : 'Diff.title')} ·{' '}
               {headerFileName}
               {headerFile && (
                 <span className="diff-page__header-stats">
                   · +{headerFile.stats.added} −{headerFile.stats.removed}
                 </span>
               )}
-              {' '}<InfoHint label={t('Diff.dot_legend')} />
+              {' '}{!isDocument && <InfoHint label={t('Diff.dot_legend')} />}
             </h1>
-            <p className="sub">{t('Diff.header_subtitle')}</p>
+            <p className="sub">{t(isDocument ? 'Evidence.document_scope' : 'Diff.header_subtitle')}</p>
           </div>
           <div className="right">
+            {!isDocument && <>
             <button
               type="button"
               className={`chip diff-page__view-chip${diffViewMode === 'unified' ? ' on' : ''}`}
@@ -438,6 +510,7 @@ export default function DiffViewerPage() {
             >
               {t('Diff.view_split')}
             </button>
+            </>}
             {runId && (
               <Link className="btn primary" to={`/run/${encodeURIComponent(runId)}/lesson`}>
                 {t('Diff.open_lesson')} →
@@ -449,6 +522,13 @@ export default function DiffViewerPage() {
           </div>
         </div>
 
+        {reviewContext && <details className="diff-page__review-context">
+          <summary>{t('Evidence.review_context')}</summary>
+          <p role="note">{t('LearnDialog.review_context_used')}</p>
+          <pre>{reviewContext.content}</pre>
+        </details>}
+        {reviewContextFailed && <p role="status">{t('Evidence.review_context_unavailable')}</p>}
+        {anchorsTruncated && <p role="status">{t('Evidence.anchors_partial')}</p>}
         <div className="diff-page__split">
           <div className="diff-page__body">
             {phase === 'loading' && (
@@ -482,7 +562,10 @@ export default function DiffViewerPage() {
                     <span>{t('Diff.claims_unavailable_body')}</span>
                   </div>
                 )}
-                <DiffView
+                {isDocument ? <DocumentView content={content} file={documentFile}
+                  focusLine={documentFocus?.start ?? selectedDocumentAnchor?.start ?? focusTarget?.line}
+                  endLine={documentFocus?.end ?? selectedDocumentAnchor?.end}
+                  focusRequest={documentFocus?.request} /> : <DiffView
                   lines={diffLines}
                   claims={claimAnchors}
                   selectedClaimId={selectedClaimId}
@@ -491,7 +574,7 @@ export default function DiffViewerPage() {
                   onActiveFileChange={handleActiveFileChange}
                   mode={diffViewMode}
                   focusTarget={diffFocusTarget}
-                />
+                />}
               </>
             )}
           </div>
@@ -505,7 +588,7 @@ export default function DiffViewerPage() {
           />
         </div>
 
-        {phase === 'ready' && <BottomMiniPanel items={panelItems} />}
+        {phase === 'ready' && !isDocument && <BottomMiniPanel items={panelItems} />}
       </div>
     </AppShell>
   );

@@ -2,7 +2,7 @@ import type { ReactElement } from 'react';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import './LearnSourcePicker.css';
 
-export type LearnSource = 'git' | 'files' | 'patch';
+export type LearnSource = 'git' | 'files' | 'patch' | 'snapshot' | 'document';
 
 const SOURCES: ReadonlyArray<{
   source: LearnSource;
@@ -12,6 +12,8 @@ const SOURCES: ReadonlyArray<{
   { source: 'git', title: 'LearnDialog.source_git', description: 'LearnDialog.source_git_hint' },
   { source: 'files', title: 'LearnDialog.source_files', description: 'LearnDialog.source_files_hint' },
   { source: 'patch', title: 'LearnDialog.source_patch', description: 'LearnDialog.source_patch_hint' },
+  { source: 'snapshot', title: 'LearnDialog.source_snapshot', description: 'LearnDialog.source_snapshot_hint' },
+  { source: 'document', title: 'LearnDialog.source_document', description: 'LearnDialog.source_document_hint' },
 ];
 
 interface LearnSourcePickerProps {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -8,7 +9,12 @@ from pydantic import ValidationError
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import ErrorCode
-from ahadiff.contracts.run_source import CompareFileInput
+from ahadiff.contracts.run_source import (
+    CompareFileInput,
+    DocumentInput,
+    SnapshotProvenance,
+    validate_review_context,
+)
 from ahadiff.contracts.serve_app import LearnEstimateResponse, LearnEstimateRiskLevel
 from ahadiff.contracts.serve_runtime import TaskSubmitResponse
 from ahadiff.core.budget import compute_cjk_factor
@@ -19,11 +25,12 @@ from ahadiff.core.config import (
     load_workspace_security_config,
 )
 from ahadiff.core.errors import AhaDiffError
+from ahadiff.core.learn_inputs import resolve_snapshot_comparison
 from ahadiff.core.orchestrator import (
     _effective_capture_recommendation,  # pyright: ignore[reportPrivateUsage]
 )
 from ahadiff.core.paths import assert_local_repo_path, find_repo_root
-from ahadiff.git.capture import capture_patch
+from ahadiff.git.capture import CapturedDiff, build_capture_evidence_index, capture_patch
 from ahadiff.git.repo import repo_write_lock
 from ahadiff.llm.cost import estimate_text_tokens
 from ahadiff.safety.ignore import resolve_safe_path_from_root
@@ -50,6 +57,12 @@ _ACCEPTED_FIELDS = frozenset(
         "patch",
         "compare",
         "compare_files",
+        "document",
+        "snapshot_id",
+        "snapshot_hash",
+        "snapshot_after",
+        "review_context",
+        "active_practice",
         "compare_dir",
         "against_spec",
         "spec_semantic_review",
@@ -73,6 +86,7 @@ _BOOL_FIELDS = frozenset(
         "dry_run",
         "force_learn",
         "spec_semantic_review",
+        "active_practice",
     }
 )
 _OPTIONAL_BOOL_FIELDS = frozenset({"use_graphify"})
@@ -217,6 +231,22 @@ def _coerce_changed_paths(value: object) -> tuple[str, ...]:
 
 
 def _coerce_field(key: str, value: object) -> object:
+    if key in {"document", "snapshot_after"}:
+        model = DocumentInput if key == "document" else CompareFileInput
+        try:
+            return model.model_validate(value)
+        except ValidationError:
+            raise ValueError(f"{key} contains an invalid name or UTF-8 text body") from None
+    if key == "review_context":
+        return validate_review_context(value)
+    if key == "snapshot_id":
+        if not isinstance(value, str) or re.fullmatch(r"snap_[0-9a-f]{32}", value) is None:
+            raise ValueError("invalid snapshot identifier")
+        return value
+    if key == "snapshot_hash":
+        if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            raise ValueError("invalid snapshot content hash")
+        return value
     if key == "compare_files":
         return _coerce_compare_files(value)
     if key == "changed_paths":
@@ -277,14 +307,69 @@ async def _parse_learn_request_body(
         if k in _ACCEPTED_FIELDS and v is not None:
             try:
                 coerced = _coerce_field(k, v)
-            except (ValueError, TypeError) as exc:
+            except (ValueError, TypeError, AhaDiffError) as exc:
                 return None, _invalid_value_response(k, str(exc))
             if k not in _IGNORED_FIELDS:
                 params[k] = coerced
     if params.get("patch") == "-":
         return None, _invalid_value_response("patch", "stdin patch input is not supported")
     _route_patch_as_inline_text(params)
+    source_error = _validate_new_source_shape(params)
+    if source_error is not None:
+        return None, source_error
     return params, None
+
+
+def _validate_new_source_shape(params: dict[str, Any]) -> JSONResponse | None:
+    snapshot_fields = {"snapshot_id", "snapshot_hash", "snapshot_after"}
+    supplied_snapshot = snapshot_fields.intersection(params)
+    if supplied_snapshot and supplied_snapshot != snapshot_fields:
+        return _invalid_value_response(
+            "snapshot_id", "snapshot requires id, content hash and after file"
+        )
+    source = "document" if "document" in params else "snapshot_id" if supplied_snapshot else None
+    if source is None:
+        return None
+    exclusive = {
+        "revision",
+        "last",
+        "since",
+        "author",
+        "staged",
+        "unstaged",
+        "include_untracked",
+        "changed_paths",
+        "patch_text",
+        "patch_url",
+        "compare",
+        "compare_files",
+        "compare_dir",
+    }
+    if source == "document":
+        exclusive |= snapshot_fields | {"against_spec", "spec_semantic_review"}
+    else:
+        exclusive.add("document")
+    if any(
+        key in params and params[key] is not False and params[key] is not None for key in exclusive
+    ):
+        return _invalid_value_response(source, "learning sources must be mutually exclusive")
+    return None
+
+
+def _resolve_snapshot_params(root: Path, params: dict[str, Any]) -> None:
+    snapshot_id = params.get("snapshot_id")
+    if snapshot_id is None:
+        return
+    files, provenance = resolve_snapshot_comparison(
+        root,
+        str(snapshot_id),
+        expected_hash=cast("str", params["snapshot_hash"]),
+        after=cast("CompareFileInput", params["snapshot_after"]),
+    )
+    for key in ("snapshot_id", "snapshot_hash", "snapshot_after"):
+        params.pop(key)
+    params["compare_files"] = files
+    params["snapshot_provenance"] = provenance
 
 
 def _resolve_against_spec_param(root: Path, params: dict[str, Any]) -> JSONResponse | None:
@@ -573,6 +658,12 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
             compare_files=cast(
                 "tuple[CompareFileInput, CompareFileInput] | None", params.get("compare_files")
             ),
+            document=cast("DocumentInput | None", params.get("document")),
+            review_context=cast("str | None", params.get("review_context")),
+            active_practice=bool(params.get("active_practice", False)),
+            snapshot_provenance=cast(
+                "SnapshotProvenance | None", params.get("snapshot_provenance")
+            ),
             compare_dir=cast("tuple[Path, Path] | None", params.get("compare_dir")),
             allow_empty_compare=True,
             patch_url=cast("str | None", params.get("patch_url")),
@@ -588,8 +679,9 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         locked_limits = effective_capture_limits
         locked_max_patch_bytes = max_patch_bytes
         with serve_repo_write_lock(state, command="serve learn estimate"):
+            _resolve_snapshot_params(root, params)
             capture = capture_with_limits(locked_limits)
-            patch_text = str(capture.persisted_patch_text)
+            patch_text = str(getattr(capture, "source_text", capture.persisted_patch_text))
             patch_bytes = len(patch_text.encode("utf-8"))
             if locked_limits.mode != "auto":
                 return capture, patch_text, patch_bytes, locked_limits, locked_max_patch_bytes
@@ -606,7 +698,7 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
                 and patch_bytes > adjusted_capture_limits.max_patch_bytes
             ):
                 capture = capture_with_limits(adjusted_capture_limits)
-                patch_text = str(capture.persisted_patch_text)
+                patch_text = str(getattr(capture, "source_text", capture.persisted_patch_text))
                 patch_bytes = len(patch_text.encode("utf-8"))
             return (
                 capture,
@@ -625,7 +717,15 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
     ) = await run_sync_in_thread(_capture_estimate_with_lock)
     file_count = _file_count_from_capture(capture)
     total_lines = len(patch_text.splitlines())
-    estimated_tokens = estimate_text_tokens(patch_text, "char_div_4")
+    auxiliary = getattr(capture, "review_context_payload", None)
+    context_text = str(getattr(auxiliary, "content", "")) if auxiliary is not None else ""
+    anchor_text = ""
+    anchors_truncated = False
+    if isinstance(capture, CapturedDiff):
+        index = await run_sync_in_thread(build_capture_evidence_index, capture)
+        anchor_text = index.model_dump_json()
+        anchors_truncated = index.truncated
+    estimated_tokens = estimate_text_tokens(patch_text + anchor_text + context_text, "char_div_4")
     diff_clipped = _diff_clipped_from_capture(capture)
     omitted_files_count = _omitted_files_count_from_capture(capture)
     context_window = (
@@ -643,8 +743,18 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         omitted_files_count=omitted_files_count,
     )
     preview_patch, preview_truncated = _bounded_patch_preview(patch_text)
+    if anchors_truncated:
+        warnings.append(
+            "专用格式锚点达到上限；仍可使用差异行证据。"
+            if content_lang == "zh-CN"
+            else "Format anchors reached their limit; line-level diff evidence remains available."
+        )
+        if risk_level == "ok":
+            risk_level = "warn"
+    is_document = capture.run_source.source_kind == "document"
     response = LearnEstimateResponse(
-        patch_bytes=patch_bytes,
+        patch_bytes=0 if is_document else patch_bytes,
+        source_bytes=patch_bytes,
         file_count=file_count,
         total_lines=total_lines,
         estimated_tokens=estimated_tokens,
@@ -655,7 +765,10 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         omitted_files_count=omitted_files_count,
         risk_level=risk_level,
         warnings=warnings,
-        preview_patch=preview_patch,
+        preview_patch="" if is_document else preview_patch,
+        preview_document=preview_patch if is_document else "",
+        review_context_used=auxiliary is not None,
+        active_practice=bool(params.get("active_practice", False)),
         preview_truncated=preview_truncated,
         source_kind=capture.run_source.source_kind,
     )
@@ -694,6 +807,13 @@ async def post_learn(request: Request) -> JSONResponse:
     if sqlite_error is not None:
         return sqlite_error
 
+    def _resolve_sources_under_lock() -> None:
+        with serve_repo_write_lock(state, command="serve learn source precheck"):
+            _resolve_snapshot_params(root, params)
+
+    if "snapshot_id" in params:
+        await run_sync_in_thread(_resolve_sources_under_lock)
+
     if not params.get("lang"):
         cookie_lang = request.cookies.get("ahadiff_lang")
         if cookie_lang in {"en", "zh-CN"}:
@@ -703,7 +823,11 @@ async def post_learn(request: Request) -> JSONResponse:
 
     learn_request = LearnRequest(workspace_root=workspace_root, **params)
     has_sensitive_patch_text = learn_request.patch_text is not None
-    has_sensitive_file_text = learn_request.compare_files is not None
+    has_sensitive_file_text = (
+        learn_request.compare_files is not None
+        or learn_request.document is not None
+        or learn_request.review_context is not None
+    )
 
     async def _learn_task(handle: TaskHandle) -> dict[str, Any]:
         def _on_progress(step: int, total: int, message: str) -> None:

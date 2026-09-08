@@ -668,6 +668,10 @@ class _FakeCapture:
         self.metadata: dict[str, Any] = {}
         self.run_source = _FakeRunSource()
 
+    @property
+    def source_text(self) -> str:
+        return self.persisted_patch_text
+
 
 class _FakeConfigSnapshot:
     def __init__(self) -> None:
@@ -931,9 +935,17 @@ def _patch_capture(monkeypatch: pytest.MonkeyPatch, fake_repo: Path) -> _FakeCap
     def _write_input_artifacts(_capture: _FakeCapture) -> None:
         return None
 
+    def _load_evidence_anchors(*_args: object) -> tuple[()]:
+        return ()
+
+    def _load_review_context(*_args: object) -> None:
+        return None
+
     monkeypatch.setattr(f"{_GIT_CAPTURE}.capture_patch", _capture_patch)
     monkeypatch.setattr(f"{_GIT_CAPTURE}.write_input_artifacts", _write_input_artifacts)
     monkeypatch.setattr(f"{_GIT_REPO}.repo_write_lock", _fake_repo_write_lock)
+    monkeypatch.setattr(f"{_ORCH}.load_evidence_anchors", _load_evidence_anchors)
+    monkeypatch.setattr(f"{_ORCH}.load_review_context", _load_review_context)
     return capture
 
 

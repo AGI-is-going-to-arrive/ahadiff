@@ -7,8 +7,10 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from ahadiff.contracts.quiz_choice import AnswerMode, QuizChoice, validate_quiz_choices
+from ahadiff.contracts.source_anchor import SourceAnchor  # noqa: TC001
 
 QuizKind = Literal["guided", "recall", "transfer"]
+ExerciseKind = Literal["prediction", "completion", "error_reason"]
 
 
 def _normalize_text(value: str) -> str:
@@ -54,11 +56,14 @@ class QuizQuestion(BaseModel):
     question: str
     expected_answer: str
     quiz_kind: QuizKind = "recall"
+    exercise_kind: ExerciseKind | None = None
+    scenario_kind: Literal["new_variant"] | None = None
     answer_mode: AnswerMode = "open"
     choices: list[QuizChoice] | None = None
     source_claims: list[str] = Field(default_factory=list)
     concepts: list[str] = Field(default_factory=list)
-    evidence: list[QuizEvidence]
+    evidence: list[QuizEvidence] = Field(default_factory=list[QuizEvidence])
+    source_anchors: list[SourceAnchor] = Field(default_factory=list[SourceAnchor])
     explanation: str | None = None
 
     @model_validator(mode="before")
@@ -78,7 +83,8 @@ class QuizQuestion(BaseModel):
     @field_validator("question", "expected_answer")
     @classmethod
     def validate_required_text(cls, value: str) -> str:
-        normalized = _normalize_text(value)
+        # Preserve indentation and line breaks in prediction/completion examples.
+        normalized = value.replace("\r\n", "\n").replace("\r", "\n").strip()
         if not normalized:
             raise ValueError("quiz question text must not be empty")
         return normalized
@@ -101,15 +107,21 @@ class QuizQuestion(BaseModel):
     def normalize_explanation(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        normalized = _normalize_text(value)
+        normalized = value.replace("\r\n", "\n").replace("\r", "\n").strip()
         return normalized or None
 
     @model_validator(mode="after")
     def validate_links_and_choices(self) -> QuizQuestion:
         if not self.source_claims:
             raise ValueError("quiz question must link to at least one source claim")
-        if not self.evidence:
+        if not self.evidence and not self.source_anchors:
             raise ValueError("quiz question must include at least one evidence anchor")
+        if self.exercise_kind is not None and (
+            self.quiz_kind != "transfer" or self.answer_mode != "open" or self.choices is not None
+        ):
+            raise ValueError("active exercises must use transfer/open without choices")
+        if self.scenario_kind is not None and self.exercise_kind is None:
+            raise ValueError("a new variant requires an active exercise")
         if self.choices is None:
             if self.answer_mode == "multiple_choice":
                 raise ValueError("multiple_choice quiz questions must include choices")
@@ -190,6 +202,8 @@ def _validate_required_choices(quiz_set: QuizSet, *, require_choices: bool) -> Q
     if not require_choices:
         return quiz_set
     for question in quiz_set.questions:
+        if question.exercise_kind is not None:
+            continue
         if question.answer_mode != "multiple_choice" or not question.choices:
             raise ValueError("quiz payload must include choices for every question")
     return quiz_set

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { createServer, type ViteDevServer } from 'vite';
@@ -67,12 +68,24 @@ const HARNESS_HTML = String.raw`<!doctype html>
       import DiffViewerPage from '/src/pages/DiffViewerPage.tsx';
       import { resetToken } from '/src/api/client.ts';
       import { useLocaleStore } from '/src/state/locale-store.ts';
+      import { useRunsStore } from '/src/state/runs-store.ts';
 
       const diffContent = ${JSON.stringify(DIFF_CONTENT)};
       const claimsContent = ${JSON.stringify(CLAIMS_CONTENT)};
       const longDiffContent = ${JSON.stringify(LONG_DIFF_CONTENT)};
       const longClaimsContent = ${JSON.stringify(LONG_CLAIMS_CONTENT)};
       let failClaims = false;
+      let isDocument = false;
+      let sourceRequests = [];
+      const documentSource = '# 学习\n\nTrust only the cited paragraph.\n';
+      const longDocumentSource = Array.from({ length: 6005 }, (_, index) => 'Synthetic line ' + (index + 1)).join('\n');
+      let activeDocumentSource = documentSource;
+      const documentClaim = {
+        claim_id: 'doc-claim', status: 'verified', text: 'The document limits this statement to the cited paragraph.', assertion_kind: 'source_fact',
+        source_hunks: [], source_anchors: [{ schema_version: 1, source_kind: 'document', format: 'markdown', side: 'document', file: '学习.md',
+          anchor_id: 'anchor_' + '1'.repeat(32), locator: { kind: 'paragraph', heading_path: ['学习'], paragraph_index: 1, key_path: [] },
+          content_hash: ${JSON.stringify(createHash('sha256').update('Trust only the cited paragraph.').digest('hex'))}, start: 3, end: 3, quote: 'Trust only the cited paragraph.' }],
+      };
       let activeDiffContent = diffContent;
       let activeClaimsContent = claimsContent;
       let root;
@@ -93,7 +106,20 @@ const HARNESS_HTML = String.raw`<!doctype html>
             headers: { 'content-type': 'application/json' },
           }));
         }
+        if (url.pathname === '/api/run/run-1') {
+          return Promise.resolve(new Response(JSON.stringify({
+            run_id: 'run-1', source_kind: isDocument ? 'document' : 'git_ref', source_ref: 'synthetic', content_lang: 'en',
+            capability_level: 3, verdict: 'PASS', overall: 90, status: 'keep', weakest_dim: '', created_at: '',
+            base_ref: null, prompt_version: '', eval_bundle_version: '', note_json: null, artifacts: [], graphify_mode: null, graphify_status: null,
+          }), { status: 200, headers: { 'content-type': 'application/json' } }));
+        }
+        if (url.pathname === '/api/run/run-1/document') {
+          sourceRequests.push('document');
+          return Promise.resolve(new Response(JSON.stringify({ run_id: 'run-1', artifact_type: 'document', content: activeDocumentSource, content_lang: 'en' }),
+            { status: 200, headers: { 'content-type': 'application/json' } }));
+        }
         if (url.pathname === '/api/run/run-1/diff') {
+          sourceRequests.push('diff');
           return Promise.resolve(new Response(JSON.stringify({
             run_id: 'run-1',
             artifact_type: 'diff',
@@ -139,10 +165,22 @@ const HARNESS_HTML = String.raw`<!doctype html>
       };
 
       window.__renderDiffViewerPage = (options = {}) => {
-        const { locale = 'en', claimsFail = false, longDiff = false } = options;
+        const { locale = 'en', claimsFail = false, longDiff = false, document: documentInput = false, longDocument = false } = options;
+        isDocument = documentInput;
+        activeDocumentSource = longDocument ? longDocumentSource : documentSource;
+        sourceRequests = [];
+        window.__sourceRequests = () => sourceRequests;
+        useRunsStore.setState({ details: {}, detailLoadedAt: {} });
         failClaims = claimsFail;
         activeDiffContent = longDiff ? longDiffContent : diffContent;
-        activeClaimsContent = longDiff ? longClaimsContent : claimsContent;
+        activeClaimsContent = isDocument ? JSON.stringify(documentClaim) : longDiff ? longClaimsContent : claimsContent;
+        if (longDocument) {
+          activeClaimsContent = JSON.stringify({ ...documentClaim, source_anchors: [
+            { ...documentClaim.source_anchors[0], anchor_id: 'anchor_' + '2'.repeat(32), content_hash: ${JSON.stringify(createHash('sha256').update('Synthetic line 10').digest('hex'))}, start: 10, end: 10, quote: 'Synthetic line 10' },
+            { ...documentClaim.source_anchors[0], anchor_id: 'anchor_' + '3'.repeat(32), content_hash: ${JSON.stringify(createHash('sha256').update('Synthetic line 3001\nSynthetic line 3002').digest('hex'))}, start: 3001, end: 3002, quote: 'Synthetic line 3001\nSynthetic line 3002' },
+          ] });
+        }
+
         resetToken();
         useLocaleStore.setState({ locale });
         document.documentElement.lang = locale;
@@ -177,7 +215,10 @@ declare global {
   interface Window {
     __claimInspectorReady?: boolean;
     __renderClaimInspector: (options: RenderInspectorOptions) => void;
+    __sourceRequests: () => string[];
     __renderDiffViewerPage: (options?: {
+      document?: boolean;
+      longDocument?: boolean;
       claimsFail?: boolean;
       locale?: 'en' | 'zh-CN';
       longDiff?: boolean;
@@ -230,7 +271,7 @@ async function renderInspector(page: Page, options: RenderInspectorOptions): Pro
 
 async function renderDiffPage(
   page: Page,
-  options: { claimsFail?: boolean; longDiff?: boolean } = {},
+  options: { claimsFail?: boolean; longDiff?: boolean; document?: boolean; longDocument?: boolean; locale?: 'en' | 'zh-CN' } = {},
 ): Promise<void> {
   await page.goto(`${baseUrl}${TEST_PATH}`);
   await page.waitForFunction(() => Boolean(window.__claimInspectorReady));
@@ -479,4 +520,34 @@ describe('ClaimInspector V6 fidelity', () => {
       'Select a claim to inspect',
     );
   });
+  it.each(['en', 'zh-CN'] as const)('renders a document source and its paragraph anchor without diff markers in %s', async (locale) => {
+    await renderDiffPage(page, { document: true, locale });
+    await expect.poll(() => page.locator('.document-view').count()).toBe(1);
+    expect(await page.evaluate(() => window.__sourceRequests())).toEqual(['document']);
+    expect(await page.locator('.document-view__text').textContent()).toContain('Trust only the cited paragraph.');
+    expect(await page.locator('.diff-page__view-chip').count()).toBe(0);
+    await page.locator('#claim-doc-claim').click();
+    await expect.poll(() => page.locator('.source-anchors__item').count()).toBe(1);
+    expect(await page.locator('.source-anchors__item').textContent()).toContain('学习');
+    expect(await page.locator('.claim-inspector__source-preview-code').count()).toBe(0);
+    await page.locator('.source-anchors .claim-inspector__jump-btn').click();
+    await expect.poll(() => page.locator('.document-view__line--selected').first().getAttribute('data-line-anchor')).toBe('学习.md:3');
+  });
+
+  it('returns to the same document anchor after manual pagination and highlights the clicked anchor range', async () => {
+    await renderDiffPage(page, { document: true, longDocument: true });
+    await page.locator('#claim-doc-claim').click();
+    const secondAnchor = page.locator('.source-anchors .claim-inspector__jump-btn').nth(1);
+    await secondAnchor.click();
+    await expect.poll(() => page.locator('.document-view__line--selected').count()).toBe(2);
+    await expect.poll(() => page.locator('.document-view__line--selected').first().getAttribute('data-line-anchor')).toBe('学习.md:3001');
+    await page.getByRole('button', { name: 'Next lines', exact: true }).click();
+    await expect.poll(() => page.locator('.document-view__line').first().getAttribute('data-line-anchor')).toBe('学习.md:4001');
+    expect(await page.locator('.document-view__line--selected').count()).toBe(0);
+    await secondAnchor.click();
+    await expect.poll(() => page.locator('.document-view__line').first().getAttribute('data-line-anchor')).toBe('学习.md:2001');
+    await expect.poll(() => page.locator('.document-view__line--selected').count()).toBe(2);
+    expect(await page.locator('.document-view__line--selected').last().getAttribute('data-line-anchor')).toBe('学习.md:3002');
+  });
+
 });

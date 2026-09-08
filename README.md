@@ -2,13 +2,13 @@
 
 > **Understand the change.**
 >
-> Start with Git changes, two file versions, or a pasted diff. Study your own fixes, a colleague's edits, or AI-generated changes through evidence-linked lessons, quizzes, and spaced review.
+> Start with Git changes, two file versions, a pasted diff, a saved local baseline, or one Markdown document. Study your own fixes, a colleague's edits, or AI-generated changes through evidence-linked lessons, quizzes, and spaced review.
 
 [中文](./README.zh.md) · [Landing page](https://agi-is-going-to-arrive.github.io/ahadiff/) · [User Guide](./docs/USER_GUIDE.en.html) · [<img src="./docs/assets/youtube.svg" width="16" height="16" alt="YouTube"> English tutorial video (YouTube)](https://youtu.be/lvL7GMvDPvI) · [<img src="./docs/assets/bilibili.svg" width="16" height="16" alt="Bilibili"> Chinese tutorial video (Bilibili)](https://www.bilibili.com/video/BV1b57k6yEWm)
 
 > Recommended: `pipx install ahadiff` (or `uv tool install ahadiff`) — an isolated CLI install. A plain `pip install ahadiff` also works inside a venv/conda; on a system or Homebrew Python, see [Install](#install) for the `externally-managed-environment` fix.
 
-> Source update, 2026-09-08: the three-source WebUI and file preview described here are current source changes, pending publication. The version remains 1.3.8. Use a [source build](#from-source-contributors) for these UI updates; published installs already offer the CLI `--compare` and `--patch` paths.
+> Source update, 2026-09-08: the five-source WebUI, durable snapshots, format anchors, review notes, and active transfer practice described here are current source changes, pending publication. The version remains 1.3.8. Use a [source build](#from-source-contributors) for these UI updates; published installs already offer the CLI `--compare` and `--patch` paths.
 
 ---
 
@@ -16,22 +16,24 @@
 
 **AhaDiff** is a **local-first learning tool for understanding changes**.
 
-Bring a bounded before/after change and generate:
+Bring a bounded change or one Markdown document and generate:
 
 - A **lesson** that teaches what changed and why
 - A **claims ledger** with source anchors and explicit evidence strength
 - A **quiz and review loop** so the knowledge comes back later
 - A **quality history** that makes runs comparable over time
 
-Your workspace keeps its state in `.ahadiff/`: run artifacts under `runs/`, and SRS / result history in `review.sqlite`. File comparisons and patches also work in an ordinary folder without a Git repository.
+Your workspace keeps its state in `.ahadiff/`: run artifacts under `runs/`, and SRS / result history in `review.sqlite`. File comparisons, patches, snapshots, and documents also work in an ordinary folder without a Git repository.
 
 | What you have | Where to start | Examples |
 | --- | --- | --- |
 | Changes in a Git repository | **Git changes** | A bug fix, a peer's commit, or AI-assisted coding |
 | A before file and an after file | **Two files** | Coding exercises, SQL, configuration, Markdown, or two Notebook versions |
 | A unified diff copied from a tool | **Paste a diff** | A review patch or edits shared by a colleague |
+| A baseline you want to reuse later | **Saved snapshot** | Save the earlier file explicitly, then select the later file |
+| One Markdown document | **One Markdown document** | Study quoted headings and paragraphs without a before version |
 
-These sources use the same Lesson, Diff, Quiz, Review, and quality-history workflow. Claims based only on changed text may be marked weak; a source anchor does not prove execution behavior or learning effectiveness. A single document without a previous version is outside the current workflow.
+These sources use the same lessons, quizzes, review, and quality history. Document runs show the original document as evidence, without fabricated added or removed lines. A citation proves where source text occurs; interpreting it is a semantic judgment, and runtime behavior needs execution evidence. PDF and web-page capture are outside this single-Markdown pilot.
 
 ## Why
 
@@ -62,7 +64,7 @@ uv tool install ahadiff     # no uv yet?    https://docs.astral.sh/uv/
 
 ahadiff --version           # should print ahadiff 1.3.8
 ```
-This ships a working WebUI out of the box, and all default features work with no extras.
+The published package bundles the WebUI for that release. The unpublished additions listed above require a current source build.
 
 Inside a managed environment you control (a virtualenv, conda, or pyenv), a plain pip install is fine:
 
@@ -104,11 +106,11 @@ ahadiff serve
 `ahadiff serve` creates local `.ahadiff/` state as needed and opens http://127.0.0.1:8765. Pass `--no-browser` to keep it headless. Ordinary folders do not need `ahadiff init`; the CLI `init` and `doctor` commands require a Git repository.
 
 1. Add a provider in **Settings**, then open **Welcome**.
-2. Choose **Git changes**, **Two files**, or **Paste a diff**. For two files, select or drop the before and after versions into their respective fields; the filenames may match.
-3. Select **Preview changes** to inspect the sanitized diff. Preview uses the local service without calling an LLM. Then select **Start learning**.
-4. Open **Lesson** for the explanation, **Diff** for the evidence, **Quiz** to answer questions, and **Review** when cards are due.
+2. Choose **Git changes**, **Two files**, **Paste a diff**, **Saved snapshot**, or **One Markdown document**. For two files, select or drop the before and after versions into their respective fields; the filenames may match. For a snapshot, explicitly save the earlier file before choosing the later file.
+3. Optionally add **Review notes**, or open **More options for this source** and enable **Active transfer practice**. The default remains a mixed quiz. Preview the sanitized diff or document text locally without an LLM call, then select **Start learning**. Changing an option requires a fresh preview.
+4. Open **Lesson** for the explanation and its source evidence. Attempt **Quiz** questions before revealing the reference, then return to **Review** when cards are due.
 
-For the browser file picker, use UTF-8 text files up to 256 KiB each (512 KiB together). Two `.ipynb` files use cell-aware comparison; AhaDiff does not execute the notebook. The preview shows up to 64 KiB and labels truncation. Larger files can use the CLI. Small file or patch exercises enable **Generate a lesson even for small changes** by default; you can clear it. This bypasses only the learnability skip, not evidence or safety checks.
+For the browser file picker, use UTF-8 text files up to 256 KiB each (512 KiB for a pair). A saved snapshot file or standalone Markdown document keeps the 256 KiB limit in both CLI and WebUI. Two `.ipynb` files use cell-aware comparison; AhaDiff does not execute the notebook. The preview shows up to 64 KiB and labels truncation. Larger comparison files can use the CLI; snapshot and document limits remain fixed. Small file, patch, snapshot, or document exercises enable **Generate a lesson even for small changes** by default; you can clear it. This bypasses only the learnability skip, not evidence or safety checks.
 
 Prefer the terminal? Configure a provider, keep both files or the patch inside your workspace, then choose one command:
 
@@ -125,7 +127,52 @@ Two more things to try:
 ahadiff quiz <run_id>    # test yourself on what you just learned
 ahadiff review           # spaced-repetition review of past cards
 ```
-See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture modes, export options, concept graphs, and advanced commands. Release validation records dry-run capture coverage separately from live LLM lesson generation; the v1.3.8 audit records the global-provider save regression and a live DeepSeek learn run.
+See the [User Guide](./docs/USER_GUIDE.en.html) for the 10 existing diff capture modes, snapshot/document inputs, export options, concept graphs, and advanced commands. Release validation records dry-run capture coverage separately from live LLM lesson generation; the v1.3.8 audit records the global-provider save regression and a live DeepSeek learn run.
+
+## Save a baseline, study a document, or add review notes
+
+**Save a baseline before editing.** In Welcome → Saved snapshot, choose one file, name it, and select **Save baseline locally**. Reopening the app restores the list. Choose **Use baseline**, select the later file, and preview the comparison. The list shows size and readiness; damaged or unsupported baselines cannot be used.
+
+```bash
+ahadiff snapshot save before.md --name "Before editing" --repo-root .
+ahadiff snapshot list --repo-root .
+ahadiff snapshot show SNAPSHOT_ID --expected-hash CONTENT_HASH --repo-root .
+ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.md --force-learn
+```
+
+Copy the ID and `content_hash` from the list. Snapshots are immutable, explicitly saved learning baselines under `.ahadiff/snapshots/`, limited to 100 records and 16 MiB of stored records. Secret filtering and text normalization happen before saving. They are not complete backups and never overwrite source files. To remove one, inspect its `record_hash` and confirm that specific deletion; existing runs are retained:
+
+```bash
+ahadiff snapshot delete SNAPSHOT_ID --expected-hash RECORD_HASH --repo-root .
+```
+
+**Study one Markdown document.** Choose One Markdown document, select one `.md` or `.markdown` file, preview its text, and start learning. CLI:
+
+```bash
+ahadiff learn --document reading.md
+```
+
+This is an independent `document` source, not an empty-file comparison. Lessons and questions cite its sections, paragraphs, and content hashes. The document can support a quotation without proving the truth of an external claim. Diff specification alignment is not available for document runs.
+
+**Add human review context.** After choosing a change source, optionally enter Review notes, or use:
+
+```bash
+ahadiff learn --compare before.py after.py --review-context-file review-notes.md --force-learn
+```
+
+Notes are limited to 8 KiB of UTF-8 text, filtered as untrusted auxiliary input, and labeled separately from evidence. Their use and hash are recorded for the run; drafts do not enter task retry summaries. Input changes invalidate the preview.
+
+**Request active transfer practice explicitly.** Open **More options for this source → Active transfer practice** before starting. It is off by default, preserving the guided/recall/transfer mix. When enabled, every question is open transfer practice; a quiz with at least 3 questions covers prediction, completion, and error explanation. Code is not executed. CLI examples:
+
+```bash
+ahadiff learn --document reading.md --active-practice
+ahadiff learn --compare before.py after.py --active-practice --force-learn
+ahadiff regenerate RUN_ID --only quiz --active-practice
+```
+
+`regenerate` replaces the selected run's quiz/cards, recomputes its deterministic score, and reseals its artifact checksums. Omitting both practice flags preserves that run's mode; `--mixed-practice` explicitly restores a mixed quiz. Old Judge results are invalidated and are not rerun automatically. Use the run ID whose quiz you intend to replace.
+
+**Practice before revealing.** Transfer exercises reuse Quiz, Challenge, and SRS. Predict, complete, or explain first; then compare the reference and mark **Completed independently / Needed help / Not yet**, with an error category when needed. Written WebUI attempts stay in the page; saved signals contain bounded assessment and timing metadata. A delayed-recall attempt requires at least 24 hours since the prior recorded attempt. A first attempt counts as an unseen variant only when the question actually marks a new scenario. Challenge rehearses an original solution already viewed. Score/Judge describe artifact and evidence quality; this update does not establish learning gains from real participant measurements. Dashboard lists self-reported initial, delayed-recall, and unseen-variant rates with sample counts; an empty denominator is unmeasured. Its older SRS improvement ratio is not a transfer-learning success rate.
 
 ## Configure a provider
 
@@ -170,15 +217,15 @@ For GPT-5.5 specifically, the bundled registry keeps two profiles: ordinary `ope
 ## Features
 
 - **Learn**: `ahadiff learn` supports 10 diff capture modes: working tree (`--staged --unstaged --include-untracked`), unstaged (`--unstaged`), staged (`--staged`), last commit (`--last`, or omit a capture-source flag), revision/range (`REVISION`), time-window (`--since`; optional `--author` focuses on one author and expects a single matching commit, otherwise it stops with a clear error), patch file/stdin (`--patch FILE|-`), patch URL (`--patch-url`), file compare (`--compare`), and directory compare (`--compare-dir`, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux. Patch files are resolved inside the workspace root; use stdin for external generated patches. Patch file/stdin and patch URL runs do not have a repository symbol index; when only hunk evidence is available, AhaDiff can still generate a lesson from weak diff-anchored claims instead of claiming symbol-level proof. In release validation, the 10-mode claim refers to capture coverage unless each live LLM lesson run is listed with its run ID and artifacts; v1.3.8 records the global-provider DeepSeek learn run separately from the older 10-mode matrix.
-- **Evidence-linked claims**: lesson conclusions are represented as claims tied to `file:line` evidence when available, with explicit states such as verified, weak, not proven, contradicted, and rejected.
+- **Evidence-linked claims**: Markdown headings/paragraphs, Notebook cell sources, and JSON/TOML/YAML key paths carry a side, location, content hash, and quoted text. Old hunk anchors remain supported. Unsupported structures retain explicitly weaker line evidence. Format indexes are capped at 4,096 anchors: a diff may expose a partial index while retaining hunk evidence; a document that exceeds the cap is rejected. Claim states distinguish verified, weak, not proven, contradicted, and rejected; source facts, semantic interpretations, and runtime effects are separate assertions.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, defaults to JSON object mode with one bounded validation retry, and keeps the existing parser, repair, and degraded fallback paths. Truncated or malformed fallback JSON is retried instead of being accepted.
 - **Adaptive capture limits**: fresh configs default to auto capture sizing; existing customized capture settings stay manual. Auto mode uses provider probes, the bundled model registry, output reserves, safety reserves, and CJK diff density, while runtime patch intake remains capped at 50 MiB. Settings previews provider limits from the current draft provider class, model, base URL, and optional limits profile before saving, without remote probing on every edit.
-- **Quiz and review**: `ahadiff quiz` tests the run you just learned; source evidence stays locked until you answer. `ahadiff review` brings back older cards with spaced repetition. Quiz count is fixed by default (3 questions, configurable from 1 to 30) and can adapt to diff size when enabled (default range 3-12).
-- **Scoring**: each run gets an 8-dimension deterministic score, with an optional advisory LLM judge when configured. No-spec `spec_alignment` is shown as N/A / `0/0` and excluded from the overall score; judge results never override `score.json.verdict`. Diff Coverage is based on visible `line_map.json` files and line-weighted hunks, and hard-gate details show the adaptive claim-anchor threshold used for that run. If the optional judge fails, the deterministic score is still kept and the failure is saved as a redacted `judge_failure.json`.
+- **Quiz and review**: mixed guided/recall/transfer remains the default. Enable **Active transfer practice** (or pass `--active-practice`) to request open transfer questions, supporting predicting a next step, completing a similar example, and explaining an error. Attempt the question before revealing its reference and evidence. Choice checks are mechanical; open exercises use semantic self-assessment, with no code execution. `ahadiff review` brings back the same cards. Quiz count remains 3 by default, configurable from 1 to 30; adaptive mode defaults to 3–12.
+- **Scoring**: each run gets an 8-dimension deterministic score, with an optional advisory LLM judge when configured. No-spec `spec_alignment` is shown as N/A / `0/0` and excluded from the overall score; judge results never override `score.json.verdict`. For diff runs, Diff Coverage uses visible `line_map.json` files and line-weighted hunks. Document runs mark Diff Coverage and change-novelty Learnability as N/A / `0/0`, exclude them from the overall score, and use a separate validated-anchor coverage gate. Hard-gate details record the applicable source policy. If the optional judge fails, the deterministic score is still kept and the failure is saved as a redacted `judge_failure.json`.
 - **S1 / A3 diagnostics**: S1 semantic entailment is private shadow-only / measurement-only. Current S1 sample metrics are `route_hit=76` and `fp_rate=53.95%`, so both enforce and advisory use are blocked. A3 quiz distractor analysis is diagnostic/advisory-only and is not a blocking gate.
 - **WebUI**: `ahadiff serve` opens Welcome, Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide. The viewer uses a light, editorial paper-style theme, with fonts bundled locally so nothing loads from a CDN. Run Detail shows Score, Judge, Artifacts, and a sanitized judge-failure panel when the optional LLM judge could not complete. The Welcome Before/After demo keeps long raw diffs collapsed with a line count and a Show all / Collapse control; short or empty diffs stay simple.
-- **Learning entry points**: Welcome, Quick Start, and Guide share **Git changes / Two files / Paste a diff**. They open the same New Run dialog used by Dashboard. File selection and drop support feed the file-comparison pipeline, including Notebook cell sources; preview and generation use the same safety checks. Advanced options retain time windows, revision ranges, patch URLs, local file paths, and supported directory comparisons.
-- **Export**: from the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg`; `.apkg` export uses the bundled `genanki`, available by default.
+- **Learning entry points**: Welcome, Quick Start, and Guide share **Git changes / Two files / Paste a diff / Saved snapshot / One Markdown document**. They open the same New Run dialog used by Dashboard. File selection and drop support feed the file-comparison pipeline, including Notebook cell sources; preview and generation use the same safety checks. Advanced options retain time windows, revision ranges, patch URLs, local file paths, and supported directory comparisons.
+- **Export**: static previews retain the independent document/diff source, format anchors, and separately labeled review context. Read-only MCP exposes source/anchor provenance and bounded auxiliary excerpts. From the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg`; `.apkg` export uses the bundled `genanki`, available by default.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
 - **AI tool integration**: one shared catalogue for 16 current CLI / IDE / CI targets, including Pi, DeepSeek Harness (developer preview), Grok Build, and Devin. Settings supports protected preview, write, update, and removal; Guide reads the same catalogue and reports loading/errors without inventing available targets. Gemini CLI remains an explicit install for API-key/Enterprise users; personal-account users should use Antigravity. Roo and old Windsurf guidance have cleanup-only entries.
 - **Auto-iteration**: `ahadiff improve-run <run_id>` regenerates a lesson on an existing run and keeps the new copy only when the deterministic score strictly improves, saving it as a separate run and leaving the original untouched — this works in any install, including `pip`. The separate `ahadiff improve` command tunes AhaDiff's own generation prompts and only runs inside an AhaDiff source checkout.
@@ -324,7 +371,7 @@ Loop: edit → commit → evaluate → keep if better, reset if worse → record
 
 ### Design Axioms
 
-1. **Evidence first**: every claim must trace back to `file:line`
+1. **Evidence first**: every supported claim must trace back to its source lines, structural locator, and content hash
 2. **Learning over summary**: quizzes and review beat pretty summaries
 3. **Local-first trust**: privacy tiers are explicit, and local stays local by default
 4. **Paper-like seriousness**: academic feel, not a loud SaaS landing page

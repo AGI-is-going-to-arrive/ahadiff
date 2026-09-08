@@ -20,6 +20,7 @@ import { useRunsStore } from '../state/runs-store';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { useLocaleStore } from '../state/locale-store';
 import type {
+  ActivePracticeSummary,
   LearningEffectivenessResponse,
   RatchetHistoryEntry,
   SpecAlignmentResponse,
@@ -30,6 +31,7 @@ import type {
 import type { UsageResponse } from '../api/config';
 import { safeVerdict } from '../utils/verdict';
 import '../components/Dashboard.css';
+import '../components/Practice.css';
 
 const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 const LearnModeDialog = lazy(() => import('../components/LearnModeDialog'));
@@ -66,6 +68,7 @@ const SOURCE_GROUPS = [
   { key: 'COMMITS', kinds: ['git_ref', 'git_since'], labelKey: 'Dashboard.source_git_commits' as const },
   { key: 'WORKING', kinds: ['git_staged', 'git_staged_unstaged', 'git_unstaged'], labelKey: 'Dashboard.source_git_working' as const },
   { key: 'PATCH', kinds: ['patch_file', 'patch_stdin'], labelKey: 'Dashboard.source_patch' as const },
+  { key: 'DOCUMENT', kinds: ['document'], labelKey: 'Dashboard.source_document' as const },
   { key: 'COMPARE', kinds: ['file_compare'], labelKey: 'Dashboard.source_file_compare' as const },
 ] as const;
 type SourceFilter = (typeof SOURCE_GROUPS)[number]['key'];
@@ -111,6 +114,34 @@ function formatSpecAlignmentScore(score: number | null): string {
   return `${rounded}/10`;
 }
 
+export function ActivePracticePanel({ summary }: { summary: ActivePracticeSummary }): React.JSX.Element {
+  const { t } = useTranslation();
+  const locale = useLocaleStore((state) => state.locale);
+  const buckets = ['initial', 'delayed_recall', 'unseen_variant'] as const;
+  const errorKinds = ['none', 'recall', 'application', 'reasoning', 'boundary'] as const;
+  const total = buckets.reduce((sum, kind) => sum + summary[kind].attempts, 0);
+  return <section className="practice-metrics" aria-labelledby="practice-metrics-title">
+    <h3 id="practice-metrics-title" className="dashboard__section-title">{t('Dashboard.practice_title')}</h3>
+    <p className="u-muted-xs">{t('Dashboard.practice_boundary')}</p>
+    <div className="kpi-grid kpi-grid--3col">
+      {buckets.map((kind) => <KpiCard key={kind} label={t(`Dashboard.practice_${kind}`)}
+        value={summary[kind].independent_rate === null ? t('Dashboard.practice_unmeasured')
+          : new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }).format(summary[kind].independent_rate)}
+        hint={t('Dashboard.practice_attempts', { count: summary[kind].attempts })} />)}
+    </div>
+    <p className="u-muted-xs">{t('Dashboard.practice_sampling')}</p>
+    <h4 className="dashboard__section-title">{t('Dashboard.practice_errors')}</h4>
+    {total === 0 ? <p className="u-muted-xs">{t('Dashboard.practice_unmeasured')}</p> : (
+      <dl className="practice-metrics__errors">
+        {errorKinds.map((kind) => <div key={kind}>
+          <dt>{t(kind === 'none' ? 'Dashboard.practice_error_none' : `Quiz.error_${kind}`)}</dt>
+          <dd>{new Intl.NumberFormat(locale).format(summary.error_types[kind])}</dd>
+        </div>)}
+      </dl>
+    )}
+  </section>;
+}
+
 export default function DashboardPage() {
   const { t } = useTranslation();
   const locale = useLocaleStore((s) => s.locale);
@@ -123,6 +154,7 @@ export default function DashboardPage() {
   const [ratchetHistory, setRatchetHistory] = useState<RatchetHistoryEntry[]>([]);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [learning, setLearning] = useState<LearningEffectivenessResponse | null>(null);
+  const [learningUnavailable, setLearningUnavailable] = useState(false);
   const [specAlignment, setSpecAlignment] = useState<SpecAlignmentResponse | null>(null);
   const [heatmapCells, setHeatmapCells] = useState<HeatmapCell[] | null>(null);
   const [heatmapFallbackAllowed, setHeatmapFallbackAllowed] = useState(false);
@@ -158,6 +190,7 @@ export default function DashboardPage() {
     setHeatmapCells(null);
     setHeatmapFallbackAllowed(false);
     setLearning(null);
+    setLearningUnavailable(false);
     setSpecAlignment(null);
     setWeakConcepts([]);
     setUsage(null);
@@ -234,6 +267,7 @@ export default function DashboardPage() {
     }
 
     setLearning(learningResult.status === 'fulfilled' ? learningResult.value : null);
+    setLearningUnavailable(learningResult.status !== 'fulfilled');
     if (specAlignmentResult.status === 'fulfilled') {
       setSpecAlignment(specAlignmentResult.value);
       setSpecAlignmentUnavailable(false);
@@ -643,13 +677,13 @@ export default function DashboardPage() {
         {/* Graphify status — optional, self-fetching, hidden when disabled */}
         {graphifyCard}
 
-        {/* Learning effectiveness summary — surfaces /api/stats/learning so
-         * users can see whether SRS reviews are converting into transfer. */}
+        {/* SRS self-rating trends and direct practice observations stay distinct. */}
         {learning && (
           <div className="dashboard__learning">
             <h2 className="dashboard__section-title">
               {t('Dashboard.learning_effectiveness_title')}
             </h2>
+            <p className="u-muted-xs">{t('Dashboard.learning_srs_boundary')}</p>
             <div className="kpi-grid kpi-grid--4col">
               <KpiCard
                 label={t('Dashboard.learning_transfer_rate')}
@@ -678,8 +712,11 @@ export default function DashboardPage() {
                 tone={learning.concepts_declining > 0 ? 'warning' : 'default'}
               />
             </div>
+            {learning.active_practice ? <ActivePracticePanel summary={learning.active_practice} />
+              : <p className="u-muted-xs" role="status">{t('Dashboard.practice_unavailable')}</p>}
           </div>
         )}
+        {learningUnavailable && <p className="u-muted-xs" role="status">{t('Dashboard.practice_unavailable')}</p>}
 
         {/* Weakest dimension chip cloud — V6 alignment */}
         {stats && stats.weakest_dimensions.length > 0 && (
@@ -1021,6 +1058,7 @@ const SOURCE_KIND_I18N_KEYS: Record<string, string> = {
   patch_file: 'Dashboard.source_badge_patch_file',
   patch_stdin: 'Dashboard.source_badge_patch_stdin',
   file_compare: 'Dashboard.source_badge_file_compare',
+  document: 'Dashboard.source_document',
 };
 
 function SourceBadge({ sourceKind, t }: { sourceKind: string; t: TranslateFn }) {

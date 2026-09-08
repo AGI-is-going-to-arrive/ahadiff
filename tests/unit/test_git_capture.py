@@ -127,10 +127,13 @@ def _assert_artifact_manifest_matches_files(run_dir: Path) -> None:
         "after_text_by_path.json",
     ]
     assert paths[: len(required_paths)] == required_paths
+    assert paths.count("evidence_anchors.json") == 1
     assert set(paths[len(required_paths) :]) <= {
         "safety_findings.json",
         "graphify_context.json",
         "graphify_signoff.json",
+        "evidence_anchors.json",
+        "review_context.json",
     }
     for item in manifest["artifacts"]:
         payload = (run_dir / item["path"]).read_text(encoding="utf-8")

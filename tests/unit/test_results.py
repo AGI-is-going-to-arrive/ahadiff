@@ -4,6 +4,7 @@ import csv
 import json
 import os
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
@@ -14,6 +15,7 @@ from typer.testing import CliRunner
 from ahadiff import cli as cli_module
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, SourceHunk
+from ahadiff.core import orchestrator as orchestrator_module
 from ahadiff.core.errors import InputError
 from ahadiff.eval import results as results_module
 from ahadiff.eval.evaluator import ScoreReport, evaluate_run
@@ -451,6 +453,198 @@ def test_publish_result_artifacts_restores_backups_when_temp_write_fails(
     assert failure_injected is True
     assert score_path.read_text(encoding="utf-8") == original_score
     assert finalized_path.read_text(encoding="utf-8") == original_finalized
+
+
+@pytest.mark.parametrize("wrapper", ["cli", "core"])
+@pytest.mark.parametrize("failure_point", ["finalized_write", "finalized_replace"])
+def test_persist_wrappers_restore_real_publication_and_history_on_keyboard_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    wrapper: str,
+    failure_point: str,
+) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_interrupt_publication")
+    report = _report_for_run(run_path)
+    original = append_result(
+        run_path=run_path,
+        report=report,
+        status="non_ratcheted",
+        base_ref=None,
+        event_type="learn",
+        write_finalized=False,
+    )
+    score_path = run_path / "score.json"
+    finalized_path = finalized_marker_path(run_path)
+    publish_result_artifacts(
+        run_path=run_path,
+        report=report,
+        event=original.event,
+        score_path=score_path,
+        overwrite=True,
+    )
+    before_files = {
+        str(path.relative_to(run_path)): path.read_bytes()
+        for path in run_path.rglob("*")
+        if path.is_file()
+    }
+    before_events = load_result_events(review_db_path_for_run(run_path))
+    before_history = results_tsv_path_for_run(run_path).read_bytes()
+    new_report = replace(report, notes=(*report.notes, "Synthetic next publication."))
+    original_write = Path.write_text
+    original_replace = Path.replace
+    score_moved = False
+    interrupted = False
+
+    def interrupted_write(
+        self: Path,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        nonlocal interrupted
+        if (
+            failure_point == "finalized_write"
+            and self.name.endswith(".finalized.tmp")
+            and not interrupted
+        ):
+            assert score_moved
+            assert "Synthetic next publication." in score_path.read_text(encoding="utf-8")
+            interrupted = True
+            raise KeyboardInterrupt("synthetic publication interruption")
+        return original_write(self, data, encoding=encoding, errors=errors, newline=newline)
+
+    def interrupted_replace(self: Path, target: str | Path) -> Path:
+        nonlocal score_moved, interrupted
+        moved = original_replace(self, target)
+        if self.name.endswith(".score.tmp") and Path(target) == score_path:
+            score_moved = True
+        if (
+            failure_point == "finalized_replace"
+            and self.name.endswith(".finalized.tmp")
+            and Path(target) == finalized_path
+            and not interrupted
+        ):
+            assert score_moved
+            assert (
+                json.loads(finalized_path.read_text(encoding="utf-8"))["event_id"]
+                != original.event.event_id
+            )
+            interrupted = True
+            raise KeyboardInterrupt("synthetic publication interruption")
+        return moved
+
+    monkeypatch.setattr(Path, "write_text", interrupted_write)
+    monkeypatch.setattr(Path, "replace", interrupted_replace)
+    persist = (
+        cli_module._persist_evaluated_run  # pyright: ignore[reportPrivateUsage]
+        if wrapper == "cli"
+        else orchestrator_module._persist_evaluated_run_sync  # pyright: ignore[reportPrivateUsage]
+    )
+    with pytest.raises(KeyboardInterrupt, match="synthetic publication interruption"):
+        persist(
+            run_path=run_path,
+            report=new_report,
+            workspace_root=tmp_path,
+            event_type="verify",
+            output_path=score_path,
+            force=True,
+            note_payload={"synthetic_interruption": True},
+        )
+    assert score_moved and interrupted
+    assert {
+        str(path.relative_to(run_path)): path.read_bytes()
+        for path in run_path.rglob("*")
+        if path.is_file()
+    } == before_files
+    assert load_result_events(review_db_path_for_run(run_path)) == before_events
+    assert results_tsv_path_for_run(run_path).read_bytes() == before_history
+    marker = json.loads(finalized_path.read_text(encoding="utf-8"))
+    assert marker["event_id"] == original.event.event_id
+    assert (marker["artifact_count"], marker["checksum"]) == finalized_artifact_digest(run_path)
+
+
+@pytest.mark.parametrize("wrapper", ["cli", "core"])
+def test_persist_wrappers_keep_completed_publication_when_interrupted_after_publish_return(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    wrapper: str,
+) -> None:
+    run_path = _write_run_fixture(tmp_path, run_id="run_committed_interrupt")
+    report = _report_for_run(run_path)
+    original = append_result(
+        run_path=run_path,
+        report=report,
+        status="non_ratcheted",
+        base_ref=None,
+        event_type="learn",
+        write_finalized=False,
+    )
+    score_path = run_path / "score.json"
+    publish_result_artifacts(
+        run_path=run_path,
+        report=report,
+        event=original.event,
+        score_path=score_path,
+        overwrite=True,
+    )
+    score_before = score_path.read_bytes()
+    new_report = replace(report, notes=(*report.notes, "Synthetic fully committed publication."))
+    committed_files: dict[str, bytes] = {}
+    published_event_ids: list[str] = []
+    actual_publish = results_module.publish_result_artifacts
+
+    def publish_then_interrupt(**kwargs: Any) -> None:
+        actual_publish(**kwargs)
+        event_id = str(kwargs["event"].event_id)
+        assert results_module.result_artifacts_are_published(run_path, event_id=event_id)
+        committed_files.update(
+            {
+                str(path.relative_to(run_path)): path.read_bytes()
+                for path in run_path.rglob("*")
+                if path.is_file()
+            }
+        )
+        published_event_ids.append(event_id)
+        raise KeyboardInterrupt("synthetic interruption after publication returned")
+
+    if wrapper == "cli":
+        monkeypatch.setattr(cli_module, "publish_result_artifacts", publish_then_interrupt)
+    else:
+        monkeypatch.setattr(results_module, "publish_result_artifacts", publish_then_interrupt)
+    persist = (
+        cli_module._persist_evaluated_run  # pyright: ignore[reportPrivateUsage]
+        if wrapper == "cli"
+        else orchestrator_module._persist_evaluated_run_sync  # pyright: ignore[reportPrivateUsage]
+    )
+    with pytest.raises(KeyboardInterrupt, match="after publication returned"):
+        persist(
+            run_path=run_path,
+            report=new_report,
+            workspace_root=tmp_path,
+            event_type="verify",
+            output_path=score_path,
+            force=True,
+            note_payload={"synthetic_late_interruption": True},
+        )
+    assert len(published_event_ids) == 1
+    assert score_path.read_bytes() != score_before
+    assert json.loads(score_path.read_text(encoding="utf-8")) == new_report.to_payload()
+    assert {
+        str(path.relative_to(run_path)): path.read_bytes()
+        for path in run_path.rglob("*")
+        if path.is_file()
+    } == committed_files
+    events = load_result_events(review_db_path_for_run(run_path))
+    assert len(events) == 2 and original.event in events
+    assert {event.event_id for event in events} == {original.event.event_id, published_event_ids[0]}
+    marker = json.loads(finalized_marker_path(run_path).read_text(encoding="utf-8"))
+    assert marker["event_id"] == published_event_ids[0]
+    assert (marker["artifact_count"], marker["checksum"]) == finalized_artifact_digest(run_path)
+    with results_tsv_path_for_run(run_path).open(encoding="utf-8", newline="") as handle:
+        history = list(csv.DictReader(handle, delimiter="\t"))
+    assert len(history) == 2
+    assert any("synthetic_late_interruption" in row["note_json"] for row in history)
 
 
 def test_publish_result_artifacts_restores_backups_when_digest_rejects_artifact(

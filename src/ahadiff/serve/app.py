@@ -53,6 +53,7 @@ from .routes_providers import (
     save_provider_models,
     update_provider,
 )
+from .routes_quiz import get_quiz_questions, reveal_quiz_question
 from .routes_review import (
     get_review_mastery,
     get_review_queue,
@@ -61,11 +62,13 @@ from .routes_review import (
     post_review_rate,
 )
 from .routes_runs import (
+    get_anchors,
     get_claims,
     get_concepts,
     get_concepts_ledger,
     get_diff,
     get_distractor_gate,
+    get_document,
     get_graphify_signoff,
     get_judge,
     get_judge_failure,
@@ -74,6 +77,7 @@ from .routes_runs import (
     get_quiz,
     get_ratchet_history,
     get_ratchet_transparency,
+    get_review_context,
     get_run,
     get_run_concepts,
     get_score,
@@ -82,6 +86,7 @@ from .routes_runs import (
 )
 from .routes_search import search_api
 from .routes_signals import helpfulness, mark_wrong, quiz_answer, srs_review
+from .routes_snapshots import delete_snapshot_route, get_snapshot, get_snapshots, post_snapshot
 from .routes_stats import (
     get_learning_effectiveness,
     get_providers,
@@ -168,9 +173,22 @@ def create_app(state: ServeState, *, viewer_dist: Path | None = None) -> Starlet
             Route("/api/run/{run_id}/lesson", get_lesson, methods=["GET"]),
             Route("/api/run/{run_id}/claims", get_claims, methods=["GET"]),
             Route("/api/run/{run_id}/quiz", get_quiz, methods=["GET"]),
+            Route("/api/run/{run_id}/quiz/questions", get_quiz_questions, methods=["GET"]),
+            Route(
+                "/api/run/{run_id}/quiz/{question_id}/reveal",
+                reveal_quiz_question,
+                methods=["POST"],
+            ),
             Route("/api/run/{run_id}/misconceptions", get_misconceptions, methods=["GET"]),
             Route("/api/run/{run_id}/distractor-gate", get_distractor_gate, methods=["GET"]),
             Route("/api/run/{run_id}/diff", get_diff, methods=["GET"]),
+            Route("/api/run/{run_id}/document", get_document, methods=["GET"]),
+            Route("/api/run/{run_id}/anchors", get_anchors, methods=["GET"]),
+            Route("/api/run/{run_id}/review-context", get_review_context, methods=["GET"]),
+            Route("/api/snapshots", get_snapshots, methods=["GET"]),
+            Route("/api/snapshots", post_snapshot, methods=["POST"]),
+            Route("/api/snapshots/{snapshot_id}", get_snapshot, methods=["GET"]),
+            Route("/api/snapshots/{snapshot_id}", delete_snapshot_route, methods=["DELETE"]),
             Route("/api/run/{run_id}/graphify-signoff", get_graphify_signoff, methods=["GET"]),
             Route("/api/run/{run_id}/score", get_score, methods=["GET"]),
             Route("/api/run/{run_id}/judge", get_judge, methods=["GET"]),

@@ -5,26 +5,30 @@ from typing import Any, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ahadiff.contracts import SourceHunk  # noqa: TC001 - Pydantic resolves this type at runtime.
+from ahadiff.contracts.source_anchor import AssertionKind, SourceAnchor  # noqa: TC001
 
 
 class ClaimCandidate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     claim_id: str
     run_id: str
     text: str
-    source_hunks: list[SourceHunk]
+    source_hunks: list[SourceHunk] = Field(default_factory=lambda: list[SourceHunk]())
+    source_anchors: list[SourceAnchor] = Field(default_factory=lambda: list[SourceAnchor]())
+    assertion_kind: AssertionKind | None = None
     symbols: list[str] = Field(default_factory=list)
     hunk_ids: list[str] = Field(default_factory=list)
     extractor: str | None = None
 
     @model_validator(mode="after")
     def validate_text_and_hunks(self) -> ClaimCandidate:
-        self.text = self.text.strip()
-        if not self.text:
+        if self.assertion_kind != "source_fact" or not self.source_anchors:
+            self.text = self.text.strip()
+        if not self.text.strip():
             raise ValueError("claim text must not be empty")
-        if not self.source_hunks:
-            raise ValueError("claim candidate requires at least one source_hunk")
+        if not self.source_hunks and not self.source_anchors:
+            raise ValueError("claim candidate requires at least one source_hunk or source_anchor")
         return self
 
     @field_validator("source_hunks", mode="before")

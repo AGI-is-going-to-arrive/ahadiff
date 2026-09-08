@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { chromium, type Browser, type Locator, type Page } from '@playwright/test';
 import { createServer, type ViteDevServer } from 'vite';
@@ -94,7 +95,7 @@ interface RenderOptions {
   open?: boolean;
   locale?: 'en' | 'zh-CN';
   phase?: 'idle' | 'submitting' | 'running' | 'completed' | 'failed';
-  initialSource?: 'git' | 'files' | 'patch';
+  initialSource?: 'git' | 'files' | 'patch' | 'document' | 'snapshot';
   useRealStore?: boolean;
 }
 
@@ -176,7 +177,7 @@ function makePreview(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
-async function selectSource(source: 'git' | 'files' | 'patch'): Promise<void> {
+async function selectSource(source: 'git' | 'files' | 'patch' | 'document' | 'snapshot'): Promise<void> {
   await page.locator(`[data-learn-source="${source}"]`).click();
 }
 
@@ -228,9 +229,9 @@ describe('LearnModeDialog source selection and preview', () => {
     if (server) await server.close();
   });
 
-  it('renders three primary sources and keeps Git working-tree capture as the default', async () => {
+  it('renders five primary sources and keeps Git working-tree capture as the default', async () => {
     await renderDialog(page);
-    await expect.poll(() => page.locator('[data-learn-source]').count()).toBe(3);
+    await expect.poll(() => page.locator('[data-learn-source]').count()).toBe(5);
     await expect.poll(() => page.locator('.learn-dialog__tile').count()).toBe(4);
     await expect.poll(() => page.locator('[data-learn-source="git"]').getAttribute('aria-pressed')).toBe('true');
     await expect.poll(() => page.locator('.learn-dialog__tile').first().locator('input').isChecked()).toBe(true);
@@ -699,4 +700,177 @@ describe('LearnModeDialog source selection and preview', () => {
     });
     expect(estimatePayloads[0]).toEqual((await getPayloads(page))[0]);
   });
+  it.each(['en', 'zh-CN'] as const)('previews a standalone Markdown source without a fabricated diff in %s', async (locale) => {
+    const document = '# 学习\n\nA synthetic source paragraph.\n';
+    await page.route('**/api/learn/estimate', route => {
+      estimatePayloads.push(route.request().postDataJSON() as Record<string, unknown>);
+      return route.fulfill({ json: makePreview({ preview_patch: '', preview_document: document, source_kind: 'document', patch_bytes: 0, source_bytes: 49 }) });
+    });
+    await renderDialog(page, { initialSource: 'document', locale });
+    await page.locator('#learn-file-document').setInputFiles({ name: '学习.md', mimeType: 'text/markdown', buffer: Buffer.from(document) });
+    await page.locator('.learn-dialog__preview-button').click();
+    await expect.poll(() => page.locator('.learn-dialog__preview-diff').textContent()).toBe(document);
+    expect(await page.locator('#learn-review-context').count()).toBe(0);
+    await page.locator('.learn-dialog__btn--primary').click();
+    expect((await getPayloads(page))[0]).toEqual({ document: { name: '学习.md', content: document }, force_learn: true, lang: locale });
+    expect(estimatePayloads[0]).not.toHaveProperty('compare_files');
+    expect(estimatePayloads[0]).not.toHaveProperty('patch');
+  });
+
+  it('rejects non-Markdown document files and clears private content on source switches', async () => {
+    await renderDialog(page, { initialSource: 'document' });
+    await page.locator('#learn-file-document').setInputFiles({ name: 'notes.pdf', mimeType: 'text/plain', buffer: Buffer.from('synthetic') });
+    await expect.poll(() => page.locator('.learn-dialog__preview-button').isDisabled()).toBe(true);
+    await page.locator('#learn-file-document').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Synthetic') });
+    await selectSource('files');
+    await chooseFiles('before', 'after');
+    await page.locator('#learn-review-context').fill('Synthetic reviewer notes');
+    await previewThenStart();
+    expect((await getPayloads(page))[0]).toMatchObject({ review_context: 'Synthetic reviewer notes' });
+    expect((await getPayloads(page))[0]).not.toHaveProperty('document');
+    await selectSource('document');
+    expect(await page.locator('#learn-file-document-status strong').count()).toBe(0);
+    await expect.poll(() => page.locator('.learn-dialog__preview-button').isDisabled()).toBe(true);
+  });
+
+  it('counts review notes in UTF-8 bytes and invalidates the preview when they change', async () => {
+    await renderDialog(page, { initialSource: 'files' });
+    await chooseFiles('before', 'after');
+    await page.locator('#learn-review-context').fill('学'.repeat(2731));
+    await expect.poll(() => page.locator('.learn-dialog__preview-button').isDisabled()).toBe(true);
+    await page.locator('#learn-review-context').fill('Synthetic notes');
+    await page.locator('.learn-dialog__preview-button').click();
+    await expect.poll(() => page.locator('.learn-dialog__btn--primary').isDisabled()).toBe(false);
+    await page.locator('#learn-review-context').fill('Changed synthetic notes');
+    await expect.poll(() => page.locator('.learn-dialog__preview').count()).toBe(0);
+    await expect.poll(() => page.locator('.learn-dialog__btn--primary').isDisabled()).toBe(true);
+    expect(await getPayloads(page)).toEqual([]);
+  });
+
+  it.each(['en', 'zh-CN'] as const)('saves a baseline explicitly, reloads it and confirms deletion in %s', async (locale) => {
+    const file = { name: '学习.md', content: '# Before\n' };
+    const snapshotId = `snap_${'1'.repeat(32)}`;
+    const contentHash = createHash('sha256').update(file.content).digest('hex');
+    const record = { schema_version: 1, snapshot_id: snapshotId, name: 'Baseline', file_name: file.name,
+      content: file.content, content_hash: contentHash, hash_scope: 'sanitized_utf8_nfc_lf',
+      created_at: '2026-09-08T00:00:00Z', size_bytes: 9, source: 'explicit_file', sanitized: true };
+    const { content: _content, ...fields } = record;
+    const summary = { ...fields, status: 'ready', stored_bytes: 400, record_hash: createHash('sha256').update(JSON.stringify(record) + '\n').digest('hex') };
+    let snapshots: typeof summary[] = [];
+    const writes: Array<Record<string, unknown>> = [];
+    let deletes = 0;
+    await page.route('**/api/snapshots', async route => {
+      if (route.request().method() === 'POST') {
+        writes.push(route.request().postDataJSON() as Record<string, unknown>);
+        snapshots = [summary];
+        return route.fulfill({ status: 201, json: summary });
+      }
+      return route.fulfill({ json: { snapshots, max_count: 100, max_bytes: 16777216 } });
+    });
+    await page.route(`**/api/snapshots/${snapshotId}`, route => {
+      if (route.request().method() === 'DELETE') {
+        expect(route.request().postDataJSON()).toEqual({ expected_hash: summary.record_hash });
+        deletes += 1;
+        snapshots = [];
+        return route.fulfill({ json: { snapshot_id: snapshotId, deleted: true } });
+      }
+      return route.fulfill({ json: record });
+    });
+    await renderDialog(page, { initialSource: 'snapshot', locale });
+    await page.locator('#learn-snapshot-name').fill('Baseline');
+    await page.locator('#learn-file-snapshot').setInputFiles({ name: file.name, mimeType: 'text/markdown', buffer: Buffer.from(file.content) });
+    expect(writes).toEqual([]);
+    await page.getByRole('button', { name: locale === 'en' ? 'Save baseline locally' : '保存本地基准', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0]).toEqual({ name: 'Baseline', file });
+    await expect.poll(() => page.locator('.learn-dialog__snapshot-item').count()).toBe(1);
+    await renderDialog(page, { initialSource: 'snapshot', locale });
+    await page.getByRole('button', { name: locale === 'en' ? 'Use baseline' : '使用此基准', exact: true }).click();
+    await page.locator('#learn-file-after').setInputFiles({ name: file.name, mimeType: 'text/markdown', buffer: Buffer.from('# After\n') });
+    await previewThenStart();
+    expect((await getPayloads(page))[0]).toMatchObject({ snapshot_id: snapshotId, snapshot_hash: contentHash, snapshot_after: { name: file.name, content: '# After\n' } });
+    expect((await getPayloads(page))[0]).not.toHaveProperty('compare_files');
+    await page.getByRole('button', { name: locale === 'en' ? 'Delete snapshot' : '删除快照', exact: true }).click();
+    expect(deletes).toBe(0);
+    await page.getByRole('button', { name: locale === 'en' ? 'Delete this baseline' : '删除这份基准', exact: true }).click();
+    await expect.poll(() => deletes).toBe(1);
+    await expect.poll(() => page.locator('.learn-dialog__snapshot-item').count()).toBe(0);
+  });
+
+  it('keeps corrupt and unsupported snapshots visible without accepting them as comparison evidence', async () => {
+    await page.route('**/api/snapshots', route => route.fulfill({ json: {
+      max_count: 100, max_bytes: 16777216,
+      snapshots: [
+        { snapshot_id: `snap_${'2'.repeat(32)}`, status: 'corrupt', stored_bytes: 0, record_hash: null },
+        { snapshot_id: `snap_${'3'.repeat(32)}`, status: 'unsupported', schema_version: 2, stored_bytes: 20, record_hash: 'f'.repeat(64) },
+      ],
+    } }));
+    await renderDialog(page, { initialSource: 'snapshot' });
+    await expect.poll(() => page.locator('.learn-dialog__snapshot-item').count()).toBe(2);
+    for (const button of await page.getByRole('button', { name: 'Use baseline', exact: true }).all()) expect(await button.isDisabled()).toBe(true);
+    expect(await page.locator('.learn-dialog__snapshot-item').first().getByRole('button', { name: 'Delete snapshot', exact: true }).isDisabled()).toBe(true);
+    expect(await page.locator('.learn-dialog__preview-button').isDisabled()).toBe(true);
+  });
+
+  it.each(['en', 'zh-CN'] as const)('keeps the mixed quiz as the default in %s', async (locale) => {
+    await renderDialog(page, { locale });
+    await openAdvanced();
+    const name = locale === 'en' ? 'Active transfer practice' : '主动迁移练习';
+    const option = page.getByRole('checkbox', { name, exact: true });
+    expect(await option.isChecked()).toBe(false);
+    expect(await page.locator('#learn-opt-active-practice-hint').textContent()).toContain(locale === 'en' ? 'Off by default' : '默认关闭');
+    await previewThenStart();
+    expect((await getPayloads(page))[0]).not.toHaveProperty('active_practice');
+    expect(estimatePayloads[0]).toEqual((await getPayloads(page))[0]);
+  });
+
+  it.each(['en', 'zh-CN'] as const)('requires a fresh preview and submits active practice explicitly in %s', async (locale) => {
+    await renderDialog(page, { locale });
+    await openAdvanced();
+    await page.locator('.learn-dialog__preview-button').click();
+    await expect.poll(() => page.locator('.learn-dialog__btn--primary').isDisabled()).toBe(false);
+    const option = page.getByRole('checkbox', { name: locale === 'en' ? 'Active transfer practice' : '主动迁移练习', exact: true });
+    await option.check();
+    await expect.poll(() => page.locator('.learn-dialog__preview').count()).toBe(0);
+    await expect.poll(() => page.locator('.learn-dialog__btn--primary').isDisabled()).toBe(true);
+    await previewThenStart();
+    expect((await getPayloads(page))[0]).toMatchObject({ active_practice: true, lang: locale });
+    expect(estimatePayloads[1]).toEqual((await getPayloads(page))[0]);
+  });
+
+  it.each(['en', 'zh-CN'] as const)('turning active practice off restores the mixed payload and invalidates its preview in %s', async (locale) => {
+    await renderDialog(page, { locale });
+    await openAdvanced();
+    const option = page.getByRole('checkbox', { name: locale === 'en' ? 'Active transfer practice' : '主动迁移练习', exact: true });
+    await option.check();
+    await page.locator('.learn-dialog__preview-button').click();
+    await expect.poll(() => page.locator('.learn-dialog__preview').count()).toBe(1);
+    await option.uncheck();
+    await expect.poll(() => page.locator('.learn-dialog__preview').count()).toBe(0);
+    await expect.poll(() => page.locator('.learn-dialog__btn--primary').isDisabled()).toBe(true);
+    await previewThenStart();
+    expect(estimatePayloads[0].active_practice).toBe(true);
+    expect(estimatePayloads[1]).not.toHaveProperty('active_practice');
+    expect((await getPayloads(page))[0]).not.toHaveProperty('active_practice');
+  });
+
+  it.each(['en', 'zh-CN'] as const)('resets active practice on source changes and after closing in %s', async (locale) => {
+    await renderDialog(page, { locale });
+    await openAdvanced();
+    await page.locator('#learn-opt-active-practice').check();
+    await selectSource('files');
+    await openAdvanced();
+    expect(await page.locator('#learn-opt-active-practice').isChecked()).toBe(false);
+    await page.locator('#learn-opt-active-practice').check();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => getCloseCount(page)).toBe(1);
+    await page.evaluate(() => window.__updateOpen(false));
+    await expect.poll(() => page.getByRole('dialog').count()).toBe(0);
+    await page.evaluate(() => window.__updateOpen(true));
+    await expect.poll(() => page.locator('[data-learn-source="git"]').getAttribute('aria-pressed')).toBe('true');
+    await openAdvanced();
+    expect(await page.locator('#learn-opt-active-practice').isChecked()).toBe(false);
+    expect(await getPayloads(page)).toEqual([]);
+  });
+
 });

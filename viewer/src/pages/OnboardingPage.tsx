@@ -695,7 +695,7 @@ function PreviewSection({ t, run, loading, failed, onRetry }: {
   const { locale } = useTranslation();
   const verdict = run ? safeVerdict(run.verdict) : null;
   const runPath = run ? `#/run/${encodeURIComponent(run.run_id)}` : null;
-  const sourceKey: MessageKey = run?.source_kind === 'file_compare'
+  const sourceKey: MessageKey = run?.source_kind === 'document' ? 'LearnDialog.source_document' : run?.source_kind === 'file_compare'
     ? 'LearnDialog.source_files'
     : run?.source_kind.startsWith('git_')
       ? 'LearnDialog.source_git'

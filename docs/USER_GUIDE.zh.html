@@ -941,8 +941,8 @@ img { max-width: 100%; display: block; }
     <div class="guide-hero">
       <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.8</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
-      <p class="guide-lead">学习自己的修复、同事的修改或 AI 生成的变化。选择 <strong>Git 改动</strong>、<strong>两份文件</strong>或<strong>粘贴改动</strong>，再读课程、查证据、做测验和复习。学习记录保存在工作区的 <code>.ahadiff/</code>；文件和 patch 学习无需创建 Git 仓库。</p>
-      <div class="g-note">源码更新说明（2026-09-08）：三来源入口和文件预览属于当前源码改动，尚未发布，版本号仍为 1.3.8。已发布版本可先用 CLI 的 <code>--compare</code> 和 <code>--patch</code>；体验新界面需构建包含这些改动的源码。</div>
+      <p class="guide-lead">学习自己的修复、同事的修改或 AI 生成的变化。选择 <strong>Git 改动</strong>、<strong>两份文件</strong>、<strong>粘贴改动</strong>、<strong>本地快照</strong>或<strong>单份 Markdown</strong>，再读课程、查证据、做测验和复习。学习记录保存在工作区的 <code>.ahadiff/</code>；文件、patch、快照和文档学习无需创建 Git 仓库。</p>
+      <div class="g-note">源码更新说明（2026-09-08）：五来源入口、持久快照、格式锚点、人工 review 说明和主动迁移练习属于当前源码改动，尚未发布，版本号仍为 1.3.8。已发布版本可先用 CLI 的 <code>--compare</code> 和 <code>--patch</code>；体验新界面需构建包含这些改动的源码。</div>
       <div class="start-tip">视频教程：<a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 英文讲解（YouTube）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。视频展示较早的界面，当前源码的操作以本文步骤为准。安装已发布版本推荐用 <code>pipx install ahadiff</code> 隔离安装。</div>
     </div>
 
@@ -969,7 +969,7 @@ ahadiff --version</span></div>
         </div>
       </div>
       <h3>打开你的工作目录</h3>
-      <p>在准备存放学习记录的文件夹打开终端。普通文件夹就可以；文件和 patch 输入无需 Git 仓库。下面的命令在 macOS/Linux 终端和 Windows PowerShell 中都可使用：</p>
+      <p>在准备存放学习记录的文件夹打开终端。普通文件夹就可以；文件、patch、快照和文档输入无需 Git 仓库。下面的命令在 macOS/Linux 终端和 Windows PowerShell 中都可使用：</p>
       <div class="code-block"><span class="cmd">ahadiff serve</span></div>
       <p>AhaDiff 会打开 <code>http://127.0.0.1:8765</code>，并按需创建本地状态。到<strong>设置</strong>添加本地或远端 provider；使用远端模型前需明确选择远端隐私模式。配置 provider 时可能发送小探测请求，文件变化预览不会调用 LLM。</p>
 
@@ -978,17 +978,19 @@ ahadiff --version</span></div>
         <div class="g-card"><h3>Git 改动</h3><p>学习已有仓库中的 bug 修复、同事的 commit 或 AI 修改。选择工作区变化或提交范围。</p></div>
         <div class="g-card"><h3>两份文件</h3><p>分别点选或拖放修改前、修改后的文件。可使用代码、SQL、配置、Markdown 或两份 <code>.ipynb</code>，文件同名也可以。</p></div>
         <div class="g-card"><h3>粘贴改动</h3><p>粘贴从 review 或其他工具复制的统一 diff。这里需要带 diff 头和变化行的补丁文本，不是单份资料或 review 评论。</p></div>
+        <div class="g-card"><h3>本地快照</h3><p>修改前选择一个文件、填写名称并显式保存。以后打开列表、选基准，再选择修改后文件比较。它是已过滤的学习参考，不是完整备份。</p></div>
+        <div class="g-card"><h3>单份 Markdown</h3><p>选择一份 <code>.md</code> 或 <code>.markdown</code>，预览原文并从章节、段落引用学习，不伪造前后版本 diff。</p></div>
       </div>
       <div class="mini-flow">
         <div class="mini-step">在<strong>欢迎</strong>、<strong>快速上手</strong>或<strong>使用指南</strong>选择来源。</div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
-        <div class="mini-step">点击<strong>预览变化</strong>，检查安全处理后的 diff。</div>
+        <div class="mini-step">需要主动练习时先勾选<strong>此来源的更多选项 → 主动迁移练习</strong>，否则保持混合测验，再点击<strong>预览变化</strong>。</div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
         <div class="mini-step">点击<strong>开始学习</strong>，等待运行完成。</div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
         <div class="mini-step">到<strong>课程</strong>读解释、<strong>差异</strong>查证据、<strong>测验</strong>作答，再到<strong>复习</strong>处理到期卡片。</div>
       </div>
-      <p class="g-lead">同一次运行会把这些页面连接起来。安装 Agent 是可选项。只有当前文件、没有旧版时，可以在下次修改前先保留一份副本；目前没有自动快照或独立资料课程。</p>
+      <p class="g-lead">同一次运行会把这些页面连接起来。修改前可显式保存快照；单份 Markdown 可直接生成文档课程。本试点不包含自动快照、PDF 或网页抓取。安装 Agent 是可选项。</p>
       <details class="faq-item"><summary>已有 Git 仓库中的可选 CLI 初始化</summary><div class="faq-a">
         <p>以下命令只在 Git 仓库内使用。普通目录从 <code>ahadiff serve</code> 开始；CLI 的 <code>init</code>、<code>doctor</code> 仍要求 Git 仓库元数据。</p>
         <div class="code-block"><span class="cmd">ahadiff init
@@ -1016,7 +1018,7 @@ ahadiff config show --resolved</span></div>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/zh/zh-welcome.png" alt="欢迎页：主标语、简介段落和首次运行的快速上手。" width="3840" height="1892" />
-        <figcaption class="shot-cap">较早版本的欢迎页示例；当前源码请按上方的三个来源入口操作。</figcaption>
+        <figcaption class="shot-cap">较早版本的欢迎页示例；当前源码请按上方的五个来源入口操作。</figcaption>
         <ol class="shot-legend">
           <li>衬线主标题 Ship with AI. Learn it back.</li>
           <li>首字下沉的简介段落介绍 AhaDiff。</li>
@@ -1202,12 +1204,12 @@ supports_native_json_schema = false</span></div>
       <h2>3. 生成课程</h2>
       <div class="g-steps">
         <div class="g-step">
-          <h3>选一个 diff 来源</h3>
-          <p>在 WebUI 选择<a href="#sources">Git 改动、两份文件或粘贴改动</a>。对比文件时，把旧版放在修改前，把新版放在修改后。</p>
+          <h3>选择学习来源</h3>
+          <p>在 WebUI 选择<a href="#sources">五种共用来源之一</a>。对比时把前后版本放在对应位置；单份 Markdown 直接选择文档。</p>
         </div>
         <div class="g-step">
           <h3>先预览，再开始学习</h3>
-          <p>预览安全处理后的真实 diff。修改来源后原预览会失效，需要重新预览。生成时使用已配置的 provider 和隐私模式，产出 claim、课程、测验和分数。</p>
+          <p>预览安全处理后的真实 diff 或文档原文。修改来源后原预览会失效，需要重新预览。生成时使用已配置的 provider 和隐私模式，产出 claim、课程、测验和分数。</p>
         </div>
         <div class="g-step">
           <h3>打开 WebUI 学习</h3>
@@ -1248,7 +1250,7 @@ supports_native_json_schema = false</span></div>
         </div>
       </div>
       <div class="badges" style="justify-content:flex-start">
-        <span class="badge">10 种模式 &rarr; 捕获覆盖</span>
+        <span class="badge">10 种既有 diff 捕获模式</span>
         <span class="badge">文件与粘贴 patch 可在无仓库目录开始</span>
         <span class="badge">路径范围：仅工作树模式 &middot; 仓库相对路径</span>
       </div>
@@ -1274,10 +1276,49 @@ supports_native_json_schema = false</span></div>
         <span class="badge">compare-dir：仅 POSIX &middot; 其他平台 fail closed</span>
       </div>
       <h3>文件输入、预览与证据边界</h3>
-      <p>浏览器接受两份 UTF-8 文本文件，每份最多 256 KiB，合计最多 512 KiB。点选文件时，草稿只留在页面内存中，不会改写原文件。两份 <code>.ipynb</code> 保留按单元格比较的来源信息，AhaDiff 不会执行单元格。Markdown、SQL 和配置修改保留文本证据；没有更强支持时，claim 会标为 weak 或未证明。</p>
+      <p>浏览器接受 UTF-8 文本文件，每份最多 256 KiB，两份合计最多 512 KiB。快照文件和单篇 Markdown 在 CLI 与 WebUI 中都保持 256 KiB 上限。点选文件时，草稿只留在页面内存中，不会改写原文件。两份 <code>.ipynb</code> 保留按单元格比较的来源信息，AhaDiff 不会执行单元格。Markdown 和结构化格式在成功解析时增加专用锚点，SQL 和不支持的结构保留明确的行级证据；支持不足时仍标为 weak 或未证明。</p>
       <p><strong>预览变化</strong>只把输入发给本机服务，不调用 LLM。预览最多显示 64 KiB，部分展示会明确标注；这与捕获限额提示不同，后者才代表输入本身未完整捕获。点击<strong>开始学习</strong>后，生成遵循你选定的本地或远端隐私模式，并把常规运行产物保存在 <code>.ahadiff/</code>。</p>
-      <p>粘贴的统一 diff 上限为 64 KiB。浏览器请求序列化后上限为 1 MiB，转义字符很多时可能先达到请求上限；更大的输入请用 CLI。CLI 的 patch 和对比文件在工作区根目录内解析；外部生成的 patch 可传 <code>--patch -</code>。</p>
-      <div class="g-note">文件或粘贴 patch 的小练习默认勾选<strong>变化较小时仍生成课程</strong>，也可取消。它只跳过 learnability 筛选，证据校验、安全门禁和评分仍然生效。能够跳到来源行或课程分数很高，都不代表已证明运行正确或你已掌握这次改动。</div>
+      <p>粘贴的统一 diff 上限为 64 KiB。浏览器请求序列化后上限为 1 MiB，转义字符很多时可能先达到请求上限；较大的比较输入可用 CLI，快照和文档上限仍然固定。CLI 的 patch 和对比文件在工作区根目录内解析；外部生成的 patch 可传 <code>--patch -</code>。</p>
+      <div class="g-note">文件、粘贴 patch、快照或文档的小练习默认勾选<strong>变化较小时仍生成课程</strong>，也可取消。它只跳过 learnability 筛选，证据校验、安全门禁和评分仍然生效。能够跳到来源行或课程分数很高，都不代表已证明运行正确或你已掌握这次改动。</div>
+      <h3 id="snapshots">保存并复用本地基准</h3>
+      <ol>
+        <li>打开<strong>本地快照</strong>，选择修改前文件，填写最多 80 字符的可移植名称。</li>
+        <li>点击<strong>保存本地基准</strong>。列表展示时间、大小与就绪状态；过滤可能改变保存内容。</li>
+        <li>下次打开时点击<strong>使用此基准</strong>，再选择修改后文件。预览比较结果，随后开始学习。</li>
+        <li>删除时点击<strong>删除快照</strong>并确认具体名称。已有课程和源文件会保留。</li>
+      </ol>
+      <div class="code-block"><span class="cmd">ahadiff snapshot save before.md --name "修改前" --repo-root .
+ahadiff snapshot list --repo-root .
+ahadiff snapshot show SNAPSHOT_ID --expected-hash CONTENT_HASH --repo-root .
+ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.md --force-learn</span></div>
+      <p>从列表复制 <code>SNAPSHOT_ID</code> 和 <code>content_hash</code>；learn 的可选 hash 绑定精确比较内容。删除使用另一字段 <code>record_hash</code>，并会交互确认：</p>
+      <div class="code-block"><span class="cmd">ahadiff snapshot delete SNAPSHOT_ID --expected-hash RECORD_HASH --repo-root .</span></div>
+      <p><code>--yes</code> 只跳过该具体 ID/hash 的交互提示。WebUI 始终确认具体一份再删除。损坏或不支持版本的记录不能用于比较；无法安全读取的记录没有可用删除哈希。</p>
+      <div class="g-note"><code>.ahadiff/snapshots/</code> 最多保存 100 份快照，记录总大小最多 16 MiB，单个输入文件最多 256 KiB。只保存过滤并经 UTF-8/NFC/LF 规范化的学习文本，不是原文件完整备份。不会自动监视、抓取聊天或覆盖源文件。</div>
+
+      <h3 id="document-learning">学习单份 Markdown 文档</h3>
+      <p>选择<strong>单份 Markdown</strong>，点选一份最多 256 KiB 的 UTF-8 <code>.md</code> 或 <code>.markdown</code> 文件，预览过滤后的原文，然后开始学习。</p>
+      <div class="code-block"><span class="cmd">ahadiff learn --document reading.md</span></div>
+      <p>独立 <code>document</code> 来源保存 <code>document.md</code> 及章节/段落锚点。证据页展示原文行，不添加增删标记；课程、测验、复习仍连接同一 run。该模式不支持 diff 的 spec alignment。Diff Coverage 与改动新颖度 Learnability 显示 N/A / <code>0/0</code>，不计入总分；经过验证的文档锚点覆盖使用独立硬门禁。PDF、URL 或多文档集合需要独立输入契约，不在此试点范围。</p>
+      <div class="g-note">引文已验证，表示文档确实在此位置包含该文本。解释它的含义属于语义判断；有关外部事实或运行效果的断言，需要文档之外的证据。</div>
+
+      <h3 id="review-context">补充人工 review 说明</h3>
+      <p>选择改动来源后可填写<strong>人工 review 说明</strong>，CLI 用户可选择本地文本文件：</p>
+      <div class="code-block"><span class="cmd">ahadiff learn --compare before.py after.py --review-context-file review-notes.md --force-learn</span></div>
+      <p>说明最多为 8 KiB UTF-8 文本，按不可信输入过滤，并独立标成辅助上下文。它不能产生证据位置或替代代码反证。运行记录是否使用与内容哈希；草稿不进入任务重试摘要，编辑说明会使旧预览失效。请勿包含凭证。</p>
+
+      <h3 id="format-evidence">阅读格式专用证据</h3>
+      <div class="cmp-wrap"><table class="cmp-table">
+        <thead><tr><th>输入</th><th>定位</th><th>检查内容</th></tr></thead>
+        <tbody>
+          <tr><td>Markdown</td><td>章节路径与段落</td><td>引文、行范围和内容哈希</td></tr>
+          <tr><td>Notebook</td><td>单元源内容与单元标识</td><td>仅源内容；输出不能替代执行证据</td></tr>
+          <tr><td>JSON / TOML / YAML</td><td>键路径</td><td>源值及修改前后侧，预期效果仍属语义判断</td></tr>
+          <tr><td>不支持或有歧义的结构</td><td>明确行级回退</td><td>较弱证据，不伪造结构层面的确定性</td></tr>
+        </tbody>
+      </table></div>
+      <p>格式专用索引上限为 4,096 个锚点。较大 diff 可能显示部分索引提示，但既有 hunk 证据仍可使用；超过此结构限额的单份文档会被拒绝，不会把部分文档冒充完整证据分母。</p>
+      <p>展开 claim 的源锚点，可查看前后侧、位置、引文和哈希。不同内容在移动或重命名后不会获得相同的证据身份。只有 hunk 证据的旧运行继续可读；声明了新来源产物却缺失、损坏或不一致时，会拒绝读取，不冒充已验证文本。</p>
       <p>长时间运行的 CLI 命令会在运行中显示 Rich 状态。把它当作终端反馈，而不是机器可读的输出契约。</p>
     </section>
 
@@ -1315,7 +1356,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
             <tr><td><code>/concepts</code></td><td>概念账本、概念图谱和 Graphify 源。</td></tr>
             <tr><td><code>/ratchet</code></td><td>结果历史、benchmark 摘要、improve 预览和导出入口。</td></tr>
             <tr><td><code>/settings</code></td><td>provider、capture、隐私、审计、偏好和项目级 AI 工具指引。AI Tool Guidance 把目标分为 CLI / IDE / CI，显示使用提示，并内置一个无需 provider 的演示。</td></tr>
-            <tr><td><code>/guide</code></td><td>共用的三个学习来源、日常命令，以及 16 个当前 AI 工具目标的共享目录。工具指引是可选项，写入、更新与移除仍在设置 &rarr; AI 工具指引中完成。</td></tr>
+            <tr><td><code>/guide</code></td><td>共用的五个学习来源、日常命令，以及 16 个当前 AI 工具目标的共享目录。工具指引是可选项，写入、更新与移除仍在设置 &rarr; AI 工具指引中完成。</td></tr>
           </tbody>
         </table>
       </div>
@@ -1397,6 +1438,18 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
           <li>claim 状态徽章把解释链回到代码行。</li>
         </ol>
       </figure>
+
+      <h3 id="transfer-practice">先尝试主动迁移练习</h3>
+      <p>在新建学习对话框中，明确勾选<strong>此来源的更多选项 → 主动迁移练习</strong>。默认关闭，普通运行仍按 guided/recall/transfer 混合分配。开启后只生成开放式 transfer 题，题数至少为 3 时覆盖全部三种形式。修改开关会使预览失效；切换来源或关闭对话框会重置开关。</p>
+      <div class="code-block"><span class="cmd">ahadiff learn --document reading.md --active-practice
+ahadiff learn --compare before.py after.py --active-practice --force-learn
+ahadiff regenerate RUN_ID --only quiz --active-practice</span></div>
+      <p><code>regenerate</code> 会替换所选运行的测验/卡片、重算确定性分数并重新封存校验和。不传两种练习开关时沿用该 run 的模式，<code>--mixed-practice</code> 可明确切回混合题。旧 Judge 结果会失效，不会自动重跑 judge。请选择打算替换测验的 run。学习和重新生成使用已配置的 provider/隐私策略，预览本身不调用模型。</p>
+      <p>Transfer 复用现有 Quiz 与 SRS：<strong>预测下一步</strong>、<strong>补全相似例子</strong>、<strong>解释错误原因</strong>。先写尝试，再揭示参考答案；作答前不下发参考答案、解释和证据，也不会执行代码。</p>
+      <p>对照参考含义后选择<strong>独立完成</strong>、<strong>需要帮助</strong>或<strong>尚未完成</strong>。必要时标明困难属于概念回忆、应用、推理还是证据边界。等价表述也可能正确。选择题核对是机械判断，开放练习反馈是语义自评。</p>
+      <p>WebUI 作答正文保留在页面内存，仅保存受限自评、错误类别和时间信息。复习会带回同一卡片；距上次记录尝试至少 24 小时才计入延迟回忆，只有明确标记新场景的首次尝试才计为未见变式。</p>
+      <p>Dashboard 分别展示首次练习、延迟回忆、未见变式的自报完成情况、样本数与错误类别。分母为空时显示未测量，不当成零成功率。既有 SRS 评分改善占比与这些练习指标分开呈现。</p>
+      <div class="g-note">Challenge 先展示原解，再让你复现。补丁文本匹配与证据覆盖，不能证明未见变式的独立完成或运行正确。Score/Judge 衡量学习产物质量；缺少真实参与者样本与分母时，本次更新不宣称已测得学习增益。</div>
 
       <h3>测验与复习</h3>
       <p class="g-lead">复习给每张卡片评分；评分驱动下一次到期日。</p>
@@ -1586,6 +1639,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <p style="margin-top:10px">无需额外安装。</p>
         </div>
       </div>
+      <p>静态预览保留 <code>document</code>/<code>diff</code> 来源、结构锚点与单独标识的 review 说明；只读 MCP 暴露来源/锚点 provenance 与受限辅助摘录。分享或处理这些输出时应保留相应区分。扁平化引文或 review 评论不能变成运行证明。静态预览与 APKG 含答案，分享前应先检查内容。</p>
       <div class="g-note">APKG 导出在标准安装下默认即可用，因为已内置 <code>genanki</code>。</div>
     </section>
 
@@ -1818,7 +1872,7 @@ ahadiff config show --resolved</span></div>
         <details class="faq-item">
           <summary>Diff Coverage 怎么判定？</summary>
           <div class="faq-a">
-            <p>Diff Coverage 只用持久化的 <code>line_map.json</code> 里可见的文件和 hunk：</p>
+            <p>对于 diff 运行，Diff Coverage 只用持久化的 <code>line_map.json</code> 里可见的文件和 hunk：</p>
             <div class="badges" style="justify-content:flex-start">
               <span class="badge">仅可见文件作分母</span>
               <span class="badge">按改动行加权</span>
@@ -1863,8 +1917,21 @@ ahadiff config show --resolved</span></div>
 
       <p>表格说明设计支持面与明确的平台例外。浏览器检查和模拟 Windows 分支不等于 Windows 原生运行，执行结论需查看对应平台的当前结果。</p>
 
+      <h3>当前源码验收</h3>
+      <p>五项功能仍是未发布源码，版本为 1.3.8。验收正在进行，下面的历史绿灯不代表这份最终源码已经通过。</p>
+      <div class="cmp-wrap"><table class="cmp-table">
+        <thead><tr><th>范围</th><th>本次需要检查</th><th>本文状态</th></tr></thead>
+        <tbody>
+          <tr><td>macOS</td><td>后端、来源完整性、CLI/API、快照与真实 serve</td><td>待本次验收记录确认</td></tr>
+          <tr><td>Linux</td><td>原生文件保护、锁、容器测试与打包</td><td>待本次平台结果确认</td></tr>
+          <tr><td>Windows</td><td>原生 NTFS/Unicode/reparse/锁与 CLI/WebUI</td><td>本文未建立原生通过结论</td></tr>
+          <tr><td>中英双语 WebUI</td><td>类型、单测、构建、桌面/移动交互、空错态与无障碍</td><td>待最终浏览器矩阵</td></tr>
+          <tr><td>真实模型 / wheel</td><td>单独预算的合成数据生成、安装后静态资源与来源元数据</td><td>需单独记录本次结果</td></tr>
+        </tbody>
+      </table></div>
+
       <h3>历史验证快照</h3>
-      <p class="g-lead">以下记录早于 2026-09-08 源码更新，不代表新文件选择或预览已获验证。v1.3.8 本地 gate 覆盖后端 unit/integration/eval、ruff/format/pyright、viewer typecheck/Vitest/build、i18n parity、真实 serve 保存复现和一次 live DeepSeek learn。发布和 CI 状态以 GitHub Actions 为准。</p>
+      <p class="g-lead">以下记录早于 2026-09-08 源码更新，不代表五来源、主动练习或新完整性契约已经通过验证。v1.3.8 本地 gate 覆盖后端 unit/integration/eval、ruff/format/pyright、viewer typecheck/Vitest/build、i18n parity、真实 serve 保存复现和一次 live DeepSeek learn。发布和 CI 状态以 GitHub Actions 为准。</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>已验证</h3>

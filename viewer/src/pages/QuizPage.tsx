@@ -12,16 +12,17 @@ import {
 import { Link, useParams } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import SRSCard from '../components/SRSCard';
-import type { SrsRating, SrsReviewRating } from '../components/SRSCard';
+import type { ExerciseAssessment, SrsRating, SrsReviewRating } from '../components/SRSCard';
 import { getRunArtifact } from '../api/runs';
+import { getQuizQuestions, revealQuizQuestion } from '../api/quiz';
 import { markWrong, quizAnswer, srsReview } from '../api/signals';
 import type { MisconceptionCardItem, ReviewAnswer } from '../api/types';
 import { useTranslation, type MessageKey } from '../i18n/useTranslation';
 import {
   hasChoices,
   hasQuizReviewCard,
-  parseQuizJsonl,
   type QuizItem,
+  type QuizPrompt,
 } from '../utils/quiz-contract';
 import { createIdempotencyKey } from '../utils/idempotency';
 import '../components/Quiz.css';
@@ -30,8 +31,9 @@ const GraphifyCard = lazy(() => import('../components/GraphifyCard'));
 
 interface AnswerRecord {
   answer: string;
-  correct: boolean;
+  correct: boolean | null;
   peekAt: number;
+  revealed: QuizItem;
 }
 
 function parseMisconceptionJsonl(content: string): MisconceptionCardItem[] {
@@ -92,7 +94,7 @@ function diffPathForEvidence(runId: string | undefined, file: string, line: numb
   return runId ? `/run/${encodeURIComponent(runId)}/diff?${params.toString()}` : '#';
 }
 
-function selectedChoiceLabelFor(quiz: QuizItem, answer: string): string | null {
+function selectedChoiceLabelFor(quiz: QuizPrompt, answer: string): string | null {
   if (!hasChoices(quiz)) return null;
   return quiz.choices.find((choice) => choice.label === answer)?.label ?? null;
 }
@@ -101,7 +103,8 @@ export default function QuizPage() {
   const { runId } = useParams<{ runId: string }>();
   const { t } = useTranslation();
 
-  const [quizzes, setQuizzes] = useState<QuizItem[]>([]);
+  const [quizzes, setQuizzes] = useState<QuizPrompt[]>([]);
+  const [loadedRunId, setLoadedRunId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -114,6 +117,7 @@ export default function QuizPage() {
   // review.sqlite cards that were never generated.
   const [rated, setRated] = useState<Record<string, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
+  const attemptKeyRef = useRef(createIdempotencyKey());
   const modeTipPointerDownRef = useRef(false);
   // Tracks signal idempotency keys already dispatched within this session so
   // the "Mark wrong (override)" button cannot fire duplicates if the user
@@ -128,27 +132,19 @@ export default function QuizPage() {
     abortRef.current = controller;
     setLoading(true);
     setError(null);
+    setLoadedRunId(null);
+    attemptKeyRef.current = createIdempotencyKey();
 
-    Promise.allSettled([
-      getRunArtifact(runId, 'quiz', { signal: controller.signal }),
-      getRunArtifact(runId, 'misconceptions', { signal: controller.signal }),
-    ])
-      .then(([quizResult, misconceptionResult]) => {
+    getQuizQuestions(runId, { signal: controller.signal })
+      .then((result) => {
         if (controller.signal.aborted) return;
-        if (quizResult.status !== 'fulfilled') {
-          throw quizResult.reason;
-        }
-        const items = parseQuizJsonl(quizResult.value.content);
-        setQuizzes(items);
+        setQuizzes(result.questions);
+        setLoadedRunId(runId);
         setCurrentIndex(0);
         setAnswered({});
         setRated({});
         setSignalError(null);
-        if (misconceptionResult.status === 'fulfilled') {
-          setMisconceptions(parseMisconceptionJsonl(misconceptionResult.value.content));
-        } else {
-          setMisconceptions([]);
-        }
+        setMisconceptions([]);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -211,29 +207,30 @@ export default function QuizPage() {
   }, []);
 
   const handleAnswer = useCallback(
-    (questionId: string, answer: string, correct: boolean) => {
+    (questionId: string, answer: string, correct: boolean | null, revealed: QuizItem) => {
       setAnswered((prev) => ({
         ...prev,
-        [questionId]: { answer, correct, peekAt: Date.now() },
+        [questionId]: { answer, correct, peekAt: Date.now(), revealed },
       }));
       if (
         currentQuiz &&
         currentQuiz.question_id === questionId &&
-        !hasQuizReviewCard(currentQuiz)
+        !hasQuizReviewCard(currentQuiz) && !currentQuiz.exercise_kind
       ) {
         setRated((prev) => ({ ...prev, [questionId]: true }));
       }
       setSignalError(null);
 
-      if (runId) {
+      if (runId && !currentQuiz?.exercise_kind) {
         const selectedChoiceLabel =
           currentQuiz && currentQuiz.question_id === questionId
             ? selectedChoiceLabelFor(currentQuiz, answer)
             : null;
         void quizAnswer({
-          idempotency_key: makeStableKey(runId, 'qa', questionId, answer),
+          idempotency_key: makeStableKey(runId, attemptKeyRef.current, questionId, 'answered'),
+          run_id: runId,
           quiz_id: questionId,
-          choice: answer,
+          choice: selectedChoiceLabel ?? '',
           correct,
           ...(selectedChoiceLabel ? { selected_choice_label: selectedChoiceLabel } : {}),
         }).catch((err: unknown) => {
@@ -241,12 +238,12 @@ export default function QuizPage() {
         });
 
         if (
-          !correct &&
+          correct === false && hasChoices(revealed) &&
           currentQuiz &&
           currentQuiz.question_id === questionId &&
-          currentQuiz.source_claims.length > 0
+          revealed.source_claims.length > 0
         ) {
-          const claimId = currentQuiz.source_claims[0];
+          const claimId = revealed.source_claims[0];
           if (claimId) {
             void markWrong({
               idempotency_key: createIdempotencyKey(),
@@ -260,12 +257,40 @@ export default function QuizPage() {
     [currentQuiz, runId],
   );
 
+  const allAttempted = loadedRunId === runId && quizzes.length > 0 && Object.keys(answered).length === quizzes.length;
+
+  // The shared misconception artifact can explain later questions too.
+  useEffect(() => {
+    if (!runId || !allAttempted) return;
+    const controller = new AbortController();
+    getRunArtifact(runId, 'misconceptions', { signal: controller.signal }).then((result) => {
+      if (!controller.signal.aborted) setMisconceptions(parseMisconceptionJsonl(result.content));
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [runId, allAttempted]);
+
+
   const handleRate = useCallback(
-    async (rating: SrsRating): Promise<boolean> => {
+    async (rating: SrsRating, assessment?: ExerciseAssessment): Promise<boolean> => {
       if (!currentQuiz || !runId) return false;
       setSignalError(null);
 
       const qid = currentQuiz.question_id;
+      if (currentQuiz.exercise_kind) {
+        if (!assessment || !answered[qid]) return false;
+        try {
+          await quizAnswer({
+            idempotency_key: makeStableKey(runId, attemptKeyRef.current, qid, 'assessment'),
+            run_id: runId, quiz_id: qid, correct: null,
+            exercise_kind: currentQuiz.exercise_kind,
+            feedback_kind: 'semantic_self_assessment',
+            self_assessment: assessment.selfAssessment, error_type: assessment.errorType,
+          });
+        } catch (err: unknown) {
+          setSignalError(errorMessage(err));
+          return false;
+        }
+      }
 
       if (isReviewRating(rating)) {
         if (!hasQuizReviewCard(currentQuiz)) {
@@ -276,7 +301,7 @@ export default function QuizPage() {
         // Choice-mode quizzes: the user committed to an answer without seeing
         // it first, so the card was not "peeked". Open-answer fallback still
         // counts as peeked (the user clicks "Show answer" before rating).
-        const peekedThisSession = !hasChoices(currentQuiz);
+        const peekedThisSession = !hasChoices(currentQuiz) && !currentQuiz.exercise_kind;
         const selectedChoiceLabel = hasChoices(currentQuiz)
           ? selectedChoiceLabelFor(currentQuiz, answered[qid]?.answer ?? '')
           : null;
@@ -292,7 +317,7 @@ export default function QuizPage() {
         try {
           const cardId = currentQuiz.review_card_id;
           await srsReview({
-            idempotency_key: makeStableKey(runId, 'srs', cardId, rating),
+            idempotency_key: makeStableKey(runId, attemptKeyRef.current, cardId, rating),
             card_id: cardId,
             answer: rating,
             peeked_this_session: peekedThisSession,
@@ -314,11 +339,13 @@ export default function QuizPage() {
   );
 
   const ratedCount = Object.keys(rated).length;
-  const correctCount = Object.values(answered).filter((answer) => answer.correct).length;
+  const correctCount = Object.values(answered).filter((answer) => answer.correct && hasChoices(answer.revealed)).length;
+  const checkedCount = Object.values(answered).filter((answer) => hasChoices(answer.revealed)).length;
   const currentAnswer = currentQuiz ? answered[currentQuiz.question_id] : null;
-  const currentEvidence = currentQuiz?.evidence ?? [];
-  const currentConcepts = currentQuiz?.concepts ?? [];
-  const currentSourceClaims = currentQuiz?.source_claims ?? [];
+  const currentEvidence = currentAnswer?.revealed.evidence ?? [];
+  const currentConcepts = currentAnswer?.revealed.concepts ?? [];
+  const currentSourceClaims = currentAnswer?.revealed.source_claims ?? [];
+  const currentSourceAnchors = currentAnswer?.revealed.source_anchors ?? [];
   const progressPercent = quizzes.length > 0 ? ((currentIndex + 1) / quizzes.length) * 100 : 0;
 
   /**
@@ -472,10 +499,17 @@ export default function QuizPage() {
                   <SRSCard
                     key={currentQuiz.question_id}
                     quiz={currentQuiz}
+                    runId={runId}
+                    onReveal={async (label) => {
+                      if (!runId) throw new Error('Missing run');
+                      return revealQuizQuestion(runId, currentQuiz.question_id, {
+                        attempted: true, ...(label ? { selected_choice_label: label } : {}),
+                      }, { signal: abortRef.current?.signal });
+                    }}
                     onAnswer={handleAnswer}
                     onRate={handleRate}
                     disabledReviewRatings={
-                      hasQuizReviewCard(currentQuiz)
+                      hasQuizReviewCard(currentQuiz) && !currentQuiz.exercise_kind
                         ? hasChoices(currentQuiz)
                           ? // Choice mode: only block Easy/Good after a wrong answer.
                             // A correct selection means the user can self-grade freely.
@@ -514,13 +548,13 @@ export default function QuizPage() {
                   </button>
                   {currentQuiz &&
                     answered[currentQuiz.question_id]?.correct &&
-                    currentQuiz.source_claims.length > 0 && (
+                    currentSourceClaims.length > 0 && (
                       <button
                         type="button"
                         className="quiz-page__nav-btn quiz-page__nav-btn--ghost"
                         onClick={() => {
                           const qid = currentQuiz.question_id;
-                          const claimId = currentQuiz.source_claims[0];
+                          const claimId = currentSourceClaims[0];
                           if (!claimId) return;
                           const key = makeStableKey(runId ?? '', 'mw', qid, claimId);
                           if (sentMarkWrongKeys.current.has(key)) return;
@@ -561,7 +595,7 @@ export default function QuizPage() {
               {/* Summary when every card has been rated */}
               {ratedCount === quizzes.length && currentIndex === quizzes.length - 1 && (
                 <p className="quiz-page__progress quiz-page__progress--summary">
-                  {t('Quiz.correct')}: {correctCount} / {quizzes.length}
+                  {t('Quiz.machine_summary', { correct: correctCount, count: checkedCount })}
                 </p>
               )}
             </div>
@@ -575,7 +609,7 @@ export default function QuizPage() {
                 <div className="quiz-panel__body">
                   {currentAnswer ? (
                     <>
-                      {currentEvidence.length > 0 ? (
+                      {currentEvidence.length > 0 || currentSourceAnchors.length > 0 ? (
                         <ul className="quiz-evidence" aria-label={t('Quiz.evidence_label')}>
                           {currentEvidence.map((item) => (
                             <li
@@ -593,6 +627,12 @@ export default function QuizPage() {
                               </p>
                             </li>
                           ))}
+                          {currentSourceAnchors.map((anchor) => <li key={anchor.anchor_id} className="quiz-evidence__item">
+                            <Link className="quiz-evidence__ref" to={`/run/${encodeURIComponent(runId ?? '')}/diff?anchor=${encodeURIComponent(anchor.anchor_id)}`}>
+                              {anchor.file}:{anchor.start}–{anchor.end}
+                            </Link>
+                            <blockquote className="srs-card__explanation-body">{anchor.quote}</blockquote>
+                          </li>)}
                         </ul>
                       ) : (
                         <p className="quiz-evidence__empty">{t('Quiz.evidence_unavailable')}</p>
@@ -667,7 +707,7 @@ export default function QuizPage() {
                               {t('Quiz.question_short', { number: index + 1 })}
                             </td>
                             <td className="quiz-progress-table__concept">
-                              {quiz.concepts[0] ?? quiz.question_id}
+                              {answered[quiz.question_id]?.revealed.concepts[0] ?? quiz.question_id}
                             </td>
                             <td>
                               <span className={`quiz-progress-badge ${statusClass}`}>

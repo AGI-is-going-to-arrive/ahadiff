@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, model_validator
 
 NonNegativeCount: TypeAlias = Annotated[StrictInt, Field(ge=0)]
 FiniteNumber: TypeAlias = Annotated[StrictFloat, Field(allow_inf_nan=False)]
@@ -116,6 +116,36 @@ class TransferConceptDTO(BaseModel):
     improving: bool
 
 
+class PracticeAttemptSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    attempts: NonNegativeCount = 0
+    independent_rate: Annotated[StrictFloat, Field(ge=0, le=1, allow_inf_nan=False)] | None = None
+
+    @model_validator(mode="after")
+    def validate_measurement(self) -> PracticeAttemptSummary:
+        if (self.attempts == 0) != (self.independent_rate is None):
+            raise ValueError("practice rate must be null exactly when there are no attempts")
+        return self
+
+
+class PracticeErrorCounts(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    none: NonNegativeCount = 0
+    recall: NonNegativeCount = 0
+    application: NonNegativeCount = 0
+    reasoning: NonNegativeCount = 0
+    boundary: NonNegativeCount = 0
+
+
+class ActivePracticeSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    initial: PracticeAttemptSummary = Field(default_factory=PracticeAttemptSummary)
+    delayed_recall: PracticeAttemptSummary = Field(default_factory=PracticeAttemptSummary)
+    unseen_variant: PracticeAttemptSummary = Field(default_factory=PracticeAttemptSummary)
+    error_types: PracticeErrorCounts = Field(default_factory=PracticeErrorCounts)
+    feedback_kind: Literal["self_reported"] = "self_reported"
+
+
 class LearningEffectivenessResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     total_concepts_reviewed: NonNegativeCount
@@ -125,6 +155,7 @@ class LearningEffectivenessResponse(BaseModel):
     transfer_rate: FiniteNumber
     helpfulness: list[HelpfulnessAggregateDTO]
     transfer_metrics: list[TransferConceptDTO]
+    active_practice: ActivePracticeSummary = Field(default_factory=ActivePracticeSummary)
 
 
 class SpecAlignmentResponse(BaseModel):

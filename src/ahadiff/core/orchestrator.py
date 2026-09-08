@@ -47,13 +47,14 @@ from ahadiff.core.paths import (
     lock_file_path,
     run_dir,
 )
+from ahadiff.core.source_evidence import load_evidence_anchors, load_review_context
 from ahadiff.i18n import resolve_locale
 from ahadiff.llm.cost import effective_output_cap, resolve_model_limits
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ahadiff.contracts.run_source import CompareFileInput
+    from ahadiff.contracts.run_source import CompareFileInput, DocumentInput, SnapshotProvenance
     from ahadiff.safety.gates import TransportTarget
 
 log = logging.getLogger(__name__)
@@ -80,9 +81,14 @@ class LearnRequest:
     include_untracked: bool = False
     changed_paths: Iterable[str] | None = None
     patch: str | None = None
-    patch_text: str | None = None
+    patch_text: str | None = field(default=None, repr=False)
     compare: tuple[Path, Path] | None = None
-    compare_files: tuple[CompareFileInput, CompareFileInput] | None = None
+    compare_files: tuple[CompareFileInput, CompareFileInput] | None = field(
+        default=None, repr=False
+    )
+    document: DocumentInput | None = field(default=None, repr=False)
+    review_context: str | None = field(default=None, repr=False)
+    snapshot_provenance: SnapshotProvenance | None = None
     compare_dir: tuple[Path, Path] | None = None
     against_spec: Path | None = None
     spec_semantic_review: bool = False
@@ -102,6 +108,7 @@ class LearnRequest:
     lang: str | None = None
     privacy_mode: str | None = None
     quiz_mode: Literal["fixed", "auto"] | None = None
+    active_practice: bool = False
 
 
 @dataclass
@@ -1139,7 +1146,11 @@ def _persist_evaluated_run_sync(
             score_path=output_path,
             overwrite=force,
         )
-    except Exception as exc:
+    except BaseException as exc:
+        from ahadiff.eval.results import result_artifacts_are_published
+
+        if result_artifacts_are_published(run_path, event_id=outcome.event.event_id):
+            raise
         if outcome.sqlite_inserted:
             try:
                 rollback_result_event(run_path=run_path, event_id=outcome.event.event_id)
@@ -1148,6 +1159,8 @@ def _persist_evaluated_run_sync(
                     "failed to publish score artifacts and failed to roll back "
                     f"result event {outcome.event.event_id}: {rollback_error}"
                 ) from rollback_error
+        if not isinstance(exc, Exception):
+            raise
         raise AhaDiffError(f"failed to publish score artifacts: {exc}") from exc
     return outcome, warnings
 
@@ -1234,6 +1247,7 @@ def run_learn_pipeline(
         or request.patch_text is not None
         or request.compare is not None
         or request.compare_files is not None
+        or request.document is not None
         or request.compare_dir is not None
         or request.patch_url is not None
     )
@@ -1265,6 +1279,8 @@ def run_learn_pipeline(
     )
     if request.spec_semantic_review and request.against_spec is None:
         raise ConfigError("spec_semantic_review requires against_spec")
+    if request.document is not None and request.against_spec is not None:
+        raise ConfigError("document learning does not support diff specification alignment")
     repo_lock_path = lock_file_path(root) if has_git_repo else root / ".ahadiff" / "ahadiff.lock"
     effective_capture_limits = _effective_capture_recommendation(
         snapshot=snapshot,
@@ -1283,7 +1299,7 @@ def run_learn_pipeline(
     # ------------------------------------------------------------------
     # Step 2: capture patch (under repo lock)
     # ------------------------------------------------------------------
-    _emit(2, "Capturing diff")
+    _emit(2, "Capturing document" if request.document is not None else "Capturing diff")
     _check_cancelled(_cancelled)
 
     from ahadiff.git.capture import (
@@ -1321,6 +1337,10 @@ def run_learn_pipeline(
                 patch_text=request.patch_text,
                 compare=request.compare,
                 compare_files=request.compare_files,
+                document=request.document,
+                review_context=request.review_context,
+                snapshot_provenance=request.snapshot_provenance,
+                active_practice=request.active_practice,
                 compare_dir=request.compare_dir,
                 patch_url=request.patch_url,
                 use_graphify=request.use_graphify,
@@ -1343,12 +1363,12 @@ def run_learn_pipeline(
                     privacy_mode=effective_privacy_mode,
                     local_hosts=security_config.local_hosts,
                     strict_local_hosts=security_config.strict_local_hosts,
-                    cjk_factor=compute_cjk_factor(str(capture.persisted_patch_text)),
+                    cjk_factor=compute_cjk_factor(str(capture.source_text)),
                 )
                 if (
                     adjusted_capture_limits.max_patch_bytes
                     < effective_capture_limits.max_patch_bytes
-                    and len(str(capture.persisted_patch_text).encode("utf-8"))
+                    and len(str(capture.source_text).encode("utf-8"))
                     > adjusted_capture_limits.max_patch_bytes
                 ):
                     capture = capture_patch(
@@ -1365,6 +1385,10 @@ def run_learn_pipeline(
                         patch_text=request.patch_text,
                         compare=request.compare,
                         compare_files=request.compare_files,
+                        document=request.document,
+                        review_context=request.review_context,
+                        snapshot_provenance=request.snapshot_provenance,
+                        active_practice=request.active_practice,
                         compare_dir=request.compare_dir,
                         patch_url=request.patch_url,
                         use_graphify=request.use_graphify,
@@ -1391,6 +1415,15 @@ def run_learn_pipeline(
                 threshold=float(learn_config["learnability_threshold"]),
                 force_learn=request.force_learn,
             )
+            if capture.run_source.source_kind == "document":
+                # A single source has no change novelty. Explicit selection still
+                # permits learning, while the diff-only score is N/A in evaluation.
+                learnability = replace(
+                    learnability,
+                    skip_lesson_quiz=False,
+                    reasons=("document_source",),
+                    forced=request.force_learn,
+                )
             capture.metadata["learnability"] = learnability.as_metadata()
             if request.against_spec is not None:
                 from ahadiff.eval.spec_alignment import spec_source_reference
@@ -1625,6 +1658,8 @@ def run_learn_pipeline(
                         symbols=symbols,
                         before_text_by_path=before_text_by_path,
                         after_text_by_path=after_text_by_path,
+                        source_anchors=load_evidence_anchors(run_path),
+                        source_kind=capture.run_source.source_kind,
                     )
                     claims_output_path = run_path / "claims.jsonl"
                     write_verified_claims_jsonl(claims_output_path, verified, overwrite=False)
@@ -1660,7 +1695,13 @@ def run_learn_pipeline(
                         1 for item in verified if item.record.status == "verified"
                     )
                     if verified_claim_count == 0:
-                        if _can_generate_lesson_from_weak_claims(
+                        if (
+                            capture.run_source.source_kind == "document"
+                            and any(
+                                item.record.status == "weak" and item.record.source_anchors
+                                for item in verified
+                            )
+                        ) or _can_generate_lesson_from_weak_claims(
                             verified,
                             capture_metadata=capture.metadata,
                             has_symbols=bool(symbols),
@@ -1800,6 +1841,7 @@ def run_learn_pipeline(
                                 quiz_output_token_cap=quiz_output_cap,
                                 misconception_output_token_cap=misconception_output_cap,
                                 question_count=effective_question_count,
+                                active_practice=request.active_practice,
                                 on_sub_progress=lambda message: _emit(7, message),
                                 structured_output_mode=_structured_output_mode(llm_config),
                                 structured_validation_retries=_structured_validation_retries(
@@ -2027,6 +2069,9 @@ def run_learn_pipeline(
                         # digest. Workspace projections remain after the commit boundary.
                         _append_run_concepts()
                         _check_cancelled(_cancelled)
+
+                    load_evidence_anchors(run_path)
+                    load_review_context(run_path)
 
                     learn_outcome, persist_warnings = _persist_evaluated_run_sync(
                         run_path=run_path,

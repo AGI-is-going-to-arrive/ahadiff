@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getReviewQueue, submitReviewRate } from '../api/review';
 import { useReviewStore } from './review-store';
+import type { ReviewRateResponse } from '../api/types';
 
 vi.mock('../api/review', () => ({
   getReviewQueue: vi.fn(),
@@ -131,5 +132,61 @@ describe('review store', () => {
     expect(useReviewStore.getState().cards.map((card) => card.card_id)).toEqual(['card-2']);
     expect(useReviewStore.getState().loading).toBe(false);
     expect(useReviewStore.getState().error).toBeNull();
+  });
+
+  it('binds an assessment to its original card after a deferred prerequisite', async () => {
+    const first = useReviewStore.getState().cards[0]!;
+    useReviewStore.setState({ cards: [first, { ...first, card_id: 'card-2' }] });
+    useReviewStore.getState().selectCard('card-2');
+    const result = await useReviewStore.getState().rate('good', { cardId: 'card-1' });
+    expect(result).toBeNull();
+    expect(mockedSubmitReviewRate).not.toHaveBeenCalled();
+    expect(useReviewStore.getState().currentCard()?.card_id).toBe('card-2');
+  });
+
+  it('does not advance a different card when an earlier response completes', async () => {
+    const first = useReviewStore.getState().cards[0]!;
+    useReviewStore.setState({ cards: [first, { ...first, card_id: 'card-2' }] });
+    let complete: ((value: ReviewRateResponse) => void) | undefined;
+    mockedSubmitReviewRate.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const pending = useReviewStore.getState().rate('good', { cardId: 'card-1' });
+    useReviewStore.getState().selectCard('card-2');
+    complete?.({ inserted: true });
+    expect(await pending).toBeNull();
+    expect(mockedSubmitReviewRate.mock.calls[0]![0].card_id).toBe('card-1');
+    expect(useReviewStore.getState().currentIndex).toBe(1);
+    expect(useReviewStore.getState().currentCard()?.card_id).toBe('card-2');
+  });
+
+  it('keeps one idempotency key when the server commits but the response is lost', async () => {
+    mockedSubmitReviewRate.mockRejectedValueOnce(new TypeError('response lost'));
+    mockedSubmitReviewRate.mockResolvedValueOnce({ inserted: false });
+    expect(await useReviewStore.getState().rate('good')).toBeNull();
+    expect(useReviewStore.getState().currentIndex).toBe(0);
+    const firstKey = mockedSubmitReviewRate.mock.calls[0]![0].idempotency_key;
+    expect(await useReviewStore.getState().rate('good')).toEqual({ inserted: false });
+    expect(mockedSubmitReviewRate.mock.calls[1]![0].idempotency_key).toBe(firstKey);
+    expect(useReviewStore.getState().currentIndex).toBe(1);
+  });
+
+  it('cannot turn an uncertain prior submission into a different second rating', async () => {
+    mockedSubmitReviewRate.mockRejectedValueOnce(new TypeError('response lost'));
+    await useReviewStore.getState().rate('hard');
+    await useReviewStore.getState().rate('good');
+    expect(mockedSubmitReviewRate).toHaveBeenCalledTimes(1);
+    expect(useReviewStore.getState().currentIndex).toBe(0);
+  });
+
+  it('ignores a response after selecting away and back to the same card', async () => {
+    const first = useReviewStore.getState().cards[0]!;
+    useReviewStore.setState({ cards: [first, { ...first, card_id: 'card-2' }] });
+    let complete: ((value: ReviewRateResponse) => void) | undefined;
+    mockedSubmitReviewRate.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const pending = useReviewStore.getState().rate('hard');
+    useReviewStore.getState().selectCard('card-2');
+    useReviewStore.getState().selectCard('card-1');
+    complete?.({ inserted: true });
+    expect(await pending).toBeNull();
+    expect(useReviewStore.getState().currentIndex).toBe(0);
   });
 });

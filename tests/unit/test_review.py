@@ -1846,9 +1846,30 @@ def test_review_cli_optimize_happy_path(
     assert review_db_path(repo_root).is_file()
 
 
+@pytest.fixture
+def quiz_publication_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    # These tests isolate CLI argument/card wiring with minimal fake reports.
+    # Real publication and rollback are covered in test_source_card_exports.
+    calls: list[dict[str, object]] = []
+
+    def publish(**kwargs: object) -> tuple[object, list[str]]:
+        assert kwargs["event_type"] == "verify"
+        assert kwargs["force"] is True
+        assert kwargs["note_payload"] == {
+            "regenerated_artifact": "quiz",
+            "judge_status": "not_rerun_after_quiz_regeneration",
+        }
+        calls.append(kwargs)
+        return object(), []
+
+    monkeypatch.setattr(cli_module, "_persist_evaluated_run", publish)
+    return calls
+
+
 def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    quiz_publication_calls: list[dict[str, object]],
 ) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1911,6 +1932,7 @@ def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
     )
 
     assert result.exit_code == 0
+    assert len(quiz_publication_calls) == 1
     assert calls == ["quiz", "cards"]
     assert lesson_path.read_text(encoding="utf-8") == "keep this lesson\n"
     assert quiz_path.read_text(encoding="utf-8") == '{"new": true}\n'
@@ -1920,6 +1942,7 @@ def test_regenerate_only_quiz_rewrites_quiz_without_touching_lesson(
 def test_regenerate_only_quiz_uses_run_content_lang(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    quiz_publication_calls: list[dict[str, object]],
 ) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1973,12 +1996,14 @@ def test_regenerate_only_quiz_uses_run_content_lang(
     )
 
     assert result.exit_code == 0
+    assert len(quiz_publication_calls) == 1
     assert captured["output_lang"] == "zh-CN"
 
 
 def test_regenerate_only_quiz_passes_quiz_output_caps_to_generator(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    quiz_publication_calls: list[dict[str, object]],
 ) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -2037,6 +2062,7 @@ def test_regenerate_only_quiz_passes_quiz_output_caps_to_generator(
     )
 
     assert result.exit_code == 0
+    assert len(quiz_publication_calls) == 1
     assert captured["quiz_output_token_cap"] == 18_000
     assert captured["misconception_output_token_cap"] == 6_000
 
@@ -2158,6 +2184,7 @@ def test_regenerate_only_quiz_restores_previous_artifacts_when_evaluate_fails(
 def test_regenerate_only_quiz_marks_existing_run_cards_stale_when_verdict_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    quiz_publication_calls: list[dict[str, object]],
 ) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -2205,6 +2232,7 @@ def test_regenerate_only_quiz_marks_existing_run_cards_stale_when_verdict_fails(
     )
 
     assert result.exit_code == 0
+    assert len(quiz_publication_calls) == 1
     assert quiz_path.read_text(encoding="utf-8") == '{"new": true}\n'
     assert not cards_path.exists()
     with connect_review_db(review_db_path(repo_root)) as connection:

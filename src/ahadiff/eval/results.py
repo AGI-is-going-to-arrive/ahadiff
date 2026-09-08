@@ -446,6 +446,30 @@ def write_finalized_result(*, run_path: Path, event: ResultEvent, score_path: Pa
     _write_finalized_marker(run_path, event, score_path=score_path)
 
 
+def result_artifacts_are_published(run_path: Path, *, event_id: str | None = None) -> bool:
+    """Recognize a completed publication even if interrupted before returning."""
+    from ahadiff.claims.extract import read_artifact_text_no_follow
+
+    try:
+        raw_marker = json.loads(
+            read_artifact_text_no_follow(finalized_marker_path(run_path), max_bytes=16_384)
+        )
+        if not isinstance(raw_marker, dict):
+            return False
+        marker = cast("dict[str, object]", raw_marker)
+        if marker.get("run_id") != run_path.name or (
+            event_id is not None and marker.get("event_id") != event_id
+        ):
+            return False
+        count = marker.get("artifact_count")
+        checksum = marker.get("checksum")
+        if type(count) is not int or not isinstance(checksum, str):
+            return False
+        return finalized_artifact_digest(run_path) == (count, checksum)
+    except (OSError, ValueError, InputError, StorageError):
+        return False
+
+
 def publish_result_artifacts(
     *,
     run_path: Path,
@@ -462,7 +486,9 @@ def publish_result_artifacts(
     finalized_backup: Path | None = None
     score_temp = _temporary_sibling_path(score_path, suffix=".score.tmp")
     finalized_temp = _temporary_sibling_path(finalized_path, suffix=".finalized.tmp")
-    artifacts_mutated = False
+    score_existed = score_path.exists()
+    finalized_existed = finalized_path.exists()
+    artifacts_settled = False
 
     try:
         if score_path.exists():
@@ -470,35 +496,40 @@ def publish_result_artifacts(
                 raise InputError(f"refusing to overwrite existing file: {score_path}")
             score_backup = _temporary_sibling_path(score_path, suffix=".score.bak")
             score_path.replace(score_backup)
-            artifacts_mutated = True
         if finalized_path.exists():
             finalized_backup = _temporary_sibling_path(finalized_path, suffix=".finalized.bak")
             finalized_path.replace(finalized_backup)
-            artifacts_mutated = True
 
         score_temp.write_text(
             json.dumps(report.to_payload(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         score_temp.replace(score_path)
-        artifacts_mutated = True
         finalized_temp.write_text(
             _render_finalized_payload(run_path, event, score_path=score_path),
             encoding="utf-8",
         )
         finalized_temp.replace(finalized_path)
-        artifacts_mutated = True
-    except Exception:
-        if artifacts_mutated:
+        artifacts_settled = True
+    except BaseException:
+        # A signal can arrive after replace() succeeds but before Python records
+        # its return. Existing backups, rather than a mutation flag, decide undo.
+        if score_backup is not None and score_backup.exists():
             _restore_file_from_backup(target=score_path, backup_path=score_backup)
+        elif not score_existed:
+            score_path.unlink(missing_ok=True)
+        if finalized_backup is not None and finalized_backup.exists():
             _restore_file_from_backup(target=finalized_path, backup_path=finalized_backup)
+        elif not finalized_existed:
+            finalized_path.unlink(missing_ok=True)
+        artifacts_settled = True
         raise
     finally:
         score_temp.unlink(missing_ok=True)
         finalized_temp.unlink(missing_ok=True)
-        if score_backup is not None:
+        if artifacts_settled and score_backup is not None:
             score_backup.unlink(missing_ok=True)
-        if finalized_backup is not None:
+        if artifacts_settled and finalized_backup is not None:
             finalized_backup.unlink(missing_ok=True)
 
 
@@ -609,6 +640,7 @@ __all__ = [
     "load_result_events",
     "make_result_event_id",
     "publish_result_artifacts",
+    "result_artifacts_are_published",
     "RESULTS_TSV_COLUMNS",
     "ResultWriteOutcome",
     "rollback_result_event",

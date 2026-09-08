@@ -263,6 +263,8 @@ def _scrub_value(value: Any, *, _depth: int = 0) -> Any:
 
 
 def _load_run_payload(run_dir: Path) -> dict[str, Any]:
+    from ahadiff.core.card_sources import declares_source_artifacts, require_finalized_source
+
     finalized_path = run_dir / "finalized.json"
     finalized_raw = _read_json(finalized_path)
     if finalized_raw is None:
@@ -290,6 +292,32 @@ def _load_run_payload(run_dir: Path) -> dict[str, Any]:
     misconception_cards = _read_jsonl(run_dir / "quiz" / "misconception_cards.jsonl")
     claims = _read_jsonl(run_dir / "claims.jsonl")
 
+    source_payload: dict[str, Any] = {}
+    if declares_source_artifacts(run_dir, metadata):
+        from ahadiff.core.source_evidence import (
+            load_evidence_anchors,
+            load_review_context,
+            load_run_source_text,
+            text_hash,
+        )
+
+        require_finalized_source(run_dir, metadata)
+        source_text = load_run_source_text(run_dir, metadata)
+        anchors = load_evidence_anchors(run_dir, metadata)
+        review_context = load_review_context(run_dir, metadata)
+        source_payload = {
+            "source": {
+                "source_kind": metadata.get("source_kind"),
+                "artifact": "document.md"
+                if metadata.get("source_kind") == "document"
+                else "patch.diff",
+                "text": source_text,
+                "content_hash": text_hash(source_text),
+            },
+            "source_anchors": [anchor.model_dump(mode="json") for anchor in anchors],
+            "review_context": review_context.model_dump(mode="json") if review_context else None,
+        }
+
     return {
         "schema_version": 1,
         "finalized": finalized,
@@ -300,6 +328,7 @@ def _load_run_payload(run_dir: Path) -> dict[str, Any]:
         "cards": cards,
         "misconception_cards": misconception_cards,
         "claims": claims,
+        **source_payload,
     }
 
 
@@ -333,7 +362,14 @@ def _extract_concept_terms(payload: dict[str, Any]) -> set[str]:
 
 
 def _filter_concepts(state_dir: Path, run_id: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    from ahadiff.wiki.concepts import is_run_local_concept_source
+
     concepts_path = state_dir / "concepts.jsonl"
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict) and is_run_local_concept_source(
+        str(cast("dict[str, Any]", metadata).get("source_kind", ""))
+    ):
+        concepts_path = state_dir / "runs" / run_id / "concepts_local.jsonl"
     leaf_stat = _safe_stat_artifact(concepts_path)
     if leaf_stat is None:
         return []
@@ -440,6 +476,12 @@ def export_preview(
     if not isinstance(scrubbed_payload, dict):
         raise InputError("export payload must be a JSON object after scrubbing")
     scrubbed_run_payload = cast("dict[str, Any]", scrubbed_payload)
+    for name in ("source", "source_anchors", "review_context"):
+        if name in payload and payload[name] != scrubbed_run_payload.get(name):
+            raise InputError(
+                "export filtering would change source evidence; regenerate the run with "
+                "the stricter redaction policy before exporting"
+            )
 
     concept_entries = _filter_concepts(state_dir, run_id, payload)
     scrubbed_concepts = [_scrub_value(entry) for entry in concept_entries]

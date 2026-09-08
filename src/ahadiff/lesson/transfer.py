@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ahadiff.review.database import connect_review_db
+from ahadiff.core.sqlite_util import safe_sqlite_connect
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,7 +41,9 @@ def validate_learning_transfer(
         return _empty_result()
 
     try:
-        with connect_review_db(db_path) as conn:
+        with closing(
+            safe_sqlite_connect(db_path, read_only=True, row_factory=sqlite3.Row, defensive=True)
+        ) as conn:
             concept_rows = conn.execute(
                 """
                 SELECT c.concept, COUNT(rl.id) AS cnt, AVG(rl.rating) AS avg_r

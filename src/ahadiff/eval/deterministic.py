@@ -60,13 +60,20 @@ def build_deterministic_scores(
     lesson_artifacts: Mapping[str, str],
     quiz_entries: Sequence[Mapping[str, Any]],
     run_path: Path | None = None,
+    source_anchors: Sequence[Any] = (),
+    auxiliary_text: str = "",
 ) -> DeterministicScoreResult:
     notes: list[str] = []
     learnability_score = _metadata_learnability_score(metadata, notes)
-    quiz_score, quiz_reason = _quiz_transfer_score(quiz_entries, claims=claims, line_maps=line_maps)
+    quiz_score, quiz_reason = _quiz_transfer_score(
+        quiz_entries, claims=claims, line_maps=line_maps, source_anchors=source_anchors
+    )
     conciseness_score, conciseness_reason = _conciseness_score(lesson_artifacts)
     spec_score, spec_reason, spec_applicable = _spec_alignment_score(metadata, run_path=run_path)
     coverage_score, coverage_reason = _diff_coverage_score(claims, line_maps)
+    document_source = metadata.get("source_kind") == "document"
+    if document_source:
+        coverage_score, coverage_reason = 0.0, "N/A: independent document has no diff"
     accuracy_score, accuracy_reason = _claim_weighted_score(
         claims,
         weights={
@@ -95,7 +102,7 @@ def build_deterministic_scores(
         hunk_bonus=_source_hunk_bonus(claims),
     )
     safety_score, secret_leak_detected, injection_unresolved = _safety_privacy_score(
-        patch_text,
+        patch_text + ("\n" + auxiliary_text if auxiliary_text else ""),
         rubric.dimension("safety_privacy").max_score,
     )
     if not lesson_artifacts:
@@ -119,14 +126,18 @@ def build_deterministic_scores(
         DimensionScore(
             name="diff_coverage",
             score=coverage_score,
-            max_score=rubric.dimension("diff_coverage").max_score,
+            max_score=0.0 if document_source else rubric.dimension("diff_coverage").max_score,
             reason=coverage_reason,
         ),
         DimensionScore(
             name="learnability",
-            score=learnability_score * rubric.dimension("learnability").max_score,
-            max_score=rubric.dimension("learnability").max_score,
-            reason="capture metadata learnability score",
+            score=0.0
+            if document_source
+            else learnability_score * rubric.dimension("learnability").max_score,
+            max_score=0.0 if document_source else rubric.dimension("learnability").max_score,
+            reason="N/A: document has no change novelty"
+            if document_source
+            else "capture metadata learnability score",
         ),
         DimensionScore(
             name="quiz_transfer",
@@ -150,7 +161,7 @@ def build_deterministic_scores(
             name="safety_privacy",
             score=safety_score,
             max_score=rubric.dimension("safety_privacy").max_score,
-            reason="persisted patch passes secret and injection re-checks",
+            reason="persisted source and auxiliary context pass secret and injection re-checks",
         ),
     )
     return DeterministicScoreResult(
@@ -181,12 +192,15 @@ def _quiz_transfer_score(
     *,
     claims: Sequence[ClaimRecord],
     line_maps: Sequence[FileLineMap],
+    source_anchors: Sequence[Any] = (),
 ) -> tuple[float, str]:
     if not quiz_entries:
         return 0.0, "quiz.jsonl is missing"
     count_ratio = min(len(quiz_entries) / 3.0, 1.0)
     claim_ratio = _quiz_claim_link_ratio(quiz_entries, claims)
-    evidence_ratio = _quiz_evidence_link_ratio(quiz_entries, line_maps)
+    evidence_ratio = _quiz_evidence_link_ratio(
+        quiz_entries, line_maps, source_anchors=source_anchors
+    )
     concept_ratio = _field_presence_ratio(quiz_entries, ("concepts", "concept_ids"))
     choice_shape_ratio = _quiz_choice_shape_ratio(quiz_entries)
     choice_answer_ratio = _quiz_choice_answer_ratio(quiz_entries)
@@ -199,7 +213,7 @@ def _quiz_transfer_score(
         + 0.10 * choice_answer_ratio
     )
     return round(10.0 * composite_ratio, 2), (
-        "quiz artifact count, validated anchors, and multiple-choice quality "
+        "quiz artifact count, validated anchors, and answer format quality "
         f"(choice_shape={choice_shape_ratio:.2f}, choice_answer={choice_answer_ratio:.2f})"
     )
 
@@ -210,7 +224,7 @@ def _quiz_claim_link_ratio(
 ) -> float:
     if not quiz_entries:
         return 0.0
-    known_claim_ids = {claim.claim_id for claim in claims}
+    known_claim_ids = {claim.claim_id for claim in claims if claim.status != "rejected"}
     if not known_claim_ids:
         return 0.0
     valid_entries = 0
@@ -226,7 +240,7 @@ def _quiz_choice_shape_ratio(quiz_entries: Sequence[Mapping[str, Any]]) -> float
         return 0.0
     valid_entries = 0
     for entry in quiz_entries:
-        if _valid_quiz_choices(entry) is not None:
+        if _valid_open_exercise(entry) or _valid_quiz_choices(entry) is not None:
             valid_entries += 1
     return valid_entries / len(quiz_entries)
 
@@ -236,6 +250,9 @@ def _quiz_choice_answer_ratio(quiz_entries: Sequence[Mapping[str, Any]]) -> floa
         return 0.0
     aligned_entries = 0
     for entry in quiz_entries:
+        if _valid_open_exercise(entry):
+            aligned_entries += 1
+            continue
         choices = _valid_quiz_choices(entry)
         if choices is None:
             continue
@@ -298,17 +315,44 @@ def _normalized_quiz_text(value: object) -> str | None:
 def _quiz_evidence_link_ratio(
     quiz_entries: Sequence[Mapping[str, Any]],
     line_maps: Sequence[FileLineMap],
+    *,
+    source_anchors: Sequence[Any] = (),
 ) -> float:
     if not quiz_entries:
         return 0.0
     valid_lines = _line_lookup(line_maps)
-    if not valid_lines:
+    if not valid_lines and not source_anchors:
         return 0.0
     valid_entries = 0
     for entry in quiz_entries:
-        if _entry_has_valid_evidence(entry, valid_lines):
+        valid_anchor = False
+        raw = entry.get("source_anchors")
+        if isinstance(raw, list) and raw:
+            from ahadiff.contracts.source_anchor import SourceAnchor
+            from ahadiff.core.source_evidence import validate_source_anchor_references
+
+            try:
+                parsed = [SourceAnchor.model_validate(item) for item in cast("list[object]", raw)]
+                valid_anchor = validate_source_anchor_references(parsed, source_anchors)
+            except (ValueError, TypeError):
+                pass
+        if valid_anchor or _entry_has_valid_evidence(entry, valid_lines):
             valid_entries += 1
     return valid_entries / len(quiz_entries)
+
+
+def _valid_open_exercise(entry: Mapping[str, Any]) -> bool:
+    if (
+        entry.get("exercise_kind") not in {"prediction", "completion", "error_reason"}
+        or entry.get("quiz_kind") != "transfer"
+        or entry.get("answer_mode") != "open"
+        or entry.get("choices") is not None
+    ):
+        return False
+    return all(
+        isinstance(entry.get(key), str) and str(entry[key]).strip()
+        for key in ("question", "expected_answer")
+    )
 
 
 def _entry_has_valid_evidence(
@@ -506,7 +550,9 @@ def _claim_weighted_score(
 def _source_hunk_bonus(claims: Sequence[ClaimRecord]) -> float:
     if not claims:
         return 1.0
-    total_source_hunks = sum(len(claim.source_hunks) for claim in claims)
+    total_source_hunks = sum(
+        len(claim.source_hunks) + len(claim.source_anchors) for claim in claims
+    )
     return min(1.0, 0.8 + min(total_source_hunks / max(len(claims), 1), 2.0) * 0.1)
 
 

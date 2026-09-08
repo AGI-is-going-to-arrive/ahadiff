@@ -6,14 +6,14 @@ import { buildFormatTexts, formatBytes } from '../utils/format';
 export const MAX_LEARN_FILE_BYTES = 256 * 1024;
 
 interface LearnFilePickerProps {
-  side: 'before' | 'after';
+  side: 'before' | 'after' | 'document' | 'snapshot';
   value: LearnFileInput | null;
   disabled?: boolean;
   onChange: (value: LearnFileInput | null) => void;
   onPendingChange: (pending: boolean) => void;
 }
 
-function isPortableFileName(name: string): boolean {
+export function isPortableFileName(name: string): boolean {
   return name.length > 0
     && Array.from(name).length <= 255
     && name === name.trim()
@@ -36,7 +36,9 @@ export default function LearnFilePicker({
   const readerRef = useRef<FileReader | null>(null);
   const generationRef = useRef(0);
   const id = `learn-file-${side}`;
-  const sideLabel = t(side === 'before' ? 'LearnDialog.file_before' : 'LearnDialog.file_after');
+  const sideLabel = t(side === 'before' ? 'LearnDialog.file_before'
+    : side === 'after' ? 'LearnDialog.file_after'
+      : side === 'document' ? 'LearnDialog.file_document' : 'Snapshots.file');
   const chooseLabel = t(value || reading ? 'LearnDialog.file_reselect' : 'LearnDialog.file_choose');
 
   useEffect(() => () => {
@@ -64,6 +66,10 @@ export default function LearnFilePicker({
     setErrorKey(null);
     if (!isPortableFileName(file.name)) {
       setErrorKey('LearnDialog.file_error_name');
+      return;
+    }
+    if (side === 'document' && !/\.(md|markdown)$/i.test(file.name)) {
+      setErrorKey('LearnDialog.document_error_format');
       return;
     }
     if (file.size > MAX_LEARN_FILE_BYTES) {
@@ -148,6 +154,7 @@ export default function LearnFilePicker({
         id={id}
         className="learn-dialog__file-input"
         type="file"
+        accept={side === 'document' ? '.md,.markdown,text/markdown' : undefined}
         hidden
         disabled={disabled}
         aria-describedby={`${id}-hint${errorKey ? ` ${id}-error` : ''}`}

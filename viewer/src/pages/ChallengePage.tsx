@@ -389,6 +389,7 @@ export default function ChallengePage() {
         </header>
 
         <ChallengeStepper current={stage === 'idle' ? (showResults ? 'adapt' : 'build') : stage} />
+        <p className="challenge-panel__hint">{t('Challenge.practice_boundary')}</p>
 
         <div className="challenge-page__sr-only" role="status" aria-live="polite">
           {statusKey ? t(statusKey) : ''}
@@ -512,6 +513,7 @@ export default function ChallengePage() {
             <h2 className="challenge-panel__heading">
               {t('Challenge.feedback_results_header')}
             </h2>
+            <p className="challenge-panel__hint">{t('Challenge.feedback_boundary')}</p>
 
             {perfectCoverage ? (
               <p className="challenge-panel__hint">{t('Challenge.perfect_coverage')}</p>

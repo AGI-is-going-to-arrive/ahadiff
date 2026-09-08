@@ -109,6 +109,7 @@ const DIFF_LINE_HEIGHT_PX = 19.2;
 const DIFF_FADE_HEIGHT_PX = 64;
 
 interface LiveHeroDemo {
+  document?: boolean;
   diff: string | null;
   lesson: string | null;
   runLabel: string;
@@ -181,6 +182,7 @@ export default function LandingPage() {
   const latestRun = useMemo(() => latestRunOf(runs), [runs]);
   const activeRunId = completedLearnRunId ?? latestRun?.run_id ?? null;
   const activeRunSourceRef = runs.find((run) => run.run_id === activeRunId)?.source_ref ?? null;
+  const activeRunSourceKind = runs.find((run) => run.run_id === activeRunId)?.source_kind;
   const liveLessonMissing = liveDemo !== null && liveDemo.lesson === null;
   const latestRunPath = activeRunId
     ? `/run/${encodeURIComponent(activeRunId)}${liveLessonMissing ? '' : '/lesson'}`
@@ -288,17 +290,23 @@ export default function LandingPage() {
     const runLabel = activeRunSourceRef || activeRunId.slice(0, 8);
     setLiveDemo({ diff: null, lesson: null, runLabel });
     Promise.allSettled([
-      getRunArtifact(activeRunId, 'diff', { signal: controller.signal }),
+      (activeRunSourceKind ? Promise.resolve(activeRunSourceKind)
+        : useRunsStore.getState().loadDetail(activeRunId, { signal: controller.signal }).then((run) => run.source_kind))
+        .then(async (kind) => ({
+          envelope: await getRunArtifact(activeRunId, kind === 'document' ? 'document' : 'diff', { signal: controller.signal }),
+          document: kind === 'document',
+        })),
       getFirstAvailableLesson(activeRunId, { signal: controller.signal }),
     ]).then(([diffResult, lessonResult]) => {
       if (controller.signal.aborted) return;
       const diff = diffResult.status === 'fulfilled'
-        ? diffResult.value.content.trim() || null
+        ? diffResult.value.envelope.content.trim() || null
         : null;
       const lesson = lessonResult.status === 'fulfilled'
         ? lessonResult.value?.content.trim() || null
         : null;
       setLiveDemo({
+        document: diffResult.status === 'fulfilled' && diffResult.value.document,
         diff,
         lesson,
         runLabel,
@@ -310,7 +318,7 @@ export default function LandingPage() {
     });
 
     return () => controller.abort();
-  }, [activeRunId, activeRunSourceRef]);
+  }, [activeRunId, activeRunSourceRef, activeRunSourceKind]);
 
   const trustCards: TrustCardView[] = useMemo(() => {
     const manifest = transparency?.benchmark.manifest ?? null;
@@ -456,7 +464,7 @@ export default function LandingPage() {
                 onClick={() => setActiveTab('raw')}
                 onKeyDown={e => handleDemoTabKeyDown(e, 0)}
               >
-                {t('Landing.tab_raw')}
+                {t(liveDemo?.document ? 'Evidence.document_title' : 'Landing.tab_raw')}
               </button>
               <button
                 type="button"
@@ -490,7 +498,7 @@ export default function LandingPage() {
                   </pre>
                 ) : (
                   <div className="hero-demo__artifact-empty" role="status">
-                    {t('Landing.hero_demo_diff_unavailable')}
+                    {t(liveDemo?.document ? 'Evidence.document_unavailable' : 'Landing.hero_demo_diff_unavailable')}
                   </div>
                 )
               ) : (
@@ -566,7 +574,7 @@ export default function LandingPage() {
         <div className="sub">{t('Landing.before_after_sub')}</div>
         <div className="ba ba-grid">
           <div className="col">
-            <h3 className="ba-col__header">{t('Landing.before_header')}</h3>
+            <h3 className="ba-col__header">{t(liveDemo?.document ? 'Evidence.document_title' : 'Landing.before_header')}</h3>
             <div className="ba-col__body">
               {demoDiff ? (
                 <>
@@ -602,7 +610,7 @@ export default function LandingPage() {
                 </>
               ) : (
                 <div className="hero-demo__artifact-empty" role="status">
-                  {t('Landing.hero_demo_diff_unavailable')}
+                  {t(liveDemo?.document ? 'Evidence.document_unavailable' : 'Landing.hero_demo_diff_unavailable')}
                 </div>
               )}
             </div>

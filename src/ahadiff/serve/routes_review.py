@@ -4,6 +4,7 @@ import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from anyio import to_thread
+from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import (
@@ -29,6 +30,7 @@ from ahadiff.review.database import (
 from .auth import require_write_token, serve_state
 from .config_runtime import configured_desired_retention
 from .lock import serve_repo_write_lock
+from .routes_quiz import load_presentable_questions
 from .routes_runs import finalized_marker_is_valid
 
 if TYPE_CHECKING:
@@ -36,6 +38,7 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
 
+    from ahadiff.quiz.schemas import QuizQuestion
     from ahadiff.review.schemas import DueReviewCard, ReviewUpdate
 
     from .state import ServeState
@@ -54,13 +57,52 @@ _REVIEW_QUEUE_MAX_SCAN = 1000
 async def get_review_queue(request: Request) -> JSONResponse:
     state = serve_state(request)
     cards = await to_thread.run_sync(_review_queue_sync, state)
-    return JSONResponse(
-        {
-            "cards": [
-                DueReviewCardResponse(**card.__dict__).model_dump(mode="json") for card in cards
-            ]
-        }
-    )
+    payload = await to_thread.run_sync(_review_queue_projection, state, cards)
+    return JSONResponse({"cards": payload})
+
+
+def _review_queue_projection(
+    state: ServeState, cards: tuple[DueReviewCard, ...]
+) -> list[dict[str, Any]]:
+    """Exercise metadata lives in the immutable quiz artifact, not new DB columns."""
+    by_run: dict[str, dict[str, QuizQuestion]] = {}
+    projected: list[dict[str, Any]] = []
+    for card in cards:
+        if card.run_id not in by_run:
+            try:
+                by_run[card.run_id] = {
+                    q.review_card_id: q
+                    for q in load_presentable_questions(state, card.run_id)
+                    if q.review_card_id
+                }
+            except (InputError, StorageError, OSError, ValueError, HTTPException):
+                by_run[card.run_id] = {}
+        question = by_run[card.run_id].get(card.card_id)
+        if card.card_id.startswith("card_exercise_") and (
+            question is None or question.exercise_kind is None
+        ):
+            # This opaque ID survives a lost/corrupt artifact without a DB migration.
+            # Never fall back to the DB's reference answer for a new exercise.
+            continue
+        values = dict(card.__dict__)
+        if question is not None:
+            values["source_anchors"] = question.source_anchors
+            if question.exercise_kind is not None:
+                values.update(
+                    question_id=question.question_id,
+                    exercise_kind=question.exercise_kind,
+                    question=question.question,
+                    answer=None,
+                    choices=None,
+                    answer_mode="open",
+                    source_anchors=[],
+                    concept="",
+                    display_path="",
+                    symbol=None,
+                    source_ref=None,
+                )
+        projected.append(DueReviewCardResponse(**values).model_dump(mode="json"))
+    return projected
 
 
 async def post_review_rate(request: Request) -> JSONResponse:

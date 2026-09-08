@@ -1043,3 +1043,24 @@ button.diff-split-cell {
     display: none;
   }
 }
+.document-view__header,
+.document-view__navigation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.document-view__note { padding: var(--sp-4); color: var(--muted-strong); }
+.document-view__text { overflow: auto; margin: 0; padding: var(--sp-3); font-size: var(--fs-sm); line-height: var(--lh-relaxed); }
+.document-view__line { white-space: pre-wrap; overflow-wrap: anywhere; }
+.document-view__number { display: inline-block; width: 5ch; margin-inline-end: var(--sp-3); color: var(--muted-strong); user-select: none; }
+.document-view__line--selected { background: var(--subtle); box-shadow: inset 3px 0 var(--accent-ink); }
+.diff-page__review-context { padding: var(--sp-4); border: 1px solid var(--hair); border-radius: var(--r-lg); margin-bottom: var(--sp-4); }
+.diff-page__review-context pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; }
+
+@media (forced-colors: active) {
+  .document-view__line--selected { outline: 1px solid Highlight; }
+  .diff-page__review-context { border-color: CanvasText; }
+}

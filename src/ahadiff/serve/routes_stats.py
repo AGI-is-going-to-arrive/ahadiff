@@ -663,6 +663,7 @@ def _build_learning_effectiveness(state: ServeState) -> dict[str, Any]:
         TransferConceptDTO,
     )
     from ahadiff.lesson.helpfulness import aggregate_helpfulness
+    from ahadiff.lesson.practice_metrics import aggregate_active_practice
     from ahadiff.lesson.transfer import validate_learning_transfer
 
     helpfulness_data = aggregate_helpfulness(state.review_db_path)
@@ -698,6 +699,7 @@ def _build_learning_effectiveness(state: ServeState) -> dict[str, Any]:
         transfer_rate=transfer_data.transfer_rate,
         helpfulness=helpfulness_dtos,
         transfer_metrics=transfer_dtos,
+        active_practice=aggregate_active_practice(state.review_db_path),
     )
     return resp.model_dump(mode="json")
 

@@ -16,7 +16,11 @@ import portalocker
 
 from ahadiff.contracts import ErrorCode
 from ahadiff.core.errors import InputError, StorageError
-from ahadiff.core.paths import find_repo_root
+from ahadiff.core.paths import (
+    ensure_state_parent_dir,
+    find_repo_root,
+    validate_state_path_no_symlinks,
+)
 
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 
@@ -248,9 +252,25 @@ def _lock_metadata_from_text(text: str) -> LockMetadata:
     return LockMetadata(pid=pid, start_time_iso=started, command=command)
 
 
+def _open_repo_lock_fd(lock_path: Path, flags: int) -> int:
+    if os.open not in os.supports_dir_fd:
+        return os.open(str(lock_path), flags, 0o644)
+    absolute = lock_path.absolute()
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    parent_fd = os.open(absolute.anchor, directory_flags)
+    try:
+        for part in absolute.parts[1:-1]:
+            child_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = child_fd
+        return os.open(absolute.name, flags, 0o644, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
+
+
 @contextmanager
 def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_state_parent_dir(lock_path)
     try:
         path_stat = lock_path.lstat()
     except FileNotFoundError:
@@ -260,9 +280,12 @@ def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
             raise InputError("repo write lock path must not be a symlink")
         if _has_windows_reparse_point(path_stat):
             raise InputError("repo write lock path must not be a Windows reparse point")
+        if path_stat.st_nlink != 1:
+            raise InputError("repo write lock path must not be a hardlink")
+    validate_state_path_no_symlinks(lock_path, allow_missing_leaf=True)
     flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
     try:
-        fd = os.open(str(lock_path), flags, 0o644)
+        fd = _open_repo_lock_fd(lock_path, flags)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
             raise InputError("repo write lock path must not be a symlink") from exc
@@ -270,12 +293,15 @@ def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
     try:
         file_stat = os.fstat(fd)
         path_stat = lock_path.lstat()
+        validate_state_path_no_symlinks(lock_path, allow_missing_leaf=False)
         if stat.S_ISLNK(path_stat.st_mode):
             raise InputError("repo write lock path must not be a symlink")
         if _has_windows_reparse_point(file_stat) or _has_windows_reparse_point(path_stat):
             raise InputError("repo write lock path must not be a Windows reparse point")
         if not stat.S_ISREG(file_stat.st_mode) or not stat.S_ISREG(path_stat.st_mode):
             raise StorageError("repo write lock path must be a regular file")
+        if file_stat.st_nlink != 1 or path_stat.st_nlink != 1:
+            raise InputError("repo write lock path must not be a hardlink")
         if (file_stat.st_dev, file_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
             raise InputError("repo write lock path changed during acquisition")
     except Exception:
@@ -292,6 +318,15 @@ def repo_write_lock(lock_path: Path, *, command: str) -> Iterator[Path]:
                 code=ErrorCode.LOCK_CONFLICT,
             ) from exc
 
+        validate_state_path_no_symlinks(lock_path, allow_missing_leaf=False)
+        current = lock_path.lstat()
+        opened = os.fstat(handle.fileno())
+        if (
+            current.st_nlink != 1
+            or opened.st_nlink != 1
+            or (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise InputError("repo write lock path changed during acquisition")
         handle.seek(0)
         handle.truncate(0)
         payload = "\n".join(

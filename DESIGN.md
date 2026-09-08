@@ -2,8 +2,8 @@
 
 ## Goals
 
-AhaDiff turns a bounded, reproducible change into evidence-linked lessons,
-questions, and spaced-repetition material. Local artifacts and verifiable source
+AhaDiff turns a bounded, reproducible change or a single Markdown document into
+evidence-linked lessons, questions, and spaced-repetition material. Local artifacts and verifiable source
 anchors are the authority. Generated explanations and optional LLM judgments do
 not replace deterministic verification.
 
@@ -37,10 +37,12 @@ Compact graph summaries retain content-based sizing inside flex toolbars.
 
 ## Learning source and onboarding decisions
 
-Welcome, Onboarding, and Guide expose the same three choices: Git changes,
-Two files, and Paste a diff. All choices open the shared Learn Mode dialog and
-produce the existing run artifacts consumed by Lesson, Diff, Quiz, Review,
-Concepts, and Ratchet. AI tool guidance remains an optional Git workflow.
+Welcome, Onboarding, and Guide expose the same five choices: Git changes,
+Two files, Paste a diff, Saved snapshot, and One Markdown document. All choices
+open the shared Learn Mode dialog. Snapshot comparison retains `file_compare`
+semantics; one Markdown file has a distinct `document` source and a document
+evidence view. Lessons, quizzes, review, concepts, and quality history consume
+the source kind instead of assuming every run has a patch. AI tool guidance remains an optional Git workflow.
 
 An ordinary directory starts with `ahadiff serve`, which creates local state
 as needed, followed by provider setup in Settings. The CLI `init` and `doctor`
@@ -60,9 +62,123 @@ from clipped capture. Source edits invalidate the prior preview. A preview
 failure does not submit a learn run. Starting learning uses the configured
 provider/privacy policy and persists the usual sanitized run artifacts.
 
-File and pasted-patch entry points enable an explicit, reversible force-learn
-choice for small exercises. This bypasses the learnability skip only; evidence
+File, pasted-patch, snapshot, and document entry points enable an explicit,
+reversible force-learn choice for small exercises. This bypasses the learnability skip only; evidence
 verification, safety gates, and deterministic verdict rules remain in force.
+
+## Explicit snapshots, document evidence, and review context
+
+`core/snapshots.py` persists immutable, explicitly selected baselines under
+`.ahadiff/snapshots/`. It stores only the sanitized UTF-8 / NFC / LF learning
+representation. Snapshot names and file basenames are portable; one file is
+limited to 256 KiB, the store to 100 records and 16 MiB of record bytes.
+No watcher, chat capture, source overwrite, or automatic baseline replacement
+is part of this feature. Snapshot recovery restores a comparison reference,
+not a complete original-file backup.
+
+The version-1 record binds an ID, name, filename, source, creation time, size,
+and content hash. Learn binds `snapshot_id` to `content_hash`; deletion binds
+the selected record to `record_hash`. A deleted snapshot leaves existing runs
+intact. A list may expose a corrupt/unsupported record as unavailable, and an
+unsafe record without a readable record hash cannot be deleted through that
+interface. Read/write/delete use bounded, no-follow, regular-file, hardlink,
+reparse, lock, and atomic-write protections. Browser writes use the existing
+same-origin token boundary. Restarting the app never silently replaces a
+baseline or migrates an unknown snapshot version.
+
+`core/source_evidence.py` builds format anchors from persisted safe text.
+`SourceAnchor` includes source kind, format, side, file identity, locator,
+line range, exact-quote hash, and a bounded quote. Markdown uses headings and
+paragraphs; Notebook uses cell source; JSON/TOML/YAML use key paths. Locator
+identity includes content and side, so moving or renaming different text does
+not make it the same evidence. Unsupported or ambiguous structure retains an
+explicit weak line fallback. The format index is capped at 4,096 anchors:
+diff truncation remains explicit with hunk evidence available, while document
+index overflow is rejected instead of accepting a partial denominator. A locator
+does not turn a semantic interpretation
+or a runtime-effect claim into a verified source fact.
+
+PyYAML moved from the existing development dependency set into runtime at the
+same locked version. Packaged installations need the same YAML key-location
+capability as a checkout. YAML parsing uses bounded safe node composition;
+custom object construction, executing tags, and unbounded alias/depth expansion
+are outside the contract. Missing or unsupported parsing remains a visible
+line-evidence fallback, rather than fabricated key-level certainty.
+
+A standalone input accepts exactly one local `.md` or `.markdown` file, at most
+256 KiB, and produces `document.md` rather than an empty-file-to-text diff.
+Source identity binds the sanitized document hash. The document proves quoted
+text and location; its assertions about the outside world still need independent
+evidence. Document runs do not opt into diff specification alignment. Their
+Diff Coverage and change-novelty Learnability dimensions are N/A with zero
+maximums, excluded from the overall score. A separate document-anchor coverage
+gate uses validated references, without fabricating hunk coverage. PDF,
+remote page fetching, and arbitrary resource ingestion are outside this pilot.
+
+Optional review context is at most 8 KiB of UTF-8 untrusted text. Redaction and
+injection filtering run before generation. `review_context.json` is separately
+marked `auxiliary_untrusted`; metadata records its use and content hash.
+It cannot supply file-line evidence, displace counterevidence, or promote claim
+states. Cache identity and exported provenance retain whether it was used.
+Browser draft bodies remain outside observable pending/retry summaries and
+persistent browser state; closing or changing a source aborts its preview.
+
+New source-aware runs declare source evidence and bind their persisted source,
+anchor index, and optional review context to finalization integrity. Source and
+artifact digests, locator identity, quote, side, and range are revalidated at
+read boundaries. A declared artifact that is missing, malformed, unsupported,
+or mismatched fails closed. Old runs without the new declaration retain the
+existing hunk contract; they are neither retroactively rewritten nor silently
+promoted to format evidence. CLI/API/WebUI, lesson/quiz/review, export, and MCP
+must preserve source kind and keep auxiliary notes separate from proof.
+The existing `finalized.json` checksum scheme covers the artifacts; no signed
+trust root or new finalization version is introduced. These checks detect
+missing or inconsistent local artifacts, not a local owner rewriting the entire
+checksum chain. No real user database migration or automatic rewrite of
+historic run content is part of this work. Explicit quiz regeneration is the
+selected-run mutation described below.
+
+## Active transfer practice
+
+The existing guided/recall/transfer taxonomy and SRS own practice state.
+New learn requests default `active_practice` to false, retaining the existing
+mixed allocation.
+The explicit Learn Mode option, `learn --active-practice`, and
+`regenerate RUN_ID --only quiz --active-practice` request open transfer questions
+for every generated item. At three or more questions, prediction, completion,
+and error-reason forms must all be represented. Producer validation and bounded
+retry enforce the requested mode; a mixed response is not accepted as active
+practice. CLI/API/preview submission share the flag. It is non-sensitive and
+may remain in a pending summary, while source changes and dialog closure reset
+the local choice. An absent estimate echo remains compatible with older API
+responses. Regeneration intentionally replaces the selected run's quiz/cards,
+recomputes the deterministic score, and reseals artifact checksums. Omitted
+practice flags preserve the recorded run mode; `--mixed-practice` overrides it
+back to mixed. Stale Judge results are invalidated instead of being reused or
+automatically rerun.
+Transfer exercises add prediction, completion, and error-reason variants,
+without executing arbitrary code. Public question responses omit reference
+answers, correctness flags, explanation, and evidence until an explicit attempt
+is acknowledged. Related answer-bearing content cannot leak through another
+question's sidebar or a hidden front-end payload.
+
+Multiple-choice equality is mechanically checkable. Open exercises use a
+reference comparison and bounded semantic self-assessment, not exact-text
+matching as proof of correctness. WebUI free-form attempts stay in page memory;
+only assessment, error category, and timing metadata enter practice signals.
+SRS reuses the existing review queue and ratings rather than introducing a
+second scheduling database.
+
+A repeated same-question attempt counts as delayed recall only after at least
+24 hours. A first exercise attempt counts as an unseen variant only when the
+question explicitly represents a new scenario. Challenge lets the learner see
+and rehearse the original solution, so its patch match/coverage feedback does
+not establish unseen-variant independence. Score and advisory Judge remain
+artifact/evidence-quality measures. Practice measurements require their own
+sample counts and denominators. Dashboard separates initial, delayed-recall,
+and unseen-variant self-reports and error categories. Empty denominators remain
+null/unmeasured, and the historical SRS rating-improvement ratio is not relabeled
+as transfer success. Absent samples do not establish learning gain.
 
 ## Model and reasoning decisions
 
@@ -149,9 +265,11 @@ JavaScript transfer sizes without enforcing a fixed byte ceiling.
   guidance catalogue, and repaired watcher, Windows file/database, and layered
   configuration handling.
 - 2026-09-08: added shared source entry points, local file selection and safe
-  diff preview, and synchronized beginner guidance around ordinary workspaces.
-  These changes are pending publication; the source version remains 1.3.8.
+  diff preview, explicit persistent snapshots, active transfer practice, format
+  evidence anchors, auxiliary review context, and independent Markdown learning.
+  Beginner guidance covers ordinary workspaces and both viewer languages. These
+  changes are pending publication; the source version remains 1.3.8.
 
-Broader snapshot or standalone-document learning remains a proposal, not an
-implemented contract. Those inputs need their own reproducible evidence anchors
-before being described as verified learning.
+The current source acceptance matrix is still being completed. Native Windows,
+Linux, browser-matrix, packaging, and real-model execution claims require their
+own current results; historical v1.3.8 checks do not validate these additions.

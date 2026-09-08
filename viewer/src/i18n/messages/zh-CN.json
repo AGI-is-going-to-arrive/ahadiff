@@ -62,7 +62,9 @@
     "stage_tour": "浏览",
     "title": "挑战模式",
     "tour_header": "学习标准 diff",
-    "tour_ready": "我准备好了"
+    "tour_ready": "我准备好了",
+    "practice_boundary": "Challenge 用于复现你已看过的原解。反馈比较补丁文本与证据覆盖，不执行代码，也不衡量未见变式的独立完成率。",
+    "feedback_boundary": "文本匹配可由程序核对。不同解法是否表达相同概念，需要语义判断。Score 和 Judge 评价学习产物，不代表你的学习增益。"
   },
   "Claim": {
     "contradicted": "被反驳",
@@ -236,8 +238,8 @@
     "weakest_dim_hint": "该运行中评分最低的评估维度",
     "weakest_dimensions_title": "薄弱维度",
     "last_run_at": "上次运行：{time}",
-    "learning_effectiveness_title": "学习效果",
-    "learning_transfer_rate": "迁移率",
+    "learning_effectiveness_title": "练习与复习记录",
+    "learning_transfer_rate": "SRS 自评分改善占比",
     "concepts_improving": "进步中的概念",
     "concepts_stable": "稳定概念",
     "concepts_declining": "退步中的概念",
@@ -267,7 +269,20 @@
     "filter_empty_with_source_has_more": "已加载运行中没有匹配 {verdict} + {source} 的结果。可加载更多旧运行继续检查。",
     "weak_concepts_mastery_label": "{concept} 的掌握度",
     "weak_concepts_title": "薄弱概念",
-    "weak_concepts_view_all": "查看全部 →"
+    "weak_concepts_view_all": "查看全部 →",
+    "source_document": "文档",
+    "learning_srs_boundary": "此 SRS 趋势表示已复习概念中自评分改善的占比，不代表独立迁移能力或学习增益。",
+    "practice_title": "主动练习：自评独立完成情况",
+    "practice_initial": "首次练习",
+    "practice_delayed_recall": "延迟回忆（至少 24 小时）",
+    "practice_unseen_variant": "新变式的首次尝试",
+    "practice_unmeasured": "未测量",
+    "practice_attempts": "已记录 {count} 次尝试",
+    "practice_boundary": "这些比例汇总你对照揭示后的参考答案与证据所做的语义自评，属于自报告，不是代码执行测试。Score 与 Judge 另行评价产物质量。",
+    "practice_sampling": "首次练习与新变式仅计入每题第一份已记录自评。延迟回忆要求存在至少 24 小时前的同题尝试记录。新变式标签说明生成题目的场景；未看过该题仍属于自报告。",
+    "practice_errors": "这些尝试中报告的困难类型",
+    "practice_error_none": "未报告困难",
+    "practice_unavailable": "当前服务未提供可用的练习统计，不据此推算完成率。"
   },
   "Diff": {
     "claims_unavailable_body": "差异仍可查看，但本次运行的声明锚点未能从后端加载。",
@@ -563,7 +578,8 @@
     "toc": {
       "empty": "暂无章节",
       "title": "大纲"
-    }
+    },
+    "source_file_compare": "文件对比"
   },
   "LearnDialog": {
     "title": "开始学习",
@@ -687,7 +703,21 @@
     "error_request_too_large": "这些文件加上文本转义后的发送内容超过 1 MiB，请选择更小的文件或缩小差异。",
     "file_choose": "选择文件",
     "file_reselect": "重新选择文件",
-    "file_action_aria": "{side}：{action}"
+    "file_action_aria": "{side}：{action}",
+    "source_snapshot": "本地快照",
+    "source_snapshot_hint": "显式保存基准，再与修改后文件比较",
+    "source_document": "单份 Markdown",
+    "source_document_hint": "从单篇文档的章节和段落引用中学习",
+    "file_document": "Markdown 文档",
+    "document_error_format": "请选择一份 .md 或 .markdown 文件。",
+    "document_scope": "选择一份 UTF-8 Markdown 文件，最多 256 KiB。引用只支持这篇文档写了什么；内容解释仍属于语义判断，外部事实和运行效果需要独立证据。",
+    "document_preview": "文档原文预览",
+    "review_context": "人工 review 说明（可选）",
+    "review_context_hint": "填写修改背景或 reviewer 说明，最多 8 KiB UTF-8 文本。说明按不可信辅助输入过滤，不会变成源证据。请勿填写凭证。",
+    "review_context_error": "Review 说明不得超过 8 KiB UTF-8 文本，也不能包含 NUL 字符。",
+    "review_context_used": "本次使用了不可信的人工 review 辅助说明。说明不能验证源断言，也不能替代反证。",
+    "opt_active_practice": "主动迁移练习",
+    "opt_active_practice_hint": "默认关闭，保留混合测验。开启后，此次 guided/recall/transfer 混合分配改为全部开放式 transfer 题。题数至少为 3 时覆盖预测、补全和解释错误，不执行代码。"
   },
   "Learn": {
     "cancel": "取消",
@@ -888,8 +918,8 @@
     "agent_lifecycle_preview": "开发者预览",
     "nav_sources": "从这里开始",
     "sources_title": "先看你手上有什么",
-    "sources_hint": "Git 改动、两份文件或粘贴的 diff 都能用于学习。自己、同事和 AI 写出的修改，共用同一条证据与复习流程。",
-    "sources_steps": "选择来源 → 预览实际变化 → 开始学习 → 阅读课程并完成测验。两份文件支持代码、SQL、配置、Markdown 和 Notebook 源内容；暂不支持没有前后版本的单份资料学习。"
+    "sources_hint": "Git 改动、两份文件、粘贴 diff、本地快照或单份 Markdown 都能用于学习。自己、同事和 AI 写出的修改，共用同一条证据与复习流程。",
+    "sources_steps": "选择来源后预览并开始学习。默认保持混合测验；需要开放式迁移题时，在预览前勾选“此来源的更多选项 → 主动迁移练习”（CLI：--active-practice）。使用快照时先显式保存旧版。单份 Markdown 是独立来源，引用不能证明外部事实；review 说明仍属于辅助上下文。"
   },
   "Onboarding": {
     "actions_label": "步骤动作",
@@ -942,7 +972,7 @@
     "nav_preview": "预览",
     "nav_steps": "步骤",
     "steps_aria": "安装步骤",
-    "learn_steps": "添加来源，点击“预览变化”，再点击“开始学习”。运行结束后即可查看课程和测验。",
+    "learn_steps": "选择五种来源之一，默认保持混合测验。需要开放式迁移题时，先勾选“此来源的更多选项 → 主动迁移练习”，再预览并开始学习；CLI 使用 --active-practice。快照须显式保存基准，文档预览显示原文。",
     "preview_empty_meta": "还没有已完成的运行",
     "preview_empty": "第一次学习完成后，这里会显示它的真实来源和质量结果。选择上方任一来源即可开始。",
     "preview_source": "学习来源",
@@ -1021,7 +1051,25 @@
     "subtitle": "基于 claim 状态练习，并把稳定信号写回复习队列。苏格拉底提问为一次性检测；SRS 卡片的评分影响复习调度。",
     "title": "测验",
     "wrong": "错误",
-    "your_answer": "你的答案"
+    "your_answer": "你的答案",
+    "exercise_prediction": "预测下一步",
+    "exercise_completion": "补全相似例子",
+    "exercise_error_reason": "解释错误原因",
+    "exercise_instruction": "先写出你的尝试，再揭示参考答案。代码仅作为文本，本练习不执行代码。",
+    "semantic_feedback": "对照参考答案和证据，评估刚才的尝试。等价表述或解法也可能成立。请选择语义自评；这里没有执行代码。",
+    "exercise_privacy": "作答正文只留在本页面。仅保存自评、错误类别和时间信息，用于练习与 SRS 复习。",
+    "reveal_failed": "无法揭示参考答案。你的尝试仍保留在页面中，请重试。",
+    "text_matches": "文本与参考答案一致",
+    "text_differs": "文本不同，请对照参考答案比较含义",
+    "error_type_label": "如果需要帮助或尚未完成，主要困难是什么？",
+    "error_recall": "概念回忆",
+    "error_application": "应用到例子",
+    "error_reasoning": "解释推理过程",
+    "error_boundary": "区分证据不能证明的内容",
+    "assess_independent": "独立完成",
+    "assess_assisted": "需要帮助",
+    "assess_not_yet": "尚未完成",
+    "machine_summary": "选择题核对：{correct} / {count}。练习自评单独记录。"
   },
   "Improve": {
     "tab_preview": "改进预览",
@@ -1364,7 +1412,9 @@
     "card_info_lapses": "遗忘次数",
     "card_info_last_rating": "上次评分",
     "view_in_diff": "在 Diff 中查看",
-    "title": "复习"
+    "title": "复习",
+    "exercise_hint": "先凭记忆再次尝试，再打开参考答案。距离上次记录的尝试至少 24 小时，才计入延迟回忆。",
+    "practice_failed": "未能保存本次练习自评，请重试相同的自评。"
   },
   "Rubric": {
     "overall": "总分",
@@ -1923,5 +1973,55 @@
     "EXPORT_FORMAT_UNSUPPORTED": "不支持该导出格式。",
     "NOT_FOUND": "未找到请求的资源。",
     "INTERNAL_ERROR": "AhaDiff 内部出现错误。"
+  },
+  "Snapshots": {
+    "title": "本地学习快照",
+    "privacy": "只有点击保存才会持久保留过滤并规范化后的学习基准，检测到的秘密会移除。快照不是原文件的完整备份，也不会覆盖源文件。",
+    "name": "快照名称（最多 80 个字符）",
+    "file": "修改前的文件",
+    "save": "保存本地基准",
+    "saved": "基准已保存到本机。选择修改后文件即可比较。",
+    "saved_sanitized": "基准已过滤后保存，被移除的内容无法从此快照恢复。",
+    "capacity": "已保存 {count}/{max} 份 · 占用 {used}/{limit}",
+    "full": "快照空间已满。请明确删除一份基准后再保存。",
+    "failed": "无法读取或更新快照。请刷新列表后重试。",
+    "refresh": "刷新快照列表",
+    "empty": "还没有保存的基准。选择文件并填写名称，然后明确点击保存。",
+    "status_ready": "可用于比较",
+    "status_corrupt": "基准已损坏或无法读取",
+    "status_unsupported": "不支持的快照格式版本",
+    "sanitized": "已过滤的学习基准",
+    "select": "使用此基准",
+    "selected": "已选择基准",
+    "delete": "删除快照",
+    "delete_confirm": "删除本机快照“{name}”？这只移除此份已保存基准，已有课程和源文件仍然保留。",
+    "confirm_delete": "删除这份基准"
+  },
+  "Evidence": {
+    "anchors": "源证据锚点",
+    "kind_heading": "章节标题",
+    "kind_paragraph": "段落",
+    "kind_cell": "Notebook 单元源内容",
+    "kind_key_path": "配置键路径",
+    "kind_line": "行级证据",
+    "side_old": "修改前",
+    "side_new": "修改后",
+    "side_document": "文档原文",
+    "paragraph": "第 {index} 段",
+    "cell": "第 {index} 个单元",
+    "weak_fallback": "专用解析器未能定位此结构，目前仅有行级源文本支持。",
+    "content_hash": "查看内容哈希",
+    "assertion_source_fact": "源文本事实：引文确实位于此处，但这不能验证外部事实。",
+    "assertion_semantic": "语义解释：源文本支持讨论，其含义仍需判断。",
+    "assertion_runtime_effect": "运行效果：仅凭源文本无法证明执行时的行为。",
+    "document_title": "文档证据",
+    "document_scope": "这里展示已保存的文档原文。引用对应章节、段落与内容哈希，不含增删行。",
+    "document_lines": "共 {total} 行，当前第 {first}–{last} 行",
+    "previous_lines": "上一组原文",
+    "next_lines": "下一组原文",
+    "review_context": "人工 review 说明 · 辅助输入",
+    "review_context_unavailable": "人工 review 辅助说明无法读取。请独立核对源证据。",
+    "document_unavailable": "已保存的文档原文暂不可用。",
+    "anchors_partial": "仅部分格式锚点可用；既有 diff hunk 证据仍可使用。"
   }
 }

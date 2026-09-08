@@ -22,7 +22,8 @@ export type SourceKind =
   | 'git_since'
   | 'patch_file'
   | 'patch_stdin'
-  | 'file_compare';
+  | 'file_compare'
+  | 'document';
 
 export type DegradedFlag =
   | 'diff_clipped'
@@ -61,6 +62,7 @@ export interface LearnabilityInfo {
 }
 
 export interface RunDetail extends RunSummary {
+  active_practice?: boolean;
   base_ref: string | null;
   prompt_version: string;
   eval_bundle_version: string;
@@ -70,6 +72,8 @@ export interface RunDetail extends RunSummary {
   graphify_status: string | null;
   graphify_notes?: string[] | null;
   learnability?: LearnabilityInfo | null;
+  review_context_used?: boolean;
+  review_context_hash?: string | null;
 }
 
 export type ArtifactKind =
@@ -79,6 +83,9 @@ export type ArtifactKind =
   | 'distractor-gate'
   | 'misconceptions'
   | 'diff'
+  | 'document'
+  | 'anchors'
+  | 'review-context'
   | 'concepts'
   | 'score'
   | 'judge';
@@ -291,9 +298,15 @@ export interface SrsReviewPayload {
 export interface QuizAnswerPayload {
   idempotency_key: string;
   quiz_id: string;
-  choice: string;
-  correct: boolean;
+  choice?: string;
+  correct: boolean | null;
   selected_choice_label?: string | null;
+  run_id?: string;
+  exercise_kind?: 'prediction' | 'completion' | 'error_reason' | null;
+  feedback_kind?: 'choice_check' | 'reference_comparison' | 'semantic_self_assessment';
+  self_assessment?: 'independent' | 'assisted' | 'not_yet';
+  error_type?: 'none' | 'recall' | 'application' | 'reasoning' | 'boundary';
+  attempt_kind?: 'initial' | 'delayed_recall' | 'unseen_variant';
 }
 
 export interface HelpfulnessPayload {
@@ -334,6 +347,9 @@ export interface DueReviewCard {
   source_ref?: string | null;
   symbol?: string | null;
   question?: string | null;
+  question_id?: string | null;
+  exercise_kind?: 'prediction' | 'completion' | 'error_reason' | null;
+  source_anchors?: SourceAnchor[];
   answer?: string | null;
   answer_mode?: ReviewAnswerMode;
   choices?: ReviewChoice[] | null;
@@ -530,6 +546,20 @@ export interface LearningEffectivenessResponse {
   transfer_rate: number;
   helpfulness: HelpfulnessAggregate[];
   transfer_metrics: TransferConcept[];
+  active_practice?: ActivePracticeSummary;
+}
+
+export interface PracticeAttemptSummary {
+  attempts: number;
+  independent_rate: number | null;
+}
+
+export interface ActivePracticeSummary {
+  initial: PracticeAttemptSummary;
+  delayed_recall: PracticeAttemptSummary;
+  unseen_variant: PracticeAttemptSummary;
+  error_types: Record<'none' | 'recall' | 'application' | 'reasoning' | 'boundary', number>;
+  feedback_kind: 'self_reported';
 }
 
 export interface SpecAlignmentResponse {
@@ -720,7 +750,84 @@ export interface LearnFileInput {
   content: string;
 }
 
+export interface SourceAnchor {
+  schema_version: 1;
+  source_kind: 'diff' | 'document';
+  format: 'markdown' | 'notebook' | 'json' | 'toml' | 'yaml' | 'text';
+  side: 'old' | 'new' | 'document';
+  file: string;
+  anchor_id: string;
+  locator: {
+    kind: 'heading' | 'paragraph' | 'cell' | 'key_path' | 'line';
+    heading_path: string[];
+    paragraph_index?: number | null;
+    cell_index?: number | null;
+    cell_id?: string | null;
+    key_path: Array<string | number>;
+    fallback_reason?: string | null;
+  };
+  content_hash: string;
+  start: number;
+  end: number;
+  quote: string;
+}
+
+export interface EvidenceAnchorsArtifact {
+  schema: 'ahadiff.evidence_anchors';
+  schema_version: 1;
+  source_kind: 'diff' | 'document';
+  anchors: SourceAnchor[];
+  truncated?: boolean;
+  warnings?: string[];
+  sources: Array<Pick<SourceAnchor, 'file' | 'side' | 'format' | 'content_hash'>>;
+}
+
+export interface ReviewContextArtifact {
+  schema_version: 1;
+  kind: 'auxiliary_untrusted';
+  content: string;
+  content_hash: string;
+  sanitized: boolean;
+}
+
+export interface SnapshotRecord {
+  schema_version: 1;
+  snapshot_id: string;
+  name: string;
+  file_name: string;
+  content: string;
+  content_hash: string;
+  hash_scope: 'sanitized_utf8_nfc_lf';
+  created_at: string;
+  size_bytes: number;
+  source: 'explicit_file';
+  sanitized: boolean;
+}
+
+export interface SnapshotSummary {
+  schema_version: number | null;
+  snapshot_id: string;
+  name: string | null;
+  file_name: string | null;
+  content_hash: string | null;
+  hash_scope: 'sanitized_utf8_nfc_lf' | null;
+  created_at: string | null;
+  size_bytes: number | null;
+  source: 'explicit_file' | null;
+  sanitized: boolean | null;
+  status: 'ready' | 'corrupt' | 'unsupported';
+  stored_bytes: number;
+  record_hash: string | null;
+}
+
+export interface SnapshotListResponse {
+  snapshots: SnapshotSummary[];
+  max_count: number;
+  max_bytes: number;
+}
+
 export interface LearnSubmitPayload {
+  active_practice?: boolean;
   revision?: string;
   last?: boolean;
   author?: string;
@@ -732,6 +839,11 @@ export interface LearnSubmitPayload {
   patch?: string;
   compare?: [string, string];
   compare_files?: [LearnFileInput, LearnFileInput];
+  document?: LearnFileInput;
+  snapshot_id?: string;
+  snapshot_hash?: string;
+  snapshot_after?: LearnFileInput;
+  review_context?: string;
   compare_dir?: [string, string];
   against_spec?: string;
   spec_semantic_review?: boolean;
@@ -768,6 +880,7 @@ export interface EffectiveCaptureLimits {
 }
 
 export interface LearnEstimateResponse {
+  active_practice?: boolean;
   patch_bytes: number;
   file_count: number;
   total_lines: number;
@@ -780,6 +893,9 @@ export interface LearnEstimateResponse {
   diff_clipped?: boolean;
   omitted_files_count?: number;
   preview_patch?: string;
+  preview_document?: string;
+  source_bytes?: number | null;
+  review_context_used?: boolean;
   preview_truncated?: boolean;
   source_kind?: SourceKind | null;
 }

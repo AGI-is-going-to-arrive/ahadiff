@@ -1098,7 +1098,19 @@ def test_extract_claim_candidates_from_run_retries_after_schema_validation_failu
     requests: list[ProviderRequest] = []
     responses = [
         ProviderResponse(
-            content=json.dumps({"claims": [{"text": "missing source hunks"}]}),
+            content=json.dumps(
+                {
+                    "claims": [
+                        {
+                            "claim_id": f"{run_id}-claim-1",
+                            "run_id": run_id,
+                            "text": "missing both evidence forms",
+                            "source_hunks": [],
+                            "source_anchors": [],
+                        }
+                    ]
+                }
+            ),
             model_id="gpt-5.4-mini",
             input_tokens=10,
             output_tokens=10,
@@ -1175,7 +1187,8 @@ def test_extract_claim_candidates_from_run_retries_after_schema_validation_failu
     assert requests[0].output_schema is not None
     retry_feedback = requests[1].payload_text.split("The previous response", 1)[1]
     assert "claim_candidates.v1" in retry_feedback
-    assert "source_hunks" in retry_feedback
+    assert "source_hunk or source_anchor" in retry_feedback
+    assert "claims.0" in retry_feedback
     assert "diff --git" not in retry_feedback
     assert '"properties"' not in retry_feedback
 

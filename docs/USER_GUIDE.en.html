@@ -941,8 +941,8 @@ img { max-width: 100%; display: block; }
     <div class="guide-hero">
       <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.8</span></div>
       <h1>AhaDiff User Guide</h1>
-      <p class="guide-lead">Learn from your own fixes, a colleague's edits, or AI-generated changes. Choose <strong>Git changes</strong>, <strong>Two files</strong>, or <strong>Paste a diff</strong>, then read a lesson, inspect its evidence, and practice with quizzes and review. Your workspace keeps learning history under <code>.ahadiff/</code>; file and patch learning also work without a Git repository.</p>
-      <div class="g-note">Source update, 2026-09-08: the three-source entry points and file preview are current source changes, pending publication. The version remains 1.3.8. Published installs can use the existing CLI <code>--compare</code> and <code>--patch</code> paths; build a checkout containing these changes for the new UI.</div>
+      <p class="guide-lead">Learn from your own fixes, a colleague's edits, or AI-generated changes. Choose <strong>Git changes</strong>, <strong>Two files</strong>, <strong>Paste a diff</strong>, <strong>Saved snapshot</strong>, or <strong>One Markdown document</strong>, then read a lesson, inspect its evidence, and practice with quizzes and review. Your workspace keeps learning history under <code>.ahadiff/</code>; file, patch, snapshot, and document learning also work without a Git repository.</p>
+      <div class="g-note">Source update, 2026-09-08: the five-source entry points, durable snapshots, format anchors, review notes, and active transfer practice are current source changes, pending publication. The version remains 1.3.8. Published installs can use the existing CLI <code>--compare</code> and <code>--patch</code> paths; build a checkout containing these changes for the new UI.</div>
       <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> English walkthrough (YouTube)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. The videos show an earlier interface. Use the steps below for the current source workflow. We recommend the isolated <code>pipx install ahadiff</code> for a published install.</div>
     </div>
 
@@ -950,7 +950,7 @@ img { max-width: 100%; display: block; }
     <section id="quickstart">
       <div class="section-eyebrow">Getting started</div>
       <h2>1. Quick Start</h2>
-      <p>Install the CLI, open its local WebUI in your working folder, and configure one provider. You can start from two versions of a file without creating a repository or installing an AI agent integration.</p>
+      <p>Install the CLI, open its local WebUI in your working folder, and configure one provider. You can start from two file versions, a saved baseline, or one Markdown document without creating a repository or installing an AI agent integration.</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>Install</h3>
@@ -969,7 +969,7 @@ ahadiff --version</span></div>
         </div>
       </div>
       <h3>Open your working folder</h3>
-      <p>Open a terminal in the folder where you want to keep your learning history. An ordinary folder works; a Git repository is optional for file and patch input. The following command works in macOS/Linux terminals and Windows PowerShell:</p>
+      <p>Open a terminal in the folder where you want to keep your learning history. An ordinary folder works; a Git repository is optional for file, patch, snapshot, and document input. The following command works in macOS/Linux terminals and Windows PowerShell:</p>
       <div class="code-block"><span class="cmd">ahadiff serve</span></div>
       <p>AhaDiff opens <code>http://127.0.0.1:8765</code> and creates local state as needed. In <strong>Settings</strong>, add a local or remote provider. Remote generation requires an explicit remote privacy mode. Provider setup may send a small probe; previewing file changes does not call an LLM.</p>
 
@@ -978,17 +978,19 @@ ahadiff --version</span></div>
         <div class="g-card"><h3>Git changes</h3><p>Study a bug fix, a colleague's commit, or AI edits in an existing repository. Select the working tree or a commit range.</p></div>
         <div class="g-card"><h3>Two files</h3><p>Select or drop the before and after files into their respective fields. Use code, SQL, configuration, Markdown, or two <code>.ipynb</code> versions. Matching filenames are fine.</p></div>
         <div class="g-card"><h3>Paste a diff</h3><p>Paste a unified diff copied from a review or another tool. This input expects changed lines and diff headers, not a single document or a review comment.</p></div>
+        <div class="g-card"><h3>Saved snapshot</h3><p>Select a file before editing, name it, and explicitly save a local baseline. Reopen the list later, choose that baseline, and select the later file to compare. It is a filtered learning reference, not a full backup.</p></div>
+        <div class="g-card"><h3>One Markdown document</h3><p>Select one <code>.md</code> or <code>.markdown</code> file. Preview its text and study section/paragraph citations without creating a fake before/after diff.</p></div>
       </div>
       <div class="mini-flow">
         <div class="mini-step">Open <strong>Welcome</strong>, <strong>Quick Start</strong>, or <strong>Guide</strong> and choose a source.</div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
-        <div class="mini-step">Select <strong>Preview changes</strong> and inspect the sanitized diff.</div>
+        <div class="mini-step">For active exercises, first enable <strong>More options for this source → Active transfer practice</strong>; otherwise the quiz stays mixed. Then select <strong>Preview changes</strong>.</div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
         <div class="mini-step">Select <strong>Start learning</strong>. Wait for the run to finish.</div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
         <div class="mini-step">Read <strong>Lesson</strong>, inspect <strong>Diff</strong>, and answer <strong>Quiz</strong>. Return to <strong>Review</strong> for due cards.</div>
       </div>
-      <p class="g-lead">The same run links these pages together. Agent installation is optional. With only one file and no previous version, keep a separate before copy before making your next change; automatic snapshots and standalone-document lessons are not available.</p>
+      <p class="g-lead">The same run links these pages together. Save a snapshot explicitly before editing, or choose one Markdown document for a document lesson. No automatic snapshots, PDF ingestion, or web-page capture are part of this pilot. Agent installation is optional.</p>
       <details class="faq-item"><summary>Optional CLI setup inside an existing Git repository</summary><div class="faq-a">
         <p>Only use these commands inside a Git repository. Ordinary folders start with <code>ahadiff serve</code>; the CLI <code>init</code> and <code>doctor</code> commands still require Git repository metadata.</p>
         <div class="code-block"><span class="cmd">ahadiff init
@@ -1202,12 +1204,12 @@ supports_native_json_schema = false</span></div>
       <h2>3. Run a Learn Session</h2>
       <div class="g-steps">
         <div class="g-step">
-          <h3>Pick a diff source</h3>
-          <p>Use <a href="#sources">Git changes, Two files, or Paste a diff</a> in the WebUI. For two files, put the earlier version on the before side and the edited version on the after side.</p>
+          <h3>Pick a learning source</h3>
+          <p>Use the <a href="#sources">five shared sources</a> in the WebUI. Put earlier and later versions on their respective sides, or select a standalone Markdown document.</p>
         </div>
         <div class="g-step">
           <h3>Preview, then start learning</h3>
-          <p>Preview the actual diff after safety processing. Editing the source invalidates that preview, so preview again before starting. Generation uses your configured provider and privacy settings, then produces claims, lesson, quiz, and score artifacts.</p>
+          <p>Preview the actual diff or document text after safety processing. Editing the source invalidates that preview, so preview again before starting. Generation uses your configured provider and privacy settings, then produces claims, lesson, quiz, and score artifacts.</p>
         </div>
         <div class="g-step">
           <h3>Open the WebUI to learn</h3>
@@ -1248,7 +1250,7 @@ supports_native_json_schema = false</span></div>
         </div>
       </div>
       <div class="badges" style="justify-content:flex-start">
-        <span class="badge">10 modes &rarr; capture coverage</span>
+        <span class="badge">10 existing diff capture modes</span>
         <span class="badge">Files and pasted patches can start without a repository</span>
         <span class="badge">Path scope: working-tree modes only &middot; repo-relative paths</span>
       </div>
@@ -1274,10 +1276,49 @@ supports_native_json_schema = false</span></div>
         <span class="badge">compare-dir: POSIX-only &middot; fails closed elsewhere</span>
       </div>
       <h3>File input, preview, and evidence limits</h3>
-      <p>The browser accepts two UTF-8 text files up to 256 KiB each and 512 KiB combined. Selecting files keeps drafts in page memory and does not edit the originals. Two <code>.ipynb</code> files retain cell-aware source comparison; AhaDiff does not run their cells. Markdown, SQL, and configuration changes retain text evidence, with weak or unproven claim states where stronger support is unavailable.</p>
+      <p>The browser accepts UTF-8 text files up to 256 KiB each and 512 KiB for a pair. Snapshot files and single Markdown documents keep the 256 KiB limit in both CLI and WebUI. Selecting files keeps drafts in page memory and does not edit the originals. Two <code>.ipynb</code> files retain cell-aware source comparison; AhaDiff does not run their cells. Markdown and structured formats add dedicated anchors where parsing succeeds; SQL and unsupported structures retain explicit line evidence. Weak or unproven states remain when stronger support is unavailable.</p>
       <p><strong>Preview changes</strong> sends input to the local service, without an LLM call. It displays at most 64 KiB and marks partial display. Display truncation is separate from a capture-limit warning: only the latter means the captured input itself is incomplete. After <strong>Start learning</strong>, generation follows your chosen local/remote privacy mode and stores the normal run artifacts in <code>.ahadiff/</code>.</p>
-      <p>Pasted unified diffs have a 64 KiB input limit. Serialized browser requests have a 1 MiB limit, so heavily escaped text can reach the request cap before the file caps. Use the CLI for larger inputs. CLI patch and comparison files resolve inside the workspace root; pass <code>--patch -</code> for an externally generated patch.</p>
-      <div class="g-note">For small file or pasted-patch exercises, <strong>Generate a lesson even for small changes</strong> is enabled by default and can be cleared. It skips only the learnability filter. Evidence checks, safety gates, and scoring still apply. A linked line or a high lesson score does not establish runtime correctness or prove that you have mastered the change.</div>
+      <p>Pasted unified diffs have a 64 KiB input limit. Serialized browser requests have a 1 MiB limit, so heavily escaped text can reach the request cap before the file caps. Use the CLI for larger comparison inputs; snapshot and document limits remain fixed. CLI patch and comparison files resolve inside the workspace root; pass <code>--patch -</code> for an externally generated patch.</p>
+      <div class="g-note">For small file, pasted-patch, snapshot, or document exercises, <strong>Generate a lesson even for small changes</strong> is enabled by default and can be cleared. It skips only the learnability filter. Evidence checks, safety gates, and scoring still apply. A linked line or a high lesson score does not establish runtime correctness or prove that you have mastered the change.</div>
+      <h3 id="snapshots">Save and reuse a local baseline</h3>
+      <ol>
+        <li>Open <strong>Saved snapshot</strong>, choose the file before editing, and enter a portable name of at most 80 characters.</li>
+        <li>Select <strong>Save baseline locally</strong>. The list shows the saved time, size, and readiness; filtering may change the saved content.</li>
+        <li>On a later visit, select <strong>Use baseline</strong> and choose the file after editing. Preview the comparison, then start learning.</li>
+        <li>To remove a baseline, select <strong>Delete snapshot</strong> and confirm the named item. Existing runs and source files remain intact.</li>
+      </ol>
+      <div class="code-block"><span class="cmd">ahadiff snapshot save before.md --name "Before editing" --repo-root .
+ahadiff snapshot list --repo-root .
+ahadiff snapshot show SNAPSHOT_ID --expected-hash CONTENT_HASH --repo-root .
+ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.md --force-learn</span></div>
+      <p>Copy <code>SNAPSHOT_ID</code> and <code>content_hash</code> from the list. The optional learn hash binds the exact comparison content. Deletion instead requires the record's <code>record_hash</code> and an interactive confirmation:</p>
+      <div class="code-block"><span class="cmd">ahadiff snapshot delete SNAPSHOT_ID --expected-hash RECORD_HASH --repo-root .</span></div>
+      <p><code>--yes</code> skips only the interactive prompt for that exact ID/hash. The WebUI always presents a specific deletion confirmation. Corrupt or unsupported records stay unavailable for comparison; records that cannot be safely read have no deletion hash.</p>
+      <div class="g-note">The store keeps at most 100 snapshots and 16 MiB of record bytes under <code>.ahadiff/snapshots/</code>. Each input file is at most 256 KiB. Only filtered, UTF-8/NFC/LF-normalized learning text is saved. A snapshot is not a complete original-file backup. No automatic watching, chat capture, or source overwrite is performed.</div>
+
+      <h3 id="document-learning">Learn from one Markdown document</h3>
+      <p>Choose <strong>One Markdown document</strong>, select a single UTF-8 <code>.md</code> or <code>.markdown</code> file of at most 256 KiB, preview its original text after filtering, and start learning.</p>
+      <div class="code-block"><span class="cmd">ahadiff learn --document reading.md</span></div>
+      <p>The independent <code>document</code> source stores <code>document.md</code> and section/paragraph anchors. The evidence page displays original lines without add/delete markers; Lesson, Quiz, and Review keep their normal run links. This mode has no diff-spec alignment. Diff Coverage and change-novelty Learnability are N/A / <code>0/0</code> and excluded from its overall score; validated document-anchor coverage has its own hard gate. PDFs, URLs, and multiple-document collections need separate input contracts and are not accepted here.</p>
+      <div class="g-note">A verified quotation means the document contains that text at that location. An explanation of its meaning is a semantic judgment. A claim about an external fact or runtime effect needs evidence beyond the document.</div>
+
+      <h3 id="review-context">Add human review notes</h3>
+      <p>After choosing a change source, optionally fill in <strong>Review notes</strong>. CLI users can select a local text file:</p>
+      <div class="code-block"><span class="cmd">ahadiff learn --compare before.py after.py --review-context-file review-notes.md --force-learn</span></div>
+      <p>Notes are limited to 8 KiB of UTF-8 text, filtered as untrusted input, and labeled as auxiliary context. They do not produce evidence locations or replace counterevidence. The run records their use and content hash. Draft text stays out of task retry summaries; editing it invalidates the earlier preview. Do not include credentials.</p>
+
+      <h3 id="format-evidence">Read format-specific evidence</h3>
+      <div class="cmp-wrap"><table class="cmp-table">
+        <thead><tr><th>Input</th><th>Locator</th><th>What to inspect</th></tr></thead>
+        <tbody>
+          <tr><td>Markdown</td><td>Heading path and paragraph</td><td>Quoted text, line range, and content hash</td></tr>
+          <tr><td>Notebook</td><td>Cell source / cell identity</td><td>Source cells only; output does not establish execution evidence</td></tr>
+          <tr><td>JSON / TOML / YAML</td><td>Key path</td><td>The source value and its old/new side; intended effect is semantic</td></tr>
+          <tr><td>Unsupported or ambiguous structure</td><td>Explicit line fallback</td><td>Weaker evidence; no invented structural certainty</td></tr>
+        </tbody>
+      </table></div>
+      <p>The dedicated format index is limited to 4,096 anchors. A large diff can show a partial-index warning while its existing hunk evidence remains usable. A standalone document above this structural limit is rejected, so a partial document is not presented as a complete evidence basis.</p>
+      <p>Open a claim's source anchor to see its side, location, quote, and hash. Moving or renaming different content does not preserve its evidence identity. Existing runs with only hunk evidence remain readable. A declared new source artifact that is missing, corrupted, or inconsistent is rejected rather than treated as verified text.</p>
       <p>Long-running CLI commands show Rich status while they run. Treat that as terminal feedback, not a machine-readable output contract.</p>
     </section>
 
@@ -1315,7 +1356,7 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
             <tr><td><code>/concepts</code></td><td>Concept ledger, concept graph, and Graphify source.</td></tr>
             <tr><td><code>/ratchet</code></td><td>Result history, benchmark summary, improve preview, and export entry points.</td></tr>
             <tr><td><code>/settings</code></td><td>Providers, capture, privacy, audit, preferences, and project-level AI tool guidance. AI Tool Guidance groups targets as CLI / IDE / CI, shows usage hints, and includes a provider-free built-in demo.</td></tr>
-            <tr><td><code>/guide</code></td><td>The same three learning sources, daily commands, and the shared catalogue of 16 current AI tool targets. Guidance setup is optional; write, update, and removal actions stay in Settings &rarr; AI Tool Guidance.</td></tr>
+            <tr><td><code>/guide</code></td><td>The same five learning sources, daily commands, and the shared catalogue of 16 current AI tool targets. Guidance setup is optional; write, update, and removal actions stay in Settings &rarr; AI Tool Guidance.</td></tr>
           </tbody>
         </table>
       </div>
@@ -1397,6 +1438,18 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
           <li>Claim state badges link the explanation back to code lines.</li>
         </ol>
       </figure>
+
+      <h3 id="transfer-practice">Attempt active transfer practice</h3>
+      <p>Explicitly enable <strong>More options for this source → Active transfer practice</strong> in the New Run dialog. It is off by default: normal runs keep the mixed guided/recall/transfer allocation. Enabling it requests only open transfer questions; with at least 3 questions, the quiz covers all three exercise forms. Changing the switch invalidates the preview, and changing the source or closing the dialog resets it.</p>
+      <div class="code-block"><span class="cmd">ahadiff learn --document reading.md --active-practice
+ahadiff learn --compare before.py after.py --active-practice --force-learn
+ahadiff regenerate RUN_ID --only quiz --active-practice</span></div>
+      <p><code>regenerate</code> replaces the selected run's quiz/cards, recomputes its deterministic score, and reseals the artifact checksums. Without either practice flag it preserves that run's mode; <code>--mixed-practice</code> explicitly selects a mixed quiz. It invalidates old Judge results without automatically rerunning the judge. Select the run whose quiz you intend to replace. Learning and regeneration use your configured provider/privacy policy; preview itself makes no model call.</p>
+      <p>Transfer reuses the existing Quiz and SRS flow: <strong>Predict the next step</strong>, <strong>Complete a similar example</strong>, or <strong>Explain an error</strong>. Write your attempt before revealing the reference. Reference answers, explanations, and evidence stay hidden before that attempt; code is never executed.</p>
+      <p>Compare meaning with the reference, then choose <strong>Completed independently</strong>, <strong>Needed help</strong>, or <strong>Not yet</strong>. When needed, identify the difficulty: recall, application, reasoning, or evidence boundaries. Equivalent wording can be valid. Choice checking is mechanical; open-exercise feedback is semantic self-assessment.</p>
+      <p>Written WebUI attempts remain in page memory. Only bounded assessment, error-category, and timing metadata are saved. Review brings back the same cards. Delayed recall requires at least 24 hours since the prior recorded attempt; an unseen-variant first attempt requires a question explicitly marked as a new scenario.</p>
+      <p>Dashboard shows initial practice, delayed recall, and unseen-variant self-assessments with their own sample counts and error categories. A missing denominator is unmeasured, not a zero-success claim. The older SRS rating-improvement ratio remains separate from these practice measures.</p>
+      <div class="g-note">Challenge first exposes the original solution, then asks you to rehearse it. Its patch match and evidence coverage do not establish unseen-variant independence or runtime correctness. Score/Judge assess learning-material quality. Without real participant samples and denominators, this update makes no claim of measured learning gains.</div>
 
       <h3>Quiz and review</h3>
       <p class="g-lead">Review grades each card; the grade drives the next due date.</p>
@@ -1586,6 +1639,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <p style="margin-top:10px">No extra install needed.</p>
         </div>
       </div>
+      <p>Static previews preserve the <code>document</code>/<code>diff</code> source, quoted structural anchors, and separately labeled review notes. Read-only MCP exposes source/anchor provenance and bounded auxiliary excerpts. Preserve those distinctions when sharing or consuming either output. A flattened quotation or a review comment must not become runtime proof. Static preview and APKG files contain answers; share them deliberately after checking their contents.</p>
       <div class="g-note">APKG export works by default with a standard AhaDiff install because <code>genanki</code> is bundled.</div>
     </section>
 
@@ -1818,7 +1872,7 @@ ahadiff config show --resolved</span></div>
         <details class="faq-item">
           <summary>How is Diff Coverage judged?</summary>
           <div class="faq-a">
-            <p>Diff Coverage uses only the visible files and hunks in the persisted <code>line_map.json</code>:</p>
+            <p>For diff runs, Diff Coverage uses only the visible files and hunks in the persisted <code>line_map.json</code>:</p>
             <div class="badges" style="justify-content:flex-start">
               <span class="badge">visible-files-only denominator</span>
               <span class="badge">changed-line weighting</span>
@@ -1863,8 +1917,21 @@ ahadiff config show --resolved</span></div>
 
       <p>The table describes intended platform support and explicit exceptions. Browser checks and simulated Windows branches are not a native Windows run; use current platform-specific results to establish execution.</p>
 
+      <h3>Current source acceptance</h3>
+      <p>The five-function update remains unpublished source code at version 1.3.8. Acceptance is in progress; historical green checks below do not establish a pass for this final source.</p>
+      <div class="cmp-wrap"><table class="cmp-table">
+        <thead><tr><th>Area</th><th>Required current check</th><th>Status here</th></tr></thead>
+        <tbody>
+          <tr><td>macOS</td><td>Backend, source integrity, CLI/API, snapshots, and real serve</td><td>Awaiting current acceptance record</td></tr>
+          <tr><td>Linux</td><td>Native file guards, locking, container tests and packaging</td><td>Awaiting current platform result</td></tr>
+          <tr><td>Windows</td><td>Native NTFS/Unicode/reparse/locking and CLI/WebUI</td><td>No native result established here</td></tr>
+          <tr><td>English / Chinese WebUI</td><td>Type/unit/build, desktop/mobile interaction, empty/error states and accessibility</td><td>Awaiting final browser matrix</td></tr>
+          <tr><td>Real model / wheel</td><td>Budgeted synthetic-only generation, installed-wheel assets and source metadata</td><td>Requires a separately recorded current result</td></tr>
+        </tbody>
+      </table></div>
+
       <h3>Historical validation snapshot</h3>
-      <p class="g-lead">These records predate the 2026-09-08 source changes and do not validate the new file picker or preview. For v1.3.8, the recorded local gate covers backend unit/integration/eval, ruff/format/pyright, viewer typecheck/Vitest/build, i18n parity, real serve save reproduction, and a live DeepSeek learn run. Release and CI status belong in GitHub Actions.</p>
+      <p class="g-lead">These records predate the 2026-09-08 source changes and do not validate the five sources, active exercises, or new integrity contracts. For v1.3.8, the recorded local gate covers backend unit/integration/eval, ruff/format/pyright, viewer typecheck/Vitest/build, i18n parity, real serve save reproduction, and a live DeepSeek learn run. Release and CI status belong in GitHub Actions.</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>Validated</h3>

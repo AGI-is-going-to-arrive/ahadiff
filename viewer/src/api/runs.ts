@@ -11,6 +11,8 @@ import {
   runArtifactEnvelopeSchema,
   runDetailSchema,
   specAlignmentArtifactSchema,
+  evidenceAnchorsArtifactSchema,
+  reviewContextArtifactSchema,
 } from './schemas';
 import type {
   ArtifactKind,
@@ -23,6 +25,8 @@ import type {
   RunArtifactEnvelope,
   RunDetail,
   SpecAlignmentArtifact,
+  EvidenceAnchorsArtifact,
+  ReviewContextArtifact,
 } from './types';
 
 export async function getRunScore(
@@ -180,6 +184,22 @@ export async function getRunConcepts(
     raw,
   );
   return env.content;
+}
+
+export async function getRunAnchors(
+  runId: string, opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<EvidenceAnchorsArtifact> {
+  const envelope = await getRunArtifact(runId, 'anchors', opts);
+  return parseResponse('GET /api/run/{runId}/anchors content', evidenceAnchorsArtifactSchema,
+    JSON.parse(envelope.content) as unknown);
+}
+
+export async function getRunReviewContext(
+  runId: string, opts?: Pick<ApiFetchOptions, 'signal'>,
+): Promise<ReviewContextArtifact> {
+  const envelope = await getRunArtifact(runId, 'review-context', opts);
+  return parseResponse('GET /api/run/{runId}/review-context content', reviewContextArtifactSchema,
+    JSON.parse(envelope.content) as unknown);
 }
 
 export async function getRatchetHistory(

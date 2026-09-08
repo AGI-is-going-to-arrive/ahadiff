@@ -16,6 +16,14 @@ from ahadiff.contracts import ClaimRecord, compute_runtime_eval_bundle_version
 from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 from ahadiff.core.paths import path_identity_key
+from ahadiff.core.source_evidence import (
+    load_evidence_anchors,
+    load_review_context,
+    load_run_source_text,
+    review_prompt_section,
+    source_prompt_section,
+    validate_source_anchor_references,
+)
 from ahadiff.llm.cost import (
     DEFAULT_INPUT_TOKEN_BUDGET,
     DEFAULT_OUTPUT_TOKEN_BUDGET,
@@ -123,9 +131,22 @@ class LlmJudgeReport:
 
 def evaluate_run(run_path: Path) -> ScoreReport:
     metadata = _load_json_object(run_path / "metadata.json")
-    patch_text = _read_text(run_path / "patch.diff")
+    patch_text = load_run_source_text(run_path, metadata)
+    source_anchors = load_evidence_anchors(run_path, metadata)
+    review_context = load_review_context(run_path, metadata)
     line_maps = load_line_map_records(run_path / "line_map.json")
     claims = _load_claim_records(run_path / "claims.jsonl")
+    for claim in claims:
+        if claim.status == "rejected":
+            continue
+        if claim.source_anchors and not validate_source_anchor_references(
+            claim.source_anchors, source_anchors
+        ):
+            raise InputError("claim source anchor does not match the persisted source")
+        if metadata.get("source_kind") == "document" and (
+            claim.source_hunks or not claim.source_anchors
+        ):
+            raise InputError("document claim must use document evidence anchors")
     lesson_artifacts = _load_lesson_artifacts(run_path / "lesson")
     quiz_entries = _load_jsonl_objects(run_path / "quiz" / "quiz.jsonl", required=False)
     rubric = load_rubric()
@@ -138,6 +159,8 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         line_maps=line_maps,
         lesson_artifacts=lesson_artifacts,
         quiz_entries=quiz_entries,
+        source_anchors=source_anchors,
+        auxiliary_text=review_context.content if review_context is not None else "",
     )
     dimension_scores = deterministic.score_lookup()
     safety_findings = _load_safety_findings(run_path)
@@ -149,6 +172,19 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         injection_unresolved=deterministic.injection_unresolved,
         safety_findings=safety_findings,
         diff_coverage_basis=_diff_coverage_basis_from_line_maps(line_maps),
+        document_anchor_coverage=(
+            len(
+                {
+                    anchor.anchor_id
+                    for claim in claims
+                    if claim.status in {"verified", "weak"}
+                    for anchor in claim.source_anchors
+                }
+            )
+            / max(len(source_anchors), 1)
+            if metadata.get("source_kind") == "document"
+            else None
+        ),
     )
     overall = _resolve_overall(deterministic.dimensions)
     verdict = _resolve_verdict(
@@ -378,11 +414,12 @@ def run_llm_judge_for_run(
 ) -> LlmJudgeReport:
     from ahadiff.llm.provider import make_provider
     from ahadiff.llm.schemas import ProviderRequest
+    from ahadiff.llm.validation_retry import generate_with_validation_retry
     from ahadiff.safety.redact import AllowlistPolicy, redaction_pipeline
 
     prompt_text = load_llm_judge_prompt()
     prompt_fingerprint = _sha256_short(prompt_text)
-    patch_text = _read_text(run_path / "patch.diff")
+    patch_text = load_run_source_text(run_path)
     payload_text = build_llm_judge_payload(
         prompt_text=prompt_text,
         run_path=run_path,
@@ -419,39 +456,48 @@ def run_llm_judge_for_run(
         output_token_budget=resolved_output_token_budget,
         execution_origin="eval_judge",
     )
+    dimension_max_scores = {
+        dimension.name: dimension.max_score for dimension in deterministic_report.dimensions
+    }
+    request = ProviderRequest(
+        prompt_name="eval.judge",
+        prompt_fingerprint=prompt_fingerprint,
+        prompt_version=prompt_fingerprint,
+        eval_bundle_version=deterministic_report.eval_bundle_version,
+        model=provider_config.model_name,
+        payload_text=payload_text,
+        diff_content=patch_text,
+        source_ref=deterministic_report.source_ref,
+        output_lang=output_lang,
+        privacy_mode=privacy_mode,
+        redacted_payload_text=redacted_payload_text,
+        findings=findings,
+        response_format="json",
+        enforcement_mode="json_object",
+        max_output_tokens=_resolve_llm_judge_max_output_tokens(
+            provider_config=provider_config,
+            output_token_budget=output_token_budget,
+        ),
+        thinking_level=provider_config.thinking_level,
+    )
+
+    def _parse_judge(content: str) -> tuple[DimensionScore, ...]:
+        return parse_llm_judge_output(content, dimension_max_scores=dimension_max_scores)
+
     try:
-        response = provider.generate(
-            ProviderRequest(
-                prompt_name="eval.judge",
-                prompt_fingerprint=prompt_fingerprint,
-                prompt_version=prompt_fingerprint,
-                eval_bundle_version=deterministic_report.eval_bundle_version,
-                model=provider_config.model_name,
-                payload_text=payload_text,
-                diff_content=patch_text,
-                source_ref=deterministic_report.source_ref,
-                output_lang=output_lang,
-                privacy_mode=privacy_mode,
-                redacted_payload_text=redacted_payload_text,
-                findings=findings,
-                response_format="json",
-                enforcement_mode="json_object",
-                max_output_tokens=_resolve_llm_judge_max_output_tokens(
-                    provider_config=provider_config,
-                    output_token_budget=output_token_budget,
-                ),
-                thinking_level=provider_config.thinking_level,
-            )
+        generated = generate_with_validation_retry(
+            provider=provider,
+            request=request,
+            schema_spec=_judge_format_schema(dimension_max_scores),
+            parse=_parse_judge,
+            max_validation_retries=1,
+            validation_error_types=(InputError,),
         )
     finally:
         provider.close()
 
-    dimensions = parse_llm_judge_output(
-        response.content,
-        dimension_max_scores={
-            dimension.name: dimension.max_score for dimension in deterministic_report.dimensions
-        },
-    )
+    response = generated.response
+    dimensions = generated.value
     judge_report = LlmJudgeReport(
         run_id=deterministic_report.run_id,
         source_ref=deterministic_report.source_ref,
@@ -466,11 +512,53 @@ def run_llm_judge_for_run(
         output_tokens=response.output_tokens,
         finish_reason=response.finish_reason,
         request_id=response.request_id,
-        notes=response.notes,
+        notes=(*response.notes, "judge_format_validation_retried_once")
+        if generated.attempts > 1
+        else response.notes,
     )
     judge_output_path = output_path or run_path / "judge.json"
     write_llm_judge_report(judge_output_path, judge_report, overwrite=overwrite)
     return judge_report
+
+
+def _judge_format_schema(dimension_max_scores: Mapping[str, float]) -> Any:
+    """Internal retry contract; the provider wire remains JSON object mode."""
+    from ahadiff.llm.structured import OutputSchemaSpec, schema_hash
+
+    rubric = load_rubric()
+    properties: dict[str, Any] = {}
+    for name, maximum in dimension_max_scores.items():
+        # Optional N/A values may explain a judge's reasoning, while the parser
+        # still publishes their score/max as 0/0 and excludes them from overall.
+        limit = maximum if maximum > 0 else rubric.dimension(name).max_score
+        number = {"type": "number", "minimum": 0, "maximum": limit}
+        properties[name] = {
+            "anyOf": [
+                number,
+                {
+                    "type": "object",
+                    "required": ["score"],
+                    "properties": {"score": number, "reason": {"type": "string"}},
+                },
+            ]
+        }
+    schema = {
+        "type": "object",
+        "required": ["dimensions"],
+        "properties": {
+            "dimensions": {
+                "type": "object",
+                "properties": properties,
+                "required": [name for name, maximum in dimension_max_scores.items() if maximum > 0],
+            }
+        },
+    }
+    return OutputSchemaSpec(
+        schema_id="eval_judge",
+        schema_version="1",
+        json_schema=schema,
+        schema_hash=schema_hash(schema),
+    )
 
 
 def build_llm_judge_payload(
@@ -485,12 +573,14 @@ def build_llm_judge_payload(
     hint_lesson = _read_optional_text(run_path / "lesson" / "lesson.hint.md")
     compact_lesson = _read_optional_text(run_path / "lesson" / "lesson.compact.md")
     quiz = _read_optional_text(run_path / "quiz" / "quiz.jsonl")
-    patch = _read_text(run_path / "patch.diff")
+    metadata_payload = _load_json_object(run_path / "metadata.json")
+    patch = load_run_source_text(run_path, metadata_payload)
     return "\n\n".join(
         (
             prompt_text.strip(),
             "## Run metadata\n```json\n" + metadata.strip() + "\n```",
-            "## Patch\n```diff\n" + patch.strip() + "\n```",
+            source_prompt_section(patch, metadata_payload),
+            review_prompt_section(load_review_context(run_path, metadata_payload)),
             "## Verified claims\n```jsonl\n" + claims.strip() + "\n```",
             "## Lesson full\n```markdown\n" + full_lesson.strip() + "\n```",
             "## Lesson hint\n```markdown\n" + hint_lesson.strip() + "\n```",
@@ -1001,7 +1091,7 @@ def _has_linked_quiz_entries(
 ) -> bool:
     if not quiz_entries:
         return False
-    claim_ids = {claim.claim_id for claim in claims}
+    claim_ids = {claim.claim_id for claim in claims if claim.status != "rejected"}
     valid_lines: set[tuple[str, int]] = set()
     for file_map in line_maps:
         identity = file_map.path_identity_key
@@ -1020,6 +1110,25 @@ def _has_linked_quiz_entries(
         claim_values = cast("list[object]", raw_claims)
         if any(not isinstance(item, str) or item.strip() not in claim_ids for item in claim_values):
             return False
+        raw_anchors = entry.get("source_anchors")
+        if isinstance(raw_anchors, list) and raw_anchors:
+            from ahadiff.contracts.source_anchor import SourceAnchor
+
+            try:
+                requested = [
+                    SourceAnchor.model_validate(item) for item in cast("list[object]", raw_anchors)
+                ]
+            except (ValueError, TypeError):
+                return False
+            eligible = [
+                anchor
+                for claim in claims
+                if claim.claim_id in claim_values
+                for anchor in claim.source_anchors
+            ]
+            if not validate_source_anchor_references(requested, eligible):
+                return False
+            continue
         evidence = entry.get("evidence")
         if not isinstance(evidence, list) or not evidence:
             return False

@@ -5,6 +5,7 @@ import json
 import math
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -2799,18 +2800,31 @@ def test_review_queue_uses_anyio_threadpool(
     state_dir = tmp_path / ".ahadiff"
     initialize_review_db(state_dir / "review.sqlite")
     calls: list[str] = []
+    loop_threads: dict[str, int] = {}
+    worker_threads: dict[str, int] = {}
+    original_run_sync = routes_review_module.to_thread.run_sync
 
     async def recording_run_sync(func: Any, *args: Any, **kwargs: Any) -> Any:
-        del kwargs
-        calls.append(getattr(func, "__name__", repr(func)))
-        return func(*args)
+        name = getattr(func, "__name__", repr(func))
+        calls.append(name)
+        loop_threads[name] = threading.get_ident()
+
+        def invoke_in_worker() -> Any:
+            worker_threads[name] = threading.get_ident()
+            with pytest.raises(RuntimeError, match="no running event loop"):
+                asyncio.get_running_loop()
+            return func(*args)
+
+        return await original_run_sync(invoke_in_worker, **kwargs)
 
     monkeypatch.setattr(routes_review_module.to_thread, "run_sync", recording_run_sync)
     client = _client(state_dir)
 
     assert client.get("/api/review/queue").status_code == 200
 
-    assert calls == ["_review_queue_sync"]
+    assert calls == ["_review_queue_sync", "_review_queue_projection"]
+    assert set(worker_threads) == set(calls)
+    assert all(worker_threads[name] != loop_threads[name] for name in calls)
 
 
 def test_serve_repo_write_lock_follows_thread_then_repo_lock_order(

@@ -176,7 +176,7 @@ def _short_sha_resolves_to(workspace_root: Path, source_ref: str, expected_sha: 
 
 def is_run_local_concept_source(source_kind: str) -> bool:
     """Whether concepts belong to the run's immutable artifact set."""
-    return source_kind in {"patch_file", "patch_stdin", "file_compare"}
+    return source_kind in {"patch_file", "patch_stdin", "file_compare", "document"}
 
 
 def append_concepts(
@@ -501,7 +501,9 @@ def _collect_concept_occurrences(
 ) -> tuple[ConceptOccurrence, ...]:
     merged: dict[str, ConceptOccurrence] = {}
     for question in questions:
-        file_refs = tuple(dict.fromkeys(item.file for item in question.evidence))
+        file_refs = tuple(
+            dict.fromkeys(item.file for item in (*question.evidence, *question.source_anchors))
+        )
         for concept in question.concepts:
             term_key = compute_term_key(concept)
             existing = merged.get(term_key)

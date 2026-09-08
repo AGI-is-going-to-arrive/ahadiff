@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ahadiff.contracts import ClaimRecord, RejectReasonCode, SourceHunk, SourceHunkSide
+from ahadiff.contracts import ClaimRecord, ClaimStatus, RejectReasonCode, SourceHunk, SourceHunkSide
 from ahadiff.core.paths import path_identity_key
+from ahadiff.core.source_evidence import is_faithful_source_quote, validate_source_anchor_references
 
 from .classify import classify_claim_status, resolve_claim_confidence
 from .negative_scan import scan_negative_evidence
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from ahadiff.contracts import ClaimExtractor
+    from ahadiff.contracts.source_anchor import SourceAnchor
     from ahadiff.git.line_map import FileLineMap, HunkLineMap
     from ahadiff.git.symbols import SymbolRecord
 
@@ -42,7 +44,19 @@ def verify_claim_candidate(
     symbols: Iterable[SymbolRecord],
     before_text_by_path: Mapping[str, str] | None = None,
     after_text_by_path: Mapping[str, str] | None = None,
+    source_anchors: Sequence[SourceAnchor] = (),
+    source_kind: str = "diff",
 ) -> VerifiedClaim:
+    if candidate.source_anchors or source_kind == "document":
+        return _verify_format_candidate(
+            candidate,
+            source_anchors=source_anchors,
+            source_kind=source_kind,
+            line_maps=tuple(line_maps),
+            symbols=tuple(symbols),
+            before_text_by_path=before_text_by_path,
+            after_text_by_path=after_text_by_path,
+        )
     file_lookup = _build_file_lookup(line_maps)
     before_lookup = _build_text_lookup(before_text_by_path or {})
     after_lookup = _build_text_lookup(after_text_by_path or {})
@@ -133,6 +147,8 @@ def verify_claim_candidates(
     symbols: Iterable[SymbolRecord],
     before_text_by_path: Mapping[str, str] | None = None,
     after_text_by_path: Mapping[str, str] | None = None,
+    source_anchors: Sequence[SourceAnchor] = (),
+    source_kind: str = "diff",
 ) -> tuple[VerifiedClaim, ...]:
     line_map_items = tuple(line_maps)
     symbol_items = tuple(symbols)
@@ -145,8 +161,122 @@ def verify_claim_candidates(
             symbols=symbol_items,
             before_text_by_path=before_lookup,
             after_text_by_path=after_lookup,
+            source_anchors=source_anchors,
+            source_kind=source_kind,
         )
         for candidate in candidates
+    )
+
+
+def _verify_format_candidate(
+    candidate: ClaimCandidate,
+    *,
+    source_anchors: Sequence[SourceAnchor],
+    source_kind: str,
+    line_maps: Sequence[FileLineMap],
+    symbols: Sequence[SymbolRecord],
+    before_text_by_path: Mapping[str, str] | None,
+    after_text_by_path: Mapping[str, str] | None,
+) -> VerifiedClaim:
+    expected_kind = "document" if source_kind == "document" else "diff"
+    valid = validate_source_anchor_references(candidate.source_anchors, source_anchors)
+    valid = valid and all(
+        anchor.source_kind == expected_kind for anchor in candidate.source_anchors
+    )
+    if source_kind == "document" and (
+        candidate.source_hunks or candidate.hunk_ids or candidate.symbols
+    ):
+        valid = False
+    matched_hunks: list[SourceHunk] = []
+    if valid and expected_kind == "diff":
+        for anchor in candidate.source_anchors:
+            intersections: list[SourceHunk] = []
+            for file_map in line_maps:
+                path = file_map.old_path if anchor.side == "old" else file_map.new_path
+                if path is None or _identity(path) != _identity(anchor.file):
+                    continue
+                for hunk in file_map.hunks:
+                    line_numbers = (
+                        set(hunk.deleted_lines) | set(hunk.context_old_lines)
+                        if anchor.side == "old"
+                        else set(hunk.added_lines) | set(hunk.context_new_lines)
+                    )
+                    for start, end in _line_number_ranges(
+                        {line for line in line_numbers if anchor.start <= line <= anchor.end}
+                    ):
+                        intersections.append(
+                            SourceHunk(
+                                file=anchor.file,
+                                start=start,
+                                end=end,
+                                side=cast("SourceHunkSide", anchor.side),
+                                file_id=file_map.file_id,
+                                display_path=file_map.display_path,
+                                hunk_id=hunk.hunk_id,
+                                hunk_hash=hunk.hunk_hash,
+                            )
+                        )
+            if not intersections:
+                valid = False
+            matched_hunks.extend(intersections)
+    old_result: VerifiedClaim | None = None
+    if valid and expected_kind == "diff":
+        old_candidate = candidate.model_copy(
+            update={
+                "source_hunks": [*matched_hunks, *candidate.source_hunks],
+                "source_anchors": [],
+                "assertion_kind": None,
+            }
+        )
+        old_result = verify_claim_candidate(
+            old_candidate,
+            line_maps=line_maps,
+            symbols=symbols,
+            before_text_by_path=before_text_by_path,
+            after_text_by_path=after_text_by_path,
+        )
+        matched_hunks = old_result.record.source_hunks
+    status: ClaimStatus
+    if not valid:
+        status = "rejected"
+    elif old_result is not None and old_result.record.status in {
+        "rejected",
+        "contradicted",
+        "not_proven",
+    }:
+        status = old_result.record.status
+    elif candidate.assertion_kind == "runtime_effect":
+        status = "not_proven"
+    elif candidate.assertion_kind == "source_fact" and is_faithful_source_quote(
+        candidate.text, candidate.source_anchors
+    ):
+        status = "verified"
+    else:
+        status = "weak"
+    return VerifiedClaim(
+        record=ClaimRecord(
+            claim_id=candidate.claim_id,
+            run_id=candidate.run_id,
+            text=candidate.text,
+            status=status,
+            reason_code=(
+                old_result.record.reason_code
+                if old_result is not None and old_result.record.status == "rejected"
+                else "evidence_missing"
+            )
+            if status == "rejected"
+            else None,
+            confidence="high" if status == "verified" else "low",
+            source_hunks=matched_hunks,
+            source_anchors=candidate.source_anchors,
+            assertion_kind=candidate.assertion_kind,
+            symbols=candidate.symbols,
+            negative_evidence=old_result.record.negative_evidence if old_result is not None else [],
+            extractor=old_result.record.extractor if old_result is not None else None,
+        ),
+        matched_hunk_ids=old_result.matched_hunk_ids if old_result is not None else [],
+        matched_symbols=old_result.matched_symbols if old_result is not None else [],
+        negative_evidence=old_result.negative_evidence if old_result is not None else [],
     )
 
 

@@ -154,7 +154,10 @@ def create_mcp_server(state_dir: Path) -> Server[Any, Any]:
             ),
             types.Tool(
                 name="list_due_cards",
-                description="List active review cards that are due now.",
+                description=(
+                    "List active review cards that are due now. Active transfer exercises hide "
+                    "reference answers unless include_reference is explicitly true."
+                ),
                 inputSchema=_object_schema(
                     {
                         "limit": _integer_schema(
@@ -163,6 +166,11 @@ def create_mcp_server(state_dir: Path) -> Server[Any, Any]:
                             minimum=1,
                             maximum=_MAX_LIMIT,
                         ),
+                        "include_reference": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Reveal reference feedback after an attempt.",
+                        },
                     }
                 ),
             ),
@@ -320,6 +328,7 @@ def _get_run_summary(state_dir: Path, db_path: Path, arguments: dict[str, Any]) 
     payload = _result_event_payload(event)
     payload["found"] = True
     payload["lesson_summary"] = _read_lesson_summary(state_dir, run_id)
+    payload.update(_run_source_metadata(state_dir, state_dir / "runs" / run_id))
     return payload
 
 
@@ -328,7 +337,65 @@ def _list_due_cards(db_path: Path, arguments: dict[str, Any]) -> dict[str, Any]:
         return {"cards": []}
     limit = _limit_from_args(arguments)
     cards = _read_due_cards(db_path, limit=limit)
-    return {"cards": [_due_card_payload(card) for card in cards]}
+    from ahadiff.core.card_sources import CardSourceDetails, load_card_sources
+
+    include_reference = _optional_bool(arguments.get("include_reference"), default=False)
+    details_by_run: dict[str, dict[str, CardSourceDetails]] = {}
+    payloads: list[dict[str, Any]] = []
+    for card in cards:
+        if card.run_id not in details_by_run:
+            details_by_run[card.run_id] = load_card_sources(db_path.parent, card.run_id)
+        details = details_by_run[card.run_id].get(card.card_id)
+        if details is None and (
+            card.card_id.startswith("card_exercise_")
+            or (card.source_ref or "").startswith("document:")
+        ):
+            raise InputError("review card source artifacts are unavailable")
+        payload = _due_card_payload(card)
+        if details is not None:
+            if card.source_ref != details.source_ref:
+                raise InputError("review card source identity does not match its artifacts")
+            payload.update(
+                question=details.question,
+                answer=details.answer,
+                answer_mode=details.answer_mode,
+                choices=[choice.model_dump(mode="json") for choice in details.choices]
+                if details.choices is not None
+                else None,
+                source_kind=details.source_kind,
+                source_ref=details.source_ref,
+                source_anchors=[
+                    anchor.model_dump(mode="json") for anchor in details.source_anchors
+                ],
+                question_id=details.question_id,
+                exercise_kind=details.exercise_kind,
+                review_context_used=details.review_context_used,
+                review_context_hash=details.review_context_hash,
+            )
+            if details.source_kind == "document":
+                for key in ("file_id", "hunk_id", "hunk_hash"):
+                    payload.pop(key, None)
+            if details.exercise_kind is not None:
+                payload["feedback_kind"] = "semantic_self_assessment"
+                if not include_reference:
+                    payload = {
+                        key: payload[key]
+                        for key in (
+                            "card_id",
+                            "run_id",
+                            "due_date",
+                            "scaffolding_level",
+                            "question",
+                            "answer_mode",
+                            "question_id",
+                            "exercise_kind",
+                            "feedback_kind",
+                        )
+                        if key in payload
+                    }
+                    payload["reference_available"] = True
+        payloads.append(payload)
+    return {"cards": payloads}
 
 
 def _search(state_dir: Path, db_path: Path, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -452,6 +519,7 @@ def _ask_lesson(state_dir: Path, arguments: dict[str, Any]) -> dict[str, Any]:
         "generated_at": _read_run_generated_at(state_dir, finalized_path),
         "lesson_tier": _lesson_tier_from_file(lesson_file),
         "lesson_file": lesson_file,
+        **_run_source_metadata(state_dir, run_dir),
     }
 
     if lesson_text is None:
@@ -462,8 +530,86 @@ def _ask_lesson(state_dir: Path, arguments: dict[str, Any]) -> dict[str, Any]:
         return {"fragments": [], "evidence": [], "run_meta": run_meta}
 
     claims = _read_claims_jsonl(state_dir, run_dir)
+    if "source_kind" in run_meta:
+        _validate_presented_claim_anchors(
+            run_dir, claims, document=run_meta["source_kind"] == "document"
+        )
     evidence = evidence_for_fragments(fragments, claims) if claims else []
     return {"fragments": fragments, "evidence": evidence, "run_meta": run_meta}
+
+
+def _run_source_metadata(state_dir: Path, run_path: Path) -> dict[str, Any]:
+    from ahadiff.core.card_sources import declares_source_artifacts, require_finalized_source
+
+    metadata_path = run_path / "metadata.json"
+    has_source_artifacts = declares_source_artifacts(run_path, {})
+    if not metadata_path.exists():
+        if has_source_artifacts:
+            raise InputError("source metadata is missing")
+        return {}
+    data = _read_mcp_regular_bytes(
+        metadata_path, label="mcp source metadata", max_bytes=1_000_000, state_dir=state_dir
+    )
+    raw = safe_json_loads(data.decode("utf-8"))
+    if not isinstance(raw, dict):
+        raise InputError("invalid source metadata")
+    metadata = cast("dict[str, Any]", raw)
+    if not declares_source_artifacts(run_path, metadata):
+        return {}
+    from ahadiff.core.source_evidence import (
+        load_evidence_anchors,
+        load_review_context,
+        load_run_source_text,
+    )
+
+    require_finalized_source(run_path, metadata)
+    load_run_source_text(run_path, metadata)
+    anchors = load_evidence_anchors(run_path, metadata)
+    auxiliary = load_review_context(run_path, metadata)
+    result: dict[str, Any] = {
+        "source_kind": metadata.get("source_kind"),
+        "source_ref": metadata.get("source_ref"),
+        "source_anchor_count": len(anchors),
+        "review_context_used": auxiliary is not None,
+    }
+    if auxiliary is not None:
+        result["review_context"] = {
+            "kind": auxiliary.kind,
+            "content_hash": auxiliary.content_hash,
+            "sanitized": auxiliary.sanitized,
+            # Auxiliary provenance is visible, but it is never returned as source evidence.
+            "excerpt": auxiliary.content[:1024],
+            "truncated": len(auxiliary.content) > 1024,
+        }
+    return result
+
+
+def _validate_presented_claim_anchors(
+    run_path: Path, claims: list[dict[str, Any]], *, document: bool
+) -> None:
+    from ahadiff.contracts.source_anchor import SourceAnchor
+    from ahadiff.core.source_evidence import (
+        load_evidence_anchors,
+        validate_source_anchor_references,
+    )
+
+    index = load_evidence_anchors(run_path)
+    for claim in claims:
+        if claim.get("status") == "rejected":
+            # A rejected model citation is displayable, but is not validated evidence.
+            claim.pop("source_anchors", None)
+            continue
+        raw_anchors = claim.get("source_anchors", [])
+        if not isinstance(raw_anchors, list):
+            raise InputError("invalid claim source anchors")
+        try:
+            anchors = tuple(
+                SourceAnchor.model_validate(item) for item in cast("list[object]", raw_anchors)
+            )
+        except ValidationError:
+            raise InputError("invalid claim source anchors") from None
+        if (anchors or document) and not validate_source_anchor_references(anchors, index):
+            raise InputError("claim source anchor does not match persisted evidence")
 
 
 def _read_run_generated_at(state_dir: Path, finalized_path: Path) -> str | None:

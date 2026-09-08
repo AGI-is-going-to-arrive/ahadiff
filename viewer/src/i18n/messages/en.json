@@ -62,7 +62,9 @@
     "stage_tour": "Tour",
     "title": "Challenge Mode",
     "tour_header": "Study the canonical diff",
-    "tour_ready": "I'm ready"
+    "tour_ready": "I'm ready",
+    "practice_boundary": "This Challenge rehearses an original solution you have already viewed. Its feedback compares patch text and evidence coverage; it does not execute code or measure independent completion of an unseen variant.",
+    "feedback_boundary": "Matching text is mechanically checkable. Whether a different solution expresses the same idea requires semantic review. Score and Judge describe the learning artifact, not your learning gain."
   },
   "Claim": {
     "contradicted": "Contradicted",
@@ -236,8 +238,8 @@
     "weakest_dim_hint": "The evaluation dimension with the lowest score in this run",
     "weakest_dimensions_title": "Weakest dimensions",
     "last_run_at": "Last run: {time}",
-    "learning_effectiveness_title": "Learning effectiveness",
-    "learning_transfer_rate": "Transfer rate",
+    "learning_effectiveness_title": "Practice and review records",
+    "learning_transfer_rate": "SRS self-rating improvement",
     "concepts_improving": "Concepts improving",
     "concepts_stable": "Stable Concepts",
     "concepts_declining": "Concepts declining",
@@ -267,7 +269,20 @@
     "filter_empty_with_source_has_more": "No loaded runs match {verdict} + {source}. Load more to check older runs.",
     "weak_concepts_mastery_label": "Mastery for {concept}",
     "weak_concepts_title": "Weak Concepts",
-    "weak_concepts_view_all": "View all →"
+    "weak_concepts_view_all": "View all →",
+    "source_document": "Document",
+    "learning_srs_boundary": "This SRS trend is the share of reviewed concepts whose self-ratings improved. It is not a measure of independent transfer or learning gain.",
+    "practice_title": "Active practice: self-assessed independent completion",
+    "practice_initial": "Initial practice",
+    "practice_delayed_recall": "Delayed recall (24+ hours)",
+    "practice_unseen_variant": "First attempt at a new variant",
+    "practice_unmeasured": "Not measured",
+    "practice_attempts": "{count} recorded attempts",
+    "practice_boundary": "These rates summarize your semantic self-assessments against the revealed reference and evidence. They are self-reported, not executed tests. Score and Judge measure artifact quality separately.",
+    "practice_sampling": "Initial and new-variant counts use only the first recorded assessment per question. Delayed recall requires a prior recorded attempt at least 24 hours earlier. A new-variant label describes the generated scenario; unseen status is self-reported.",
+    "practice_errors": "Reported difficulty across these attempts",
+    "practice_error_none": "No difficulty reported",
+    "practice_unavailable": "Practice statistics are unavailable from this serve process. No completion rate is inferred."
   },
   "Diff": {
     "claims_unavailable_body": "The diff is still available, but claim anchors could not be loaded from this run.",
@@ -563,7 +578,8 @@
     "toc": {
       "empty": "No sections",
       "title": "Outline"
-    }
+    },
+    "source_file_compare": "File comparison"
   },
   "LearnDialog": {
     "title": "Start a Learn Run",
@@ -687,7 +703,21 @@
     "error_request_too_large": "These files need more than 1 MiB to send, including text escaping. Choose smaller files or a narrower diff.",
     "file_choose": "Choose file",
     "file_reselect": "Reselect file",
-    "file_action_aria": "{action}: {side}"
+    "file_action_aria": "{action}: {side}",
+    "source_snapshot": "Saved snapshot",
+    "source_snapshot_hint": "Save a local baseline, then compare a later file",
+    "source_document": "One Markdown document",
+    "source_document_hint": "Learn from quoted sections of one document",
+    "file_document": "Markdown document",
+    "document_error_format": "Choose one .md or .markdown file.",
+    "document_scope": "Choose one UTF-8 Markdown file (up to 256 KiB). Citations support what this document says. Interpretations remain semantic judgments; outside facts and runtime effects need separate evidence.",
+    "document_preview": "Document preview",
+    "review_context": "Review notes (optional)",
+    "review_context_hint": "Explain the change or add reviewer context, up to 8 KiB of UTF-8 text. Notes are filtered as untrusted auxiliary input and never become source evidence. Do not include credentials.",
+    "review_context_error": "Review notes must be at most 8 KiB in UTF-8 and contain no NUL characters.",
+    "review_context_used": "Review notes were used as untrusted auxiliary context. They do not verify source claims or replace counterevidence.",
+    "opt_active_practice": "Active transfer practice",
+    "opt_active_practice_hint": "Off by default: keep the mixed quiz. Enable to replace this run’s guided/recall/transfer mix with open transfer questions. With at least 3 questions, practice covers prediction, completion, and explaining errors. No code is executed."
   },
   "Learn": {
     "cancel": "Cancel",
@@ -888,8 +918,8 @@
     "agent_lifecycle_preview": "Developer preview",
     "nav_sources": "Start here",
     "sources_title": "Choose what you have",
-    "sources_hint": "A Git change, two file versions, or a pasted diff can all become a lesson. Code written by you, a colleague or an AI uses the same evidence and review flow.",
-    "sources_steps": "Choose a source → preview the actual changes → start learning → read the lesson and take the quiz. Two files support code, SQL, configuration, Markdown and Notebook source. Single documents without an earlier version are not a learning source yet."
+    "sources_hint": "Learn from a Git change, two file versions, a pasted diff, a saved local baseline, or one Markdown document. Changes from you, a colleague or an AI use the same evidence and review flow.",
+    "sources_steps": "Choose a source, then preview and start. Quizzes stay mixed by default. For open transfer exercises, enable More options for this source → Active transfer practice (CLI: --active-practice) before previewing. For snapshots, save the earlier version explicitly. A Markdown document is its own source; its citations do not prove external facts. Review notes remain auxiliary context."
   },
   "Onboarding": {
     "actions_label": "step actions",
@@ -942,7 +972,7 @@
     "nav_preview": "Preview",
     "nav_steps": "Steps",
     "steps_aria": "setup steps",
-    "learn_steps": "Add your input, click Preview changes, then Start learning. Generated lessons and quizzes appear when the run finishes.",
+    "learn_steps": "Choose one of the five sources. The quiz stays mixed by default; for open transfer exercises, enable More options for this source → Active transfer practice before Preview changes and Start learning. CLI uses --active-practice. Save a snapshot baseline explicitly; a document preview shows its original text.",
     "preview_empty_meta": "No completed run yet",
     "preview_empty": "Your first completed run will appear here with its real source and quality result. Choose a source above to begin.",
     "preview_source": "Source",
@@ -1021,7 +1051,25 @@
     "subtitle": "Practice from claim states and write stable signals back to the review queue. Socratic questions are one-time checks; SRS card ratings affect your review schedule.",
     "title": "Quiz",
     "wrong": "Wrong",
-    "your_answer": "Your answer"
+    "your_answer": "Your answer",
+    "exercise_prediction": "Predict the next step",
+    "exercise_completion": "Complete a similar example",
+    "exercise_error_reason": "Explain an error",
+    "exercise_instruction": "Write your attempt before revealing the reference. Keep any code as text; this exercise does not run it.",
+    "semantic_feedback": "Compare your attempt with the reference and evidence. Equivalent wording or solutions can be valid. Choose a semantic self-assessment below; no code was executed.",
+    "exercise_privacy": "Your written attempt stays in this page. Only the self-assessment, error category and timing are saved for practice and SRS.",
+    "reveal_failed": "Could not reveal the reference answer. Your attempt is still here; try again.",
+    "text_matches": "Text matches the reference",
+    "text_differs": "Text differs; compare the meaning with the reference",
+    "error_type_label": "If you needed help or could not complete it, what was the main difficulty?",
+    "error_recall": "Remembering the concept",
+    "error_application": "Applying it to the example",
+    "error_reasoning": "Explaining the reasoning",
+    "error_boundary": "Knowing what the evidence cannot prove",
+    "assess_independent": "Completed independently",
+    "assess_assisted": "Needed help",
+    "assess_not_yet": "Not yet",
+    "machine_summary": "Choice checks: {correct} / {count}. Exercise self-assessments are recorded separately."
   },
   "Improve": {
     "tab_preview": "Improve Preview",
@@ -1364,7 +1412,9 @@
     "card_info_lapses": "Lapses",
     "card_info_last_rating": "Last Rating",
     "view_in_diff": "View in Diff",
-    "title": "Review"
+    "title": "Review",
+    "exercise_hint": "Try again from memory before opening the reference. Delayed recall is counted only after at least 24 hours since your previous recorded attempt.",
+    "practice_failed": "Could not save this practice assessment. Retry the same assessment."
   },
   "Rubric": {
     "overall": "Overall",
@@ -1923,5 +1973,55 @@
     "EXPORT_FORMAT_UNSUPPORTED": "Export format is not supported.",
     "NOT_FOUND": "Requested resource was not found.",
     "INTERNAL_ERROR": "Something went wrong inside AhaDiff."
+  },
+  "Snapshots": {
+    "title": "Local learning snapshots",
+    "privacy": "Saving is explicit. Only a filtered, normalized learning baseline is kept locally; detected secrets are removed. It is not a complete backup of your file. Source files are never overwritten.",
+    "name": "Snapshot name (up to 80 characters)",
+    "file": "File before the change",
+    "save": "Save baseline locally",
+    "saved": "Baseline saved locally. Choose the later file to compare.",
+    "saved_sanitized": "Baseline saved after filtering. Removed content cannot be recovered from this snapshot.",
+    "capacity": "{count}/{max} snapshots · {used}/{limit} stored",
+    "full": "Snapshot storage is full. Delete a specific baseline before saving another.",
+    "failed": "Could not read or update the snapshot. Refresh the list and retry.",
+    "refresh": "Refresh snapshots",
+    "empty": "No saved baselines. Choose a file and name it, then save it explicitly.",
+    "status_ready": "Ready for comparison",
+    "status_corrupt": "Damaged or unreadable baseline",
+    "status_unsupported": "Unsupported snapshot version",
+    "sanitized": "Filtered learning baseline",
+    "select": "Use baseline",
+    "selected": "Baseline selected",
+    "delete": "Delete snapshot",
+    "delete_confirm": "Delete “{name}” from local snapshot storage? This removes only this saved baseline. Existing runs and source files stay available.",
+    "confirm_delete": "Delete this baseline"
+  },
+  "Evidence": {
+    "anchors": "Source anchors",
+    "kind_heading": "Heading",
+    "kind_paragraph": "Paragraph",
+    "kind_cell": "Notebook cell source",
+    "kind_key_path": "Configuration key path",
+    "kind_line": "Line evidence",
+    "side_old": "Before",
+    "side_new": "After",
+    "side_document": "Document",
+    "paragraph": "Paragraph {index}",
+    "cell": "Cell {index}",
+    "weak_fallback": "A dedicated parser could not locate this structure. Only line-level source support is available.",
+    "content_hash": "Inspect content hash",
+    "assertion_source_fact": "Source fact: the cited text exists at this location. This does not verify external facts.",
+    "assertion_semantic": "Semantic interpretation: source text supports the discussion; its meaning still needs judgment.",
+    "assertion_runtime_effect": "Runtime effect: source text alone cannot prove execution behavior.",
+    "document_title": "Document evidence",
+    "document_scope": "This is the saved document source. Citations refer to sections, paragraphs and content hashes; there are no added or removed lines.",
+    "document_lines": "Lines {first}–{last} of {total}",
+    "previous_lines": "Previous lines",
+    "next_lines": "Next lines",
+    "review_context": "Review notes · auxiliary input",
+    "review_context_unavailable": "The auxiliary review notes could not be read. Inspect the source evidence independently.",
+    "document_unavailable": "The saved document source is unavailable.",
+    "anchors_partial": "Only some format anchors are available; existing diff-hunk evidence remains usable."
   }
 }

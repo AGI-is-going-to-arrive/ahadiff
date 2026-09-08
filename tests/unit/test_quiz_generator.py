@@ -14,8 +14,11 @@ from ahadiff.claims.extract import write_claim_candidates_jsonl
 from ahadiff.claims.schema import ClaimCandidate, VerifiedClaim
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, ProviderConfig, QuizChoice, ReviewCard, SourceHunk
+from ahadiff.contracts.run_source import DocumentInput
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError
+from ahadiff.core.source_evidence import load_evidence_anchors
+from ahadiff.git.capture import capture_patch, write_input_artifacts
 from ahadiff.lesson.generator import write_lesson_artifacts
 from ahadiff.lesson.schemas import LessonCompact, LessonFull, LessonHint
 from ahadiff.llm.schemas import ProviderResponse
@@ -44,6 +47,7 @@ from ahadiff.quiz.schemas import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ahadiff.contracts.source_anchor import SourceAnchor
     from ahadiff.llm.schemas import ProviderRequest
     from ahadiff.quiz.distractor_gate import DistractorGateReport
 
@@ -185,7 +189,8 @@ diff --git a/src/app.py b/src/app.py
 
 
 class _FakeQuizProvider:
-    def __init__(self, *, include_choices: bool = True) -> None:
+    def __init__(self, *, run_id: str, include_choices: bool = True) -> None:
+        self.claim_id = f"{run_id}-claim-1"
         self.include_choices = include_choices
         self.requests: list[ProviderRequest] = []
 
@@ -222,7 +227,7 @@ class _FakeQuizProvider:
                     "expected_answer": (
                         "It now loops across attempts and continues after exceptions."
                     ),
-                    "source_claims": ["run_quiz-claim-1"],
+                    "source_claims": [self.claim_id],
                     "concepts": ["retry loop"],
                     "evidence": [{"file": "src/app.py", "line": 2}],
                     "explanation": "The loop is the new teaching surface.",
@@ -230,14 +235,14 @@ class _FakeQuizProvider:
                 {
                     "question": "Which branch is new in the helper?",
                     "expected_answer": "The exception branch now continues to the next attempt.",
-                    "source_claims": ["run_quiz-claim-1"],
+                    "source_claims": [self.claim_id],
                     "concepts": ["exception handling"],
                     "evidence": [{"file": "src/app.py", "line": 5}],
                 },
                 {
                     "question": "What should you not overclaim from this diff?",
                     "expected_answer": "The diff does not prove backoff or reliability gains.",
-                    "source_claims": ["run_quiz-claim-1"],
+                    "source_claims": [self.claim_id],
                     "concepts": ["evidence boundary"],
                     "evidence": [{"file": "src/app.py", "line": 2}],
                 },
@@ -336,6 +341,24 @@ def _quiz_question_payload(**overrides: object) -> dict[str, object]:
     }
     payload.update(overrides)
     return payload
+
+
+def _active_question_payload(run_id: str, kind: str, index: int) -> dict[str, object]:
+    questions = {
+        "prediction": "Predict the next attempt after a transient failure.\nState assumptions.",
+        "completion": "Complete a similar retry example.\nExplain the missing exception branch.",
+        "error_reason": "Explain why a plain loop does not prove backoff.\nCite the boundary.",
+    }
+    return _quiz_question_payload(
+        question_id=f"model_question_{index}",
+        question=questions[kind],
+        expected_answer="Use the retry structure and preserve the unproven boundary.",
+        quiz_kind="transfer",
+        answer_mode="open",
+        exercise_kind=kind,
+        choices=None,
+        source_claims=[f"{run_id}-claim-1"],
+    )
 
 
 def _misconception_card_payload(index: int) -> dict[str, object]:
@@ -671,7 +694,7 @@ def test_generate_quiz_from_run_writes_expected_artifact(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
     progress_messages: list[str] = []
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
@@ -729,7 +752,7 @@ def test_quiz_generator_writes_distractor_gate_without_changing_quiz_jsonl(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_gate")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
     original_gate_writer = quiz_generator_module.write_distractor_gate_report
     quiz_bytes_at_gate_write: list[tuple[bytes, bytes]] = []
 
@@ -787,7 +810,7 @@ def test_quiz_generation_continues_when_distractor_gate_report_write_fails(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_gate_write_fail")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -830,7 +853,7 @@ def test_quiz_generation_attaches_structured_schema_metadata_for_both_prompts(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_schema")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -880,7 +903,7 @@ def test_quiz_generation_retries_then_preserves_quiz_jsonl_shape(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_retry")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
     quiz_attempts = 0
 
     def fake_generate(request: object) -> object:
@@ -947,7 +970,7 @@ def test_quiz_generation_retries_instead_of_accepting_truncated_fallback(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_truncated_retry")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
     quiz_attempts = 0
 
     def fake_generate(request: object) -> object:
@@ -1008,7 +1031,7 @@ def test_misconception_generation_retries_invalid_nonempty_payload_then_preserve
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_misconception_retry")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
     misconception_attempts = 0
 
     def fake_generate(request: object) -> object:
@@ -1085,7 +1108,7 @@ def test_quiz_generation_uses_lenient_fallback_before_retry(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_fallback")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
     fallback_schema_ids: list[str] = []
 
     question = _quiz_question_payload(
@@ -1163,7 +1186,7 @@ def test_generate_quiz_from_run_allows_empty_misconception_cards(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_empty_misconceptions")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_generate(request: object) -> object:
         req = cast("ProviderRequest", request)
@@ -1211,6 +1234,47 @@ def test_generate_quiz_from_run_allows_empty_misconception_cards(
     assert load_misconception_cards(artifacts.misconception_path) == []
 
 
+@pytest.mark.parametrize("rejected", [False, True])
+def test_legacy_quiz_generation_rejects_unknown_or_rejected_claims(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rejected: bool,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_legacy_claim_guard")
+    # These are the old run DTOs, without source_anchors or an evidence index.
+    if rejected:
+        claim_path = run_path / "claims.jsonl"
+        claim = json.loads(claim_path.read_text(encoding="utf-8"))
+        claim.update(status="rejected", reason_code="evidence_missing")
+        claim_path.write_text(json.dumps(claim) + "\n", encoding="utf-8")
+    fake_provider = _FakeQuizProvider(run_id=run_path.name if rejected else "another_run")
+
+    def fake_provider_factory(*_args: object, **_kwargs: object) -> _FakeQuizProvider:
+        return fake_provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", fake_provider_factory)
+    with pytest.raises(InputError, match="structured output validation failed after 2 attempt"):
+        generate_quiz_from_run(
+            run_id=run_path.name,
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key=None,
+            security_config=SecurityConfig(),
+        )
+    assert [request.prompt_name for request in fake_provider.requests] == [
+        "quiz.generate",
+        "quiz.generate",
+    ]
+    assert not (run_path / "quiz" / "quiz.jsonl").exists()
+
+
 def test_misconception_card_set_accepts_thirty_cards() -> None:
     parsed = MisconceptionCardSet.model_validate(
         {"cards": [_misconception_card_payload(index) for index in range(30)]}
@@ -1238,7 +1302,7 @@ def test_generate_quiz_from_run_rejects_more_than_thirty_misconception_cards(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_too_many_misconceptions")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_generate(request: object) -> object:
         req = cast("ProviderRequest", request)
@@ -1287,7 +1351,7 @@ def test_generate_quiz_from_run_caps_misconception_concept_terms_at_thirty(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_terms")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_generate(request: object) -> object:
         req = cast("ProviderRequest", request)
@@ -1359,13 +1423,214 @@ def test_misconception_empty_container_does_not_mask_invalid_nonempty_cards() ->
     assert has_explicit_empty_misconception_cards('{"cards": [{"concept": "retry"}]}') is False
 
 
+@pytest.mark.parametrize("question_count", [1, 2, 3, 5])
+def test_active_practice_covers_requested_kinds_after_bounded_mode_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    question_count: int,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_active_practice")
+    metadata_path = run_path / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["active_practice"] = True
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    kinds = ("prediction", "completion", "error_reason")
+    quiz_attempts = 0
+
+    class ActiveProvider(_FakeQuizProvider):
+        def generate(self, request: object) -> object:
+            nonlocal quiz_attempts
+            req = cast("ProviderRequest", request)
+            if req.prompt_name != "quiz.generate":
+                return super().generate(request)
+            quiz_attempts += 1
+            if quiz_attempts == 1:
+                return super().generate(request)  # Valid mixed JSON, invalid active mode.
+            self.requests.append(req)
+            return ProviderResponse(
+                content=json.dumps(
+                    {
+                        "questions": [
+                            _active_question_payload(run_path.name, kinds[index % 3], index)
+                            for index in range(question_count)
+                        ]
+                    }
+                ),
+                model_id="gpt-5.4-mini",
+                input_tokens=10,
+                output_tokens=20,
+            )
+
+    provider = ActiveProvider(run_id=run_path.name)
+
+    def factory(*_args: object, **_kwargs: object) -> ActiveProvider:
+        return provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", factory)
+    artifacts, questions = generate_quiz_from_run(
+        run_id=run_path.name,
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        question_count=question_count,
+        structured_validation_retries=1,
+    )
+    quiz_requests = [
+        request for request in provider.requests if request.prompt_name == "quiz.generate"
+    ]
+    assert len(quiz_requests) == 2
+    assert '"active_practice": true' in quiz_requests[0].payload_text
+    retry_feedback = quiz_requests[1].payload_text.split("The previous response", 1)[1]
+    assert "parser failed; provider output omitted" in retry_feedback
+    assert "quiz_generate.v1" in retry_feedback
+    assert '"active_practice": true' in quiz_requests[1].payload_text
+    assert len(questions) == question_count
+    assert {question.exercise_kind for question in questions} == set(
+        kinds[: min(question_count, 3)]
+    )
+    assert all(
+        question.question_id and question.question_id.startswith("quiz_exercise_")
+        for question in questions
+    )
+    assert all(
+        question.quiz_kind == "transfer"
+        and question.answer_mode == "open"
+        and question.choices is None
+        for question in questions
+    )
+    assert all("\n" in question.question for question in questions)
+    assert len(load_quiz_questions(artifacts.quiz_path)) == question_count
+
+
+@pytest.mark.parametrize("invalid", ["mixed", "coverage", "count"])
+def test_active_practice_never_accepts_invalid_mode_or_coverage_after_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: str,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_active_invalid")
+
+    class InvalidProvider(_FakeQuizProvider):
+        def generate(self, request: object) -> object:
+            req = cast("ProviderRequest", request)
+            if invalid == "mixed":
+                return super().generate(request)
+            self.requests.append(req)
+            return ProviderResponse(
+                content=json.dumps(
+                    {
+                        "questions": [
+                            _active_question_payload(run_path.name, "prediction", index)
+                            for index in range(2 if invalid == "count" else 3)
+                        ]
+                    }
+                ),
+                model_id="gpt-5.4-mini",
+                input_tokens=10,
+                output_tokens=20,
+            )
+
+    provider = InvalidProvider(run_id=run_path.name)
+
+    def factory(*_args: object, **_kwargs: object) -> InvalidProvider:
+        return provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", factory)
+    with pytest.raises(InputError, match="structured output validation failed after 2 attempt"):
+        generate_quiz_from_run(
+            run_id=run_path.name,
+            run_path=run_path,
+            workspace_root=workspace_root,
+            provider_config=ProviderConfig(
+                provider_class="openai",
+                model_name="gpt-5.4-mini",
+                base_url="http://127.0.0.1:8318",
+                api_key_env="AHADIFF_PROVIDER_API_KEY",
+            ),
+            api_key=None,
+            security_config=SecurityConfig(),
+            active_practice=True,
+            question_count=3,
+            structured_validation_retries=1,
+        )
+    assert [request.prompt_name for request in provider.requests] == [
+        "quiz.generate",
+        "quiz.generate",
+    ]
+    assert not (run_path / "quiz" / "quiz.jsonl").exists()
+
+
+def test_mixed_practice_keeps_optional_active_subset_and_explicit_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_mixed_practice")
+    metadata_path = run_path / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["active_practice"] = True
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    class MixedProvider(_FakeQuizProvider):
+        def generate(self, request: object) -> object:
+            response = cast("ProviderResponse", super().generate(request))
+            if cast("ProviderRequest", request).prompt_name == "quiz.generate":
+                payload = json.loads(response.content)
+                payload["questions"][2] = _active_question_payload(run_path.name, "prediction", 2)
+                return ProviderResponse(
+                    content=json.dumps(payload),
+                    model_id=response.model_id,
+                    input_tokens=response.input_tokens,
+                    output_tokens=response.output_tokens,
+                )
+            return response
+
+    provider = MixedProvider(run_id=run_path.name)
+
+    def factory(*_args: object, **_kwargs: object) -> MixedProvider:
+        return provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", factory)
+    _, questions = generate_quiz_from_run(
+        run_id=run_path.name,
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.4-mini",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        active_practice=False,
+    )
+    assert [question.answer_mode for question in questions] == [
+        "multiple_choice",
+        "multiple_choice",
+        "open",
+    ]
+    assert questions[2].exercise_kind == "prediction"
+    assert len(provider.requests) == 2
+    assert '"active_practice": false' in provider.requests[0].payload_text
+
+
 def test_generate_quiz_from_run_uses_configured_question_count(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -1397,7 +1662,7 @@ def test_generate_quiz_from_run_allows_max_question_count(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -1428,7 +1693,7 @@ def test_generate_quiz_from_run_allows_fifteen_questions_when_thirty_requested(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_fifteen")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_generate(request: object) -> object:
         req = cast("ProviderRequest", request)
@@ -1489,7 +1754,7 @@ def test_generate_quiz_from_run_rejects_question_count_above_max(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -1530,7 +1795,7 @@ def test_generate_quiz_from_run_clamps_output_token_caps_with_overrides(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -1564,7 +1829,7 @@ def test_generate_quiz_from_run_clamps_default_caps_to_provider_max_output_token
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_provider_cap")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -1595,7 +1860,7 @@ def test_generate_quiz_from_run_ignores_non_positive_output_token_values(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz_non_positive_caps")
-    fake_provider = _FakeQuizProvider()
+    fake_provider = _FakeQuizProvider(run_id=run_path.name)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -1628,7 +1893,7 @@ def test_generate_quiz_from_run_rejects_provider_payload_without_choices(
 ) -> None:
     workspace_root = tmp_path / "workspace"
     run_path = _write_quiz_run_artifacts(workspace_root, "run_quiz")
-    fake_provider = _FakeQuizProvider(include_choices=False)
+    fake_provider = _FakeQuizProvider(run_id=run_path.name, include_choices=False)
 
     def fake_provider_factory(*args: object, **kwargs: object) -> _FakeQuizProvider:
         return fake_provider
@@ -2111,3 +2376,203 @@ diff --git a/src/app.py b/src/app.py
         ).fetchone()
     assert row == ("non_ratcheted", "learnability")
     assert "skipped by learnability gate" in result.stdout
+
+
+def _document_quiz_source(workspace_root: Path) -> tuple[Path, tuple[SourceAnchor, ...]]:
+    workspace_root.mkdir(parents=True)
+    capture = capture_patch(
+        workspace_root=workspace_root,
+        document=DocumentInput(
+            name="synthetic.md",
+            content=(
+                "# Queue and set\n\nA FIFO queue preserves arrival order.\n\n"
+                "A set records membership and merges repeated members.\n"
+            ),
+        ),
+    )
+    source, _ = write_input_artifacts(capture)
+    run_path = source.parent
+    anchors = tuple(
+        anchor for anchor in load_evidence_anchors(run_path) if anchor.locator.kind == "paragraph"
+    )
+    assert len(anchors) == 2
+    claims = [
+        ClaimRecord(
+            claim_id=f"{run_path.name}-claim-{index + 1}",
+            run_id=run_path.name,
+            text=anchor.quote,
+            status="verified",
+            assertion_kind="source_fact",
+            source_anchors=[anchor],
+        )
+        for index, anchor in enumerate(anchors)
+    ]
+    (run_path / "claims.jsonl").write_text(
+        "".join(claim.model_dump_json() + "\n" for claim in claims), encoding="utf-8"
+    )
+    (run_path / "lesson").mkdir()
+    (run_path / "lesson" / "lesson.full.md").write_text(
+        "Queue preserves arrival order; set merges duplicates.\n", encoding="utf-8"
+    )
+    return run_path, anchors
+
+
+def _document_active_questions(run_id: str, anchor: SourceAnchor) -> list[dict[str, object]]:
+    questions = [
+        ("prediction", "For a FIFO queue receiving Birch then Cedar, which leaves first?"),
+        ("completion", "Complete the first result for FIFO input [Birch, Cedar]: ____."),
+        ("error_reason", "Why is claiming the second arrival leaves first unsupported?"),
+    ]
+    return [
+        _active_question_payload(run_id, kind, index)
+        | {
+            "question": question,
+            "expected_answer": "Birch precedes Cedar in arrival order.",
+            "concepts": ["FIFO"],
+            "evidence": [],
+            "source_anchors": [anchor.model_dump(mode="json")],
+        }
+        for index, (kind, question) in enumerate(questions)
+    ]
+
+
+class _DocumentResponseProvider(_FakeQuizProvider):
+    def __init__(self, run_id: str, responses: list[str]) -> None:
+        super().__init__(run_id=run_id)
+        self.responses = responses
+        self.quiz_calls = 0
+
+    def generate(self, request: object) -> object:
+        req = cast("ProviderRequest", request)
+        self.requests.append(req)
+        if req.prompt_name == "quiz.generate":
+            content = self.responses[min(self.quiz_calls, len(self.responses) - 1)]
+            self.quiz_calls += 1
+        else:
+            content = '{"cards": []}'
+        return ProviderResponse(
+            content=content, model_id="gpt-5.6-luna", input_tokens=10, output_tokens=20
+        )
+
+
+def _run_document_quiz(
+    run_path: Path, workspace_root: Path, retries: int
+) -> tuple[QuizArtifactPaths, tuple[QuizQuestion, ...]]:
+    return generate_quiz_from_run(
+        run_id=run_path.name,
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="gpt-5.6-luna",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="SYNTHETIC_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        active_practice=True,
+        structured_validation_retries=retries,
+    )
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_document_quiz_retries_captured_anchor_field_shapes_before_accepting_exact_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    wrapped: bool,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path, anchors = _document_quiz_source(workspace_root)
+    correct = _document_active_questions(run_path.name, anchors[0])
+    # Captured Luna shapes: rich SourceAnchor misplaced in evidence, then legacy file/line.
+    misplaced = [
+        {key: value for key, value in question.items() if key != "source_anchors"}
+        | {"evidence": question["source_anchors"]}
+        for question in correct
+    ]
+    legacy = [
+        {key: value for key, value in question.items() if key != "source_anchors"}
+        | {"evidence": [{"file": anchors[0].file, "line": anchors[0].start}]}
+        for question in correct
+    ]
+
+    def encode(questions: list[dict[str, object]]) -> str:
+        body = {"questions": questions}
+        return json.dumps({"output": body} if wrapped else body)
+
+    provider = _DocumentResponseProvider(
+        run_path.name, [encode(misplaced), encode(legacy), encode(correct)]
+    )
+
+    def provider_factory(*_args: object, **_kwargs: object) -> _DocumentResponseProvider:
+        return provider
+
+    monkeypatch.setattr(quiz_generator_module, "make_provider", provider_factory)
+    artifacts, questions = _run_document_quiz(run_path, workspace_root, 2)
+    assert provider.quiz_calls == 3
+    assert [q.exercise_kind for q in questions] == ["prediction", "completion", "error_reason"]
+    assert all(q.evidence == [] and q.source_anchors == [anchors[0]] for q in questions)
+    assert load_quiz_questions(artifacts.quiz_path) == questions
+    prompt = provider.requests[0].payload_text
+    assert "## Diff source example" not in prompt
+    assert '"file": "src/app.py"' not in prompt
+    example_json = (
+        prompt.split("## Document source example", 1)[1]
+        .split("```json\n", 1)[1]
+        .split("\n```", 1)[0]
+    )
+    example = json.loads(example_json)["questions"][0]
+    assert example["evidence"] == []
+    assert example["source_anchors"] == [anchors[0].model_dump(mode="json")]
+    assert example["source_claims"] == [f"{run_path.name}-claim-1"]
+    assert all(
+        "The previous response" in request.payload_text for request in provider.requests[1:3]
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid", ["hash", "quote", "locator", "unknown_claim", "unrelated_anchor", "rejected_claim"]
+)
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_document_quiz_tampered_or_unassociated_references_exhaust_bounded_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: str,
+    wrapped: bool,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path, anchors = _document_quiz_source(workspace_root)
+    questions = _document_active_questions(run_path.name, anchors[0])
+    changed_anchor = anchors[0].model_dump(mode="json")
+    if invalid == "hash":
+        changed_anchor["content_hash"] = "0" * 64
+    elif invalid == "quote":
+        changed_anchor["quote"] = "A made-up runtime guarantee."
+    elif invalid == "locator":
+        changed_anchor["locator"]["heading_path"] = ["Different section"]
+    elif invalid == "unrelated_anchor":
+        changed_anchor = anchors[1].model_dump(mode="json")
+    elif invalid == "unknown_claim":
+        questions[0]["source_claims"] = ["unknown-claim"]
+    elif invalid == "rejected_claim":
+        claim_path = run_path / "claims.jsonl"
+        claims = [json.loads(line) for line in claim_path.read_text().splitlines()]
+        claims[1].update(status="rejected", reason_code="evidence_missing")
+        claim_path.write_text("".join(json.dumps(claim) + "\n" for claim in claims))
+        questions[0]["source_claims"] = [claims[1]["claim_id"]]
+        changed_anchor = anchors[1].model_dump(mode="json")
+    questions[0]["source_anchors"] = [changed_anchor]
+    body = {"questions": questions}
+    provider = _DocumentResponseProvider(
+        run_path.name, [json.dumps({"output": body} if wrapped else body)]
+    )
+
+    def provider_factory(*_args: object, **_kwargs: object) -> _DocumentResponseProvider:
+        return provider
+
+    monkeypatch.setattr(quiz_generator_module, "make_provider", provider_factory)
+    with pytest.raises(InputError, match="structured output validation failed after 2 attempt"):
+        _run_document_quiz(run_path, workspace_root, 1)
+    assert provider.quiz_calls == 2
+    assert all(request.prompt_name == "quiz.generate" for request in provider.requests)
+    assert not (run_path / "quiz" / "quiz.jsonl").exists()

@@ -16,14 +16,21 @@ import sys
 import tempfile
 import threading
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from difflib import unified_diff
 from queue import Queue
 from typing import TYPE_CHECKING, Any, BinaryIO, Literal, cast
 
 from ahadiff.contracts import RunSource
-from ahadiff.contracts.run_source import COMPARE_FILES_MAX_BYTES, CompareFileInput
+from ahadiff.contracts.run_source import (
+    COMPARE_FILES_MAX_BYTES,
+    CompareFileInput,
+    DocumentInput,
+    SnapshotProvenance,
+    validate_review_context,
+)
+from ahadiff.contracts.source_anchor import ReviewContextArtifact
 from ahadiff.core.config import DEFAULT_CONFIG, load_config, load_workspace_config
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_run_id
@@ -35,6 +42,7 @@ from ahadiff.core.paths import (
     validate_state_dir_path,
     validate_state_path_no_symlinks,
 )
+from ahadiff.core.source_evidence import build_evidence_index, text_hash
 from ahadiff.graphify.parser import parse_graph_json_data
 from ahadiff.safety.audit import append_audit_record, build_redaction_audit_record
 from ahadiff.safety.ignore import (
@@ -71,6 +79,8 @@ from .symbols import SymbolExtractorMode, extract_symbols, serialize_symbols_pay
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from ahadiff.contracts.source_anchor import EvidenceAnchorIndex
 else:
     Iterable = _collections_abc.Iterable
 
@@ -118,15 +128,21 @@ class CapturedDiff:
     workspace_root: Path
     state_dir: Path
     run_source: RunSource
-    raw_patch_text: str
-    persisted_patch_text: str
+    raw_patch_text: str = field(repr=False)
+    persisted_patch_text: str = field(repr=False)
     metadata: dict[str, Any]
     redaction_result: RedactionPipelineResult
     injection_report: InjectionReport
     graphify_status: GraphifyStatus
-    before_text_by_path: dict[str, str]
-    after_text_by_path: dict[str, str]
+    before_text_by_path: dict[str, str] = field(repr=False)
+    after_text_by_path: dict[str, str] = field(repr=False)
     symbol_extractor: SymbolExtractorMode
+    document_text: str | None = field(default=None, repr=False)
+    review_context_payload: ReviewContextArtifact | None = field(default=None, repr=False)
+
+    @property
+    def source_text(self) -> str:
+        return self.document_text if self.document_text is not None else self.persisted_patch_text
 
 
 @dataclass(frozen=True)
@@ -189,6 +205,10 @@ def capture_patch(
     patch_text: str | None = None,
     compare: tuple[Path, Path] | None = None,
     compare_files: tuple[CompareFileInput, CompareFileInput] | None = None,
+    document: DocumentInput | None = None,
+    review_context: str | None = None,
+    snapshot_provenance: SnapshotProvenance | None = None,
+    active_practice: bool = False,
     compare_dir: tuple[Path, Path] | None = None,
     allow_empty_compare: bool = False,
     patch_url: str | None = None,
@@ -201,6 +221,42 @@ def capture_patch(
     privacy_mode: str = "strict_local",
     content_lang: str = "en",
 ) -> CapturedDiff:
+    if type(active_practice) is not bool:
+        raise InputError("active_practice must be a boolean")
+    if document is not None:
+        if any(
+            (
+                revision is not None,
+                last,
+                since is not None,
+                author is not None,
+                staged,
+                unstaged,
+                include_untracked,
+                changed_paths is not None,
+                patch is not None,
+                patch_text is not None,
+                compare is not None,
+                compare_files is not None,
+                compare_dir is not None,
+                patch_url is not None,
+                snapshot_provenance is not None,
+            )
+        ):
+            raise InputError("document cannot be combined with another learning source")
+        return _capture_document(
+            workspace_root=workspace_root,
+            document=document,
+            privacy_mode=privacy_mode,
+            content_lang=content_lang,
+            review_context=review_context,
+            active_practice=active_practice,
+        )
+    if snapshot_provenance is not None:
+        if compare_files is None:
+            raise InputError("snapshot provenance requires two inline comparison files")
+        if text_hash(compare_files[0].content) != snapshot_provenance.content_hash:
+            raise InputError("snapshot baseline content hash mismatch")
     effective_max_files = (
         int(DEFAULT_CONFIG["capture"]["max_files"]) if max_files is None else max_files
     )
@@ -318,6 +374,7 @@ def capture_patch(
         "mode": "learn",
         "privacy_mode": privacy_mode,
         "content_lang": content_lang,
+        "active_practice": active_practice,
         "allowlist_digest": redaction_result.allowlist_digest,
         "degraded_flags": run_source.degraded_flags,
         "capability_flags": _capability_flags(
@@ -336,8 +393,9 @@ def capture_patch(
             "provenance": graphify_status.provenance,
         },
     }
-
-    return CapturedDiff(
+    if snapshot_provenance is not None:
+        metadata["source_detail"]["snapshot"] = snapshot_provenance.model_dump(mode="json")
+    capture = CapturedDiff(
         run_id=metadata["run_id"],
         workspace_root=workspace_root,
         state_dir=state_dir,
@@ -352,9 +410,231 @@ def capture_patch(
         after_text_by_path=raw_capture.after_text_by_path,
         symbol_extractor=effective_symbol_extractor,
     )
+    return _with_review_context(capture, review_context)
+
+
+def _capture_document(
+    *,
+    workspace_root: Path,
+    document: DocumentInput,
+    privacy_mode: str,
+    content_lang: str,
+    review_context: str | None,
+    active_practice: bool,
+) -> CapturedDiff:
+    workspace_root = workspace_root.expanduser().resolve()
+    safe = redaction_pipeline(
+        _normalize_newlines(document.content),
+        repo_root=workspace_root if _has_git_root(workspace_root) else None,
+        policy=_resolve_policy(workspace_root),
+    )
+    document_findings = tuple(
+        replace(finding, source_name="document.md", source_kind="markdown")
+        for finding in safe.findings
+    )
+    safe = replace(
+        safe,
+        findings=document_findings,
+        primary_target=replace(
+            safe.primary_target,
+            source_name="document.md",
+            source_kind="markdown",
+            findings=document_findings,
+        ),
+    )
+    protected = protect_untrusted_text(
+        safe.redacted_text, source_name="document.md", source_kind="markdown"
+    )
+    text = protected.protected_text
+    if not text.strip():
+        raise InputError("document input is empty after sanitization")
+    name = redaction_pipeline(document.name, policy=_resolve_policy(workspace_root)).redacted_text
+    digest = text_hash(text)
+    source = RunSource(
+        source_kind="document", source_ref=f"document:sha256:{digest}", capability_level=1
+    )
+    graph = detect_graphify_status(workspace_root, use_graphify=False, repo=None)
+    metadata: dict[str, Any] = {
+        "run_id": make_run_id(),
+        "repo": None,
+        "base_ref": None,
+        "head_ref": None,
+        "source_kind": "document",
+        "source_ref": source.source_ref,
+        "capability_level": 1,
+        "source_detail": {
+            "type": "document",
+            "document": {
+                "name": name,
+                "content_hash": digest,
+                "schema_version": 1,
+                "sanitized": text != document.content or name != document.name,
+            },
+        },
+        "created_at": _utc_now(),
+        "mode": "learn",
+        "privacy_mode": privacy_mode,
+        "content_lang": content_lang,
+        "active_practice": active_practice,
+        "allowlist_digest": safe.allowlist_digest,
+        "degraded_flags": {},
+        "capability_flags": _capability_flags(1, False),
+        "selected_files": [name],
+        "omitted_files": [],
+        "diff_stats": {"files": 0, "hunks": 0, "changed_lines": 0, "lines": 0},
+        "source_stats": {
+            "bytes": len(text.encode("utf-8")),
+            "lines": len(text.splitlines()),
+            "files": 1,
+        },
+        "ranking_version": "v1",
+        "has_graph": False,
+        "graphify": {"enabled": False, "source_exists": False, "freshness": None, "provenance": {}},
+    }
+    capture = CapturedDiff(
+        run_id=metadata["run_id"],
+        workspace_root=workspace_root,
+        state_dir=_state_dir(workspace_root),
+        run_source=source,
+        raw_patch_text="",
+        persisted_patch_text="",
+        metadata=metadata,
+        redaction_result=safe,
+        injection_report=protected,
+        graphify_status=graph,
+        before_text_by_path={},
+        after_text_by_path={},
+        symbol_extractor="auto",
+        document_text=text,
+    )
+    return _with_review_context(capture, review_context)
+
+
+def _with_review_context(capture: CapturedDiff, value: str | None) -> CapturedDiff:
+    try:
+        normalized = validate_review_context(value)
+    except ValueError as exc:
+        raise InputError(str(exc)) from None
+    if normalized is None:
+        return capture
+    redacted = redaction_pipeline(normalized, policy=_resolve_policy(capture.workspace_root))
+    review_findings = tuple(
+        replace(finding, source_name="review_context.json", source_kind="string")
+        for finding in redacted.findings
+    )
+    redacted = replace(
+        redacted,
+        findings=review_findings,
+        primary_target=replace(
+            redacted.primary_target,
+            source_name="review_context.json",
+            source_kind="string",
+            findings=review_findings,
+        ),
+    )
+    protected = protect_untrusted_text(
+        redacted.redacted_text, source_name="review_context.json", source_kind="string"
+    )
+    artifact = ReviewContextArtifact(
+        content=protected.protected_text,
+        content_hash=text_hash(protected.protected_text),
+        sanitized=protected.protected_text != normalized,
+    )
+    capture.metadata.update(review_context_used=True, review_context_hash=artifact.content_hash)
+    return replace(
+        capture,
+        review_context_payload=artifact,
+        redaction_result=replace(
+            capture.redaction_result,
+            secondary_targets=(
+                *capture.redaction_result.secondary_targets,
+                redacted.primary_target,
+            ),
+            findings=(*capture.redaction_result.findings, *redacted.findings),
+            blocked_remote=capture.redaction_result.blocked_remote or redacted.blocked_remote,
+        ),
+        injection_report=replace(
+            capture.injection_report,
+            findings=(*capture.injection_report.findings, *protected.findings),
+        ),
+    )
+
+
+def build_capture_evidence_index(capture: CapturedDiff) -> EvidenceAnchorIndex:
+    """Return the same safe index used by publication, without writing state."""
+    return _prepare_capture_evidence(capture)[1]
+
+
+def _prepare_capture_evidence(capture: CapturedDiff) -> tuple[CapturedDiff, EvidenceAnchorIndex]:
+    # Sanitize full side texts before parsing locators. The final JSON values,
+    # not pre-redaction source or generated header comments, define anchor hashes.
+    safe_maps: list[dict[str, str]] = []
+    for mapping in (capture.before_text_by_path, capture.after_text_by_path):
+        safe_maps.append(
+            {
+                file: protect_untrusted_text(
+                    text,
+                    source_name=file,
+                    source_kind="raw_patch",
+                ).protected_text
+                for file, text in cast(
+                    "dict[str, str]",
+                    json.loads(
+                        _redact_json_artifact(
+                            json.dumps(mapping, ensure_ascii=False),
+                            capture.workspace_root,
+                        )
+                    ),
+                ).items()
+            }
+        )
+    capture = replace(capture, before_text_by_path=safe_maps[0], after_text_by_path=safe_maps[1])
+    notebook_sources = cast(
+        "dict[str, object]",
+        json.loads(
+            _redact_json_artifact(
+                json.dumps(
+                    capture.metadata.get("source_detail", {}).get("notebook_sources", {}),
+                    ensure_ascii=False,
+                ),
+                capture.workspace_root,
+            )
+        ),
+    )
+    visible_files = parse_unified_diff(capture.persisted_patch_text)
+    visible_old = {record.old_path for record in visible_files}
+    visible_new = {record.new_path for record in visible_files}
+    visible_lines: dict[tuple[str, str], set[int]] = {}
+    for file_map in build_line_map(visible_files):
+        for side, path in (("old", file_map.old_path), ("new", file_map.new_path)):
+            if path is None:
+                continue
+            selected = visible_lines.setdefault((path, side), set())
+            for hunk in file_map.hunks:
+                selected.update(
+                    (*hunk.deleted_lines, *hunk.context_old_lines)
+                    if side == "old"
+                    else (*hunk.added_lines, *hunk.context_new_lines)
+                )
+    evidence = build_evidence_index(
+        before={file: text for file, text in safe_maps[0].items() if file in visible_old},
+        after={file: text for file, text in safe_maps[1].items() if file in visible_new},
+        document=(capture.metadata["source_detail"]["document"]["name"], capture.document_text)
+        if capture.document_text is not None
+        else None,
+        notebook_sources=notebook_sources,
+        visible_lines=visible_lines if capture.document_text is None else None,
+    )
+    return capture, evidence
 
 
 def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
+    capture, evidence = _prepare_capture_evidence(capture)
+    capture.metadata.get("source_detail", {}).pop("notebook_sources", None)
+    evidence_text = _render_json_text(evidence.model_dump(mode="json", by_alias=True))
+    capture.metadata.update(
+        source_evidence_version=1, evidence_anchors_hash=text_hash(evidence_text)
+    )
     line_map_payload, symbols_payload = _structured_artifact_payloads(capture)
     metadata_text = _redact_json_artifact(
         _render_json_text(_metadata_with_symbol_extractor(capture, symbols_payload)),
@@ -387,13 +667,18 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
     )
 
     artifact_texts: dict[str, str] = {
-        "patch.diff": capture.persisted_patch_text,
+        ("document.md" if capture.document_text is not None else "patch.diff"): capture.source_text,
         "metadata.json": metadata_text,
         "line_map.json": redacted_line_map,
         "symbols.json": redacted_symbols,
         "before_text_by_path.json": redacted_before_text,
         "after_text_by_path.json": redacted_after_text,
+        "evidence_anchors.json": evidence_text,
     }
+    if capture.review_context_payload is not None:
+        artifact_texts["review_context.json"] = _render_json_text(
+            capture.review_context_payload.model_dump(mode="json")
+        )
     if safety_findings_payload is not None:
         artifact_texts["safety_findings.json"] = _redact_json_artifact(
             _render_json_text(safety_findings_payload),
@@ -422,6 +707,17 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
         graphify_context_payload,
         graphify_signoff_payload,
     )
+    if capture.document_text is not None:
+        artifact_set_payload["generation"].update(
+            selection_source="document_text",
+            line_map_from=None,
+            symbols_from=[],
+            evidence_anchors_from="document.md",
+            redaction={
+                "json_artifacts": "redaction_pipeline",
+                "document": "redaction_pipeline+protect_untrusted_text",
+            },
+        )
     artifact_texts["artifact_set.json"] = _redact_json_artifact(
         _render_json_text(artifact_set_payload),
         capture.workspace_root,
@@ -429,7 +725,9 @@ def write_input_artifacts(capture: CapturedDiff) -> tuple[Path, Path]:
 
     artifacts_dir = _artifacts_dir(capture)
     _publish_artifact_directory(artifacts_dir, artifact_texts)
-    patch_path = artifacts_dir / "patch.diff"
+    patch_path = artifacts_dir / (
+        "document.md" if capture.document_text is not None else "patch.diff"
+    )
     metadata_path = artifacts_dir / "metadata.json"
 
     audit_path = capture.state_dir / "audit.jsonl"
@@ -498,10 +796,10 @@ def _artifact_set_payload(
 ) -> dict[str, Any]:
     artifacts = [
         _artifact_descriptor(
-            artifact_type="patch",
-            path="patch.diff",
-            media_type="text/x-diff",
-            text=artifact_texts["patch.diff"],
+            artifact_type="document" if capture.document_text is not None else "patch",
+            path="document.md" if capture.document_text is not None else "patch.diff",
+            media_type="text/markdown" if capture.document_text is not None else "text/x-diff",
+            text=capture.source_text,
         ),
         _artifact_descriptor(
             artifact_type="metadata",
@@ -575,6 +873,16 @@ def _artifact_set_payload(
                 schema_version=graphify_signoff_payload["schema_version"],
             )
         )
+    for artifact_name in ("evidence_anchors.json", "review_context.json"):
+        if artifact_name in artifact_texts:
+            artifacts.append(
+                _artifact_descriptor(
+                    artifact_type=artifact_name.removesuffix(".json"),
+                    path=artifact_name,
+                    media_type="application/json",
+                    text=artifact_texts[artifact_name],
+                )
+            )
     return {
         "artifacts": artifacts,
         "created_at": capture.metadata["created_at"],
@@ -1979,6 +2287,7 @@ def _capture_compare_dir_input(
     notebook_cell_aware_count = 0
     notebook_degraded_count = 0
     notebook_warnings: list[str] = []
+    notebook_sources: dict[str, object] = {}
     running_patch_bytes = 0
     for relative_path in all_paths:
         relative_posix = relative_path.as_posix()
@@ -2020,6 +2329,7 @@ def _capture_compare_dir_input(
                 notebook_warnings.append(f"{relative_posix}: invalid notebook JSON or schema")
             else:
                 old_text, new_text, notebook_detail = rendered
+                notebook_sources.update(notebook_detail.get("notebook_sources", {}))
                 notebook_cell_aware_count += 1
                 raw_warnings = notebook_detail.get("notebook_warnings")
                 if isinstance(raw_warnings, list):
@@ -2065,6 +2375,7 @@ def _capture_compare_dir_input(
             "new_name": new_dir.name,
             "changed_files": changed_count,
             "binary_files": binary_count,
+            "notebook_sources": notebook_sources,
             **_notebook_compare_dir_source_detail(
                 cell_aware_count=notebook_cell_aware_count,
                 degraded_count=notebook_degraded_count,
@@ -2286,6 +2597,10 @@ def _render_notebook_pair(
         "notebook_metadata_outputs_ignored": True,
         "notebook_old_cells": old_render.cell_count,
         "notebook_new_cells": new_render.cell_count,
+        "notebook_sources": {
+            f"old:{old_rel}": list(old_render.cell_spans),
+            f"new:{new_rel}": list(new_render.cell_spans),
+        },
     }
     if warnings:
         detail["notebook_warnings"] = warnings[:20]
@@ -2355,6 +2670,9 @@ def _apply_notebook_cell_aware_to_git_capture(
             continue
 
         old_rendered, new_rendered, notebook_detail = rendered
+        raw_capture.source_detail.setdefault("notebook_sources", {}).update(
+            notebook_detail.get("notebook_sources", {})
+        )
         replacement = _render_notebook_git_patch_chunk(
             path=path,
             old_text=old_rendered,
@@ -3461,6 +3779,7 @@ __all__ = [
     "CapturedDiff",
     "GraphifyStatus",
     "capture_patch",
+    "build_capture_evidence_index",
     "detect_graphify_status",
     "import_graphify_artifact",
     "graphify_context_payload_from_capture",
