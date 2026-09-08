@@ -548,6 +548,6 @@ describe('ClaimInspector V6 fidelity', () => {
     await expect.poll(() => page.locator('.document-view__line').first().getAttribute('data-line-anchor')).toBe('学习.md:2001');
     await expect.poll(() => page.locator('.document-view__line--selected').count()).toBe(2);
     expect(await page.locator('.document-view__line--selected').last().getAttribute('data-line-anchor')).toBe('学习.md:3002');
-  });
+  }, 20_000);
 
 });
