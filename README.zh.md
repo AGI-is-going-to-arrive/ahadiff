@@ -2,389 +2,200 @@
 
 > **读懂这次变化。**
 >
-> 从 Git 改动、两份文件、粘贴 diff、本地快照或单份 Markdown 开始。把自己的修复、同事的修改或 AI 生成的变化，整理成有证据可查的课程、测验和复习卡。
+> 从 Git 改动、两份文件、粘贴的 diff、本地快照或单份 Markdown 中学习。对照证据阅读讲解，回答问题，过一段时间再复习。
 
-[English](./README.md) · [介绍页](https://agi-is-going-to-arrive.github.io/ahadiff/) · [使用指南](./docs/USER_GUIDE.zh.html) · [<img src="./docs/assets/youtube.svg" width="16" height="16" alt="YouTube"> 英文视频教程（YouTube）](https://youtu.be/lvL7GMvDPvI) · [<img src="./docs/assets/bilibili.svg" width="16" height="16" alt="Bilibili"> 中文视频教程（B 站）](https://www.bilibili.com/video/BV1b57k6yEWm) · [中文视频教程（本地最新，带字幕）](./docs/video/output/ahadiff-tutorial.zh.burned-subtitles.mp4)
+[English](https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/README.md) · [介绍页](https://agi-is-going-to-arrive.github.io/ahadiff/) · [使用指南](https://agi-is-going-to-arrive.github.io/ahadiff/USER_GUIDE.zh.html) · [v1.4.0 发布说明](https://github.com/AGI-is-going-to-arrive/ahadiff/releases/tag/v1.4.0) · [英文视频](https://youtu.be/lvL7GMvDPvI) · [中文视频](https://www.bilibili.com/video/BV1b57k6yEWm)
 
-> 推荐：`pipx install ahadiff`（或 `uv tool install ahadiff`）—— 隔离式 CLI 安装。在你自管的 venv/conda 里用 `pip install ahadiff` 也可以；在系统或 Homebrew Python 上请看 [安装](#安装) 里的 `externally-managed-environment` 排障。
+知返把课程和复习记录保存在你的工作目录中。自己的修复、同事的修改、AI 生成的代码都能用来学习。文件、补丁、快照和文档学习无需 Git。
 
-> 源码更新说明（2026-09-08）：本文的五来源入口、持久快照、格式锚点、人工 review 说明和主动迁移练习属于当前源码改动，尚未发布，版本号仍为 1.3.8。体验这些界面更新请[从源码构建](#从源码安装贡献者)；已发布版本可先使用 CLI 的 `--compare` 和 `--patch`。
+## 1.4.0 新增内容
 
----
+- **五种 WebUI 学习入口。** 选择 Git 改动、两份文件、粘贴 diff、本地快照或单份 Markdown。发送生成请求前，先在本地预览来源。
+- **本地快照。** 保存一份旧文件作为对比基准，之后再与新版比较。知返保存脱敏后的副本，不改写原文件。
+- **文档与格式证据。** 学习单份 Markdown，或在对比中沿引用找到 Markdown 章节、Notebook 单元格，以及 JSON/TOML/YAML 键路径。
+- **主动迁移练习。** 生成预测结果、补全相似示例、解释错误的开放题。先作答，再对照参考答案评估自己的理解。
+- **更清楚的模型设置。** 设置页区分“模型默认”和“关闭思考”，只展示受支持的选项，并在保存前预览模型限制。
 
-## 这是什么
+## 安装或升级
 
-**知返 AhaDiff** 是一个 **优先在本地运行的改动学习工具**。
-
-提供一组修改前后的内容或单份 Markdown，即可生成：
-
-- 一篇讲清楚“改了什么、为什么改”的 **Lesson**
-- 一份标明来源位置和证据强弱的 **Claims 清单**
-- 一套 **测验和复习流程**，让知识之后还能被召回
-- 一条可比较的 **质量历史**，帮助你看到每次运行的变化
-
-工作区的本地状态存在 `.ahadiff/` 里：run 产物在 `runs/` 下，SRS 和结果历史在 `review.sqlite` 里。文件对比、patch、快照和文档也能在普通文件夹使用，无需创建 Git 仓库。
-
-| 你手头有什么 | 从哪里开始 | 适用例子 |
-| --- | --- | --- |
-| Git 仓库中的修改 | **Git 改动** | 修 bug、同事的 commit、AI 辅助编程 |
-| 修改前和修改后的文件 | **两份文件** | 代码练习、SQL、配置、Markdown、Notebook 两版本 |
-| 从工具复制的统一 diff | **粘贴改动** | Review patch、同事发来的修改 |
-| 希望下次继续使用的基准 | **本地快照** | 显式保存旧文件，再选择修改后文件 |
-| 一份 Markdown 文档 | **单份 Markdown** | 从章节、段落引用学习，不需要旧版 |
-
-这些来源共用课程、测验、复习和质量历史。文档运行直接展示原文证据，不伪造增删行。引用支持的是源文本确实位于此处；解释其含义属于语义判断，运行效果需要执行证据。单份资料试点仅支持 Markdown，不包括 PDF 或网页抓取。
-
-## 为什么要做
-
-修好 bug、看完 review 或接受 AI 修改后，你可能仍不会独立完成类似改动。知返让你能回到这次变化，逐条学习并安排复习：
-
-1. **读懂修改**：把解释与修改前后的内容对照。
-2. **检查证据**：分清有支持的陈述、较弱的证据和未证明的结论。
-3. **知识应该累积**：同一个概念被多次修改时，应该留下历史和 backlinks。
-4. **追踪课程质量**：比较不同运行的确定性评分和硬门禁。
-
-原标语“AI 写完，Diff 教回”仍然适用于其中的 AI 辅助编程场景。
-
-## 前置条件
-
-- Python 3.11+，且 Python `sqlite3` 运行时需为 SQLite 3.51.3+；补丁回移分支 3.50.4+ / 3.44.6+ 也可接受。可在快速上手查看诊断，或在 Git 仓库内用 `ahadiff doctor` 检查 AhaDiff 实际使用的运行时。
-  - **版本号更高不代表通过：** 3.51.0–3.51.2 会被拒（在 3.51 行内但低于 3.51.3，且无回移补丁）。**Windows 用户：** 即使是较新的 Python 构建，其自带的 `sqlite3.dll` 也常低于门槛——可用 conda/miniforge、用兼容的 SQLite 构建替换 `DLLs/sqlite3.dll`、或在 WSL 下运行。可用 `python -c "import sqlite3; print(sqlite3.sqlite_version)"` 查看当前版本。
-- Git 仓库工作流需要 PATH 中有 Git。文件和 patch 的捕获、预览不要求 Git 仓库或可执行程序。
-- 一个 LLM provider：可以是带 API key 的远端服务（OpenAI / Anthropic / Gemini / Azure / 任意 OpenAI-compatible），也可以是本地服务（LM Studio / Ollama，不需要 key）
-
-## 安装
-
-AhaDiff 是命令行工具，最稳妥的方式是**隔离安装**——它不会和系统/Homebrew Python 冲突（后者会按 [PEP 668](https://peps.python.org/pep-0668/) 拒绝直接的 `pip install`）：
+需要 Python 3.11+ 和兼容的 SQLite 运行时。选择下面一种隔离安装方式，即可安装 CLI 和配套 WebUI：
 
 ```bash
-# 推荐 —— 隔离安装，一条命令（任选其一）
-pipx install ahadiff        # 没装 pipx？ brew install pipx（macOS），或见 https://pipx.pypa.io
-uv tool install ahadiff     # 没装 uv？   https://docs.astral.sh/uv/
+pipx install ahadiff
+# 或
+uv tool install ahadiff
 
-ahadiff --version           # 应输出 ahadiff 1.3.8
+ahadiff --version
+# ahadiff 1.4.0
 ```
-已发布安装包自带对应版本的 WebUI。上方列出的未发布增量需要构建当前源码。
 
-在你自己掌控的环境里（virtualenv、conda 或 pyenv），直接用 pip 安装也没问题：
+已经安装？先停止正在运行的 AhaDiff 服务，用原来的安装工具升级，再重新启动：
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate   # Windows PowerShell: py -m venv .venv; .venv\Scripts\Activate.ps1
-pip install ahadiff
+pipx upgrade ahadiff
+# 或
+uv tool upgrade ahadiff
 ```
 
-FSRS 参数自动优化（会引入较重的 torch 依赖）是可选的——用 `pipx install 'ahadiff[optimizer]'`（或 `uv tool install 'ahadiff[optimizer]'`；在 venv/conda 里用 `pip install 'ahadiff[optimizer]'`）安装该 extra。基础复习与调度不装它也能正常工作。
+在虚拟环境或 conda 环境中，可用 `python -m pip install ahadiff` 安装，用 `python -m pip install --upgrade ahadiff` 升级。如果 pip 提示 `externally-managed-environment`，请改用 pipx、uv tool 或虚拟环境。
 
-### 排障：`error: externally-managed-environment`
+每个工作目录下的 `.ahadiff/` 保存学习记录。升级前请备份该目录。备份可能包含源码片段和提供商凭证，请私下保存。
 
-这是 [PEP 668](https://peps.python.org/pep-0668/)：Homebrew（macOS）和 Debian/Ubuntu 会把系统 Python 标为 “externally managed”，拒绝直接 `pip install`——对任何包都如此，不只是 AhaDiff。按优先级修复：
+可选的 `optimizer` 扩展会安装 torch，用于优化 FSRS 参数。基础复习和排程无需此扩展；需要时可用 `pipx install 'ahadiff[optimizer]'` 或 `uv tool install 'ahadiff[optimizer]'` 安装。
 
-- **隔离安装器（推荐）：** `pipx install ahadiff` 或 `uv tool install ahadiff`。
-- **虚拟环境：** `python3 -m venv .venv && source .venv/bin/activate && pip install ahadiff`（Windows PowerShell：`py -m venv .venv; .venv\Scripts\Activate.ps1; pip install ahadiff`）。
-- **逃生口（不推荐）：** `pip install --break-system-packages ahadiff`——可能破坏你的 Homebrew/系统 Python。
+## 生成第一节课
 
-Windows 上 python.org 安装的 Python 不是 externally managed，`pip install ahadiff` 可直接用——但仍推荐用 `pipx` / `uv tool` 做干净的隔离 CLI 安装。
-
-### 从源码安装（贡献者）
-
-从源码构建的贡献者还需要 [uv](https://docs.astral.sh/uv/)（`curl -LsSf https://astral.sh/uv/install.sh | sh` 或 `brew install uv`）和 pnpm。上面的 `pip install` 路径两者都不需要。
-
-```bash
-git clone https://github.com/AGI-is-going-to-arrive/ahadiff.git
-cd ahadiff
-uv tool install --editable .
-cd viewer && pnpm install --frozen-lockfile && pnpm build   # 构建开发用 WebUI
-```
-
-## 你的第一节课
-
-在你准备存放学习记录的文件夹打开终端。普通文件夹和 Git 仓库都可以：
+在准备保存学习记录的目录中打开终端：
 
 ```bash
 ahadiff serve
 ```
-`ahadiff serve` 会按需创建本地 `.ahadiff/` 状态并打开 http://127.0.0.1:8765；不想自动开浏览器可加 `--no-browser`。普通目录无需先运行 `ahadiff init`；CLI 的 `init`、`doctor` 仍要求 Git 仓库。
 
-1. 到**设置**添加 provider，再打开**欢迎**页。
-2. 选择 **Git 改动**、**两份文件**、**粘贴改动**、**本地快照**或**单份 Markdown**。两份文件分别放进“修改前”和“修改后”区域，可点选或拖放，文件同名也可以。使用快照时先显式保存旧文件，再选择修改后文件。
-3. 可选填写**人工 review 说明**，或打开**此来源的更多选项**并勾选**主动迁移练习**；默认仍为混合测验。预览安全处理后的 diff 或文档原文，预览不调用 LLM，再点击**开始学习**。更改选项后需要重新预览。
-4. 到**课程**读解释并回查源证据。**测验**先作答、再揭示参考答案，之后到**复习**处理到期卡片。
+知返会按需创建本地数据，并打开 `http://127.0.0.1:8765`。加上 `--no-browser` 可只启动服务。普通文件夹也能用；`ahadiff init` 和 `ahadiff doctor` 用于 Git 仓库。
 
-浏览器选择的文件需为 UTF-8 文本，每份最多 256 KiB、两份合计最多 512 KiB。快照文件和单份 Markdown 在 CLI 与 WebUI 中都保持 256 KiB 上限。两份 `.ipynb` 会按单元格比较，不会执行 Notebook。预览最多展示 64 KiB，截断会明确标注；较大的比较文件可用 CLI，快照和文档仍受固定限额约束。文件、patch、快照或文档小练习默认勾选**变化较小时仍生成课程**，也可取消；它只跳过 learnability 的小改动筛选，不放宽证据或安全检查。
+1. 打开 **设置**，添加本地或远程模型提供商，选择生成模型。若配置了多个提供商，请选定要使用的一个。需要模型点评课程质量时，再单独设置评判提供商。
+2. 打开 **欢迎页**、**快速开始** 或 **使用指南**，从下表选择来源。
+3. 预览来源。预览前可添加 **Review 说明**，或勾选 **此来源的更多选项 → 主动迁移练习**。预览不调用 LLM；**开始学习** 会使用已配置的提供商和隐私模式。
+4. 阅读 **课程**，沿链接查看来源证据。先回答 **测验**，再揭示参考答案；卡片到期后，回到 **复习**。
 
-习惯终端时，配置好 provider，把两份文件或 patch 放在工作区内，再选一条命令：
+| 手上有什么 | 选择 | 示例 |
+| --- | --- | --- |
+| Git 仓库中的修改 | **Git 改动** | bug 修复、评审过的提交、AI 修改 |
+| 修改前和修改后的文件 | **两份文件** | 代码、SQL、配置、Markdown、两版 Notebook |
+| 从工具复制的统一 diff | **粘贴改动** | 评审补丁、别人分享的修改 |
+| 想反复使用的旧文件 | **本地快照** | 先保存旧版，再选择新版 |
+| 一份 Markdown 文档 | **单份 Markdown** | 无需旧版，直接学习标题和段落 |
+
+对比两份文件时，把各版本选入或拖入对应区域；文件名可以相同。浏览器选择的文本文件每份上限 256 KiB，两份合计 512 KiB。快照和单份 Markdown 在 CLI 与 WebUI 中都保持 256 KiB 上限。粘贴 diff 上限为 64 KiB。预览最多显示 64 KiB，超出时会提示截断。
+
+文件、补丁、快照和文档入口默认勾选 **小改动也生成课程**，你可以取消。这个选项只跳过可学习性筛选，证据和安全检查仍然生效。
+
+## 使用终端
+
+先在设置中配置提供商。把输入文件放在工作目录内，再选择相应命令：
 
 ```bash
+# 对比两份文本文件
 ahadiff learn --compare before.py after.py --force-learn
+
+# 读取统一 diff
 ahadiff learn --patch change.diff --force-learn
-ahadiff learn --last   # 需要已有 commit 的 Git 仓库
+
+# 学习单份 Markdown
+ahadiff learn --document notes.md --force-learn
+
+# 生成开放式迁移题
+ahadiff learn --compare before.py after.py --force-learn --active-practice
+
+# 学习最近一次 Git 提交
+ahadiff learn --last
 ```
 
-macOS/Linux 用户可选用 `ahadiff install hooks --auto-learn`，在 Git commit 后自动学习。
-
-还可以马上试试：
-```bash
-ahadiff quiz <run_id>    # 测测自己有没有看懂刚才的改动
-ahadiff review           # 复习过去生成的卡片
-```
-10 种既有 diff 捕获模式、快照和文档输入、导出、概念图谱和进阶命令都在 [使用指南](./docs/USER_GUIDE.zh.html) 里。发布验证会分开记录 dry-run 捕获覆盖与 live LLM 课程生成；v1.3.8 审计记录了全局 provider 保存回归和一次 live DeepSeek learn。
-
-## 保存基准、学习文档和添加 review 说明
-
-**先保存修改前基准。** 在欢迎页选择本地快照，选一个文件、填写名称，再点击**保存本地基准**。重新打开应用后，列表仍会保留。点击**使用此基准**，选择修改后文件并预览比较。列表会显示大小和就绪状态，损坏或不支持的版本不能用于比较。
+保存并复用快照：
 
 ```bash
-ahadiff snapshot save before.md --name "修改前" --repo-root .
-ahadiff snapshot list --repo-root .
-ahadiff snapshot show SNAPSHOT_ID --expected-hash CONTENT_HASH --repo-root .
-ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.md --force-learn
+ahadiff snapshot save before.py --name before-refactor
+ahadiff snapshot list
+ahadiff learn --snapshot SNAPSHOT_ID --after after.py --force-learn
 ```
 
-从列表复制 ID 和 `content_hash`。快照是保存在 `.ahadiff/snapshots/` 下的不可变学习基准，最多 100 份，保存后的记录合计最多 16 MiB。保存前会过滤秘密并规范化文本，因此不是原文件的完整备份，也不会覆盖源文件。删除时先核对列表里的 `record_hash`，再确认删除具体一份；已有运行会保留：
+将 `SNAPSHOT_ID` 替换为 `snapshot save` 或 `snapshot list` 输出的 ID。快照是脱敏后的学习基准，不是完整文件备份。保存、对比和删除快照都不会覆盖原文件；删除快照也会保留之前的课程。
+
+运行结束后，使用输出中的 `RUN_ID`：
 
 ```bash
-ahadiff snapshot delete SNAPSHOT_ID --expected-hash RECORD_HASH --repo-root .
+ahadiff quiz RUN_ID
+ahadiff review
+ahadiff export preview RUN_ID --out ./preview
 ```
 
-**学习单份 Markdown。** 选择“单份 Markdown”，选一份 `.md` 或 `.markdown` 文件，预览原文后开始学习。CLI：
+[使用指南](https://agi-is-going-to-arrive.github.io/ahadiff/USER_GUIDE.zh.html) 还介绍了 Git 提交范围、工作区捕获、补丁 URL、目录对比、Review 说明、重新生成测验和导出方式。
+
+## 模型与隐私
+
+可以使用 LM Studio、Ollama 等本地提供商，也可以自备密钥接入 OpenAI、Anthropic、Gemini、Azure、NewAPI 或 OpenAI 兼容服务。提供商类型包括 `openai`、`openai_responses`、`gemini`、`anthropic`、`azure`、`newapi`、`openai_compat`、`lmstudio`、`ollama`。请选择与你的接口协议相符的类型。
+
+设置页可以把提供商保存在当前工作目录或全局配置中。同名时，工作目录中的别名覆盖全局别名。生成与评判模型可以使用不同提供商。限制预览只读取本地注册表和配置；测试提供商会发送小型真实请求，可能产生费用。
+
+保留 **模型默认** 时，思考行为由提供商决定。只有支持关闭思考的模型和接口才提供 **关闭**。其他模型可能提供等级、开关，或不提供思考选项。模型出现在目录中，不代表你的账号能调用它。
+
+默认隐私模式为 `strict_local`。使用远程提供商前，请选择 `redacted_remote` 或 `explicit_remote`。开始远程运行前，检查来源和脱敏结果。知返会检查密钥与可疑指令，你仍需检查准备发送的内容。
+
+在设置中粘贴密钥后，知返将其保存在所选范围的 `.env` 中，`config.toml` 只保留环境变量引用。工作目录提供商使用 `.ahadiff/.env`；全局提供商使用操作系统配置目录，具体路径见 [使用指南](https://agi-is-going-to-arrive.github.io/ahadiff/USER_GUIDE.zh.html#provider)。使用全局配置时，请单独备份。工作目录的忽略规则会防止普通 `git add` 纳入密钥文件。你也可以通过 `api_key_env` 指定系统环境变量。macOS/Linux 上的密钥文件仅限所有者访问；Windows 上请用 NTFS 权限保护目录。分享压缩包时，请排除密钥文件和私人备份。
+
+## 查看学习结果
+
+- **课程与证据：** 可以选择提示、精简或完整讲解。查看每条声明的来源和证据状态：已验证、弱证据、未证明、被反驳或已拒绝。引用能确认原文与位置，不能证明外部事实或运行时行为。
+- **测验与复习：** 默认混合引导题、回忆题和迁移题。主动迁移练习会生成预测、补全和解释错误的开放题。选择题由程序检查；开放题由你对照参考答案自评。知返不执行练习代码。练习统计记录作答和自评，不代表已测得学习提升。
+- **评分与评判：** 确定性评分包含八个维度，并检查必需的证据与安全条件。分数高也可能因必需条件不满足而失败。可选的 LLM 评判提供反馈，不覆盖最终结论。文档运行的 Diff 覆盖度和变更新颖度可学习性显示 N/A；未提供规范时，规范对齐显示 N/A。
+- **概念与导出：** 跨运行查看概念，导出本地 HTML 预览，把复习卡下载为 Anki `.apkg`，或导出 TSV/JSON 数据。分享预览前，请检查其中的私人源码内容。
+- **改进课程：** `ahadiff improve-run RUN_ID` 会尝试生成新课程，只有确定性评分提高时才保存为独立运行，原运行继续保留。另一个命令 `ahadiff improve` 用于修改 AhaDiff 自身的生成提示词，需要在 AhaDiff 源码目录中运行。
+
+## 可选的 AI 工具集成
+
+安装 AhaDiff 后，可以为所用编程工具写入项目指引：
 
 ```bash
-ahadiff learn --document reading.md
+ahadiff install --detect
+ahadiff install codex --dry-run
+ahadiff install codex
+# 其他目标包括 claude、cursor、copilot、pi、grok 和 devin
 ```
 
-这是独立的 `document` 来源，不是“空文件变成原文”的对比。课程和题目引用章节、段落与内容哈希；能够核对引文，不代表文档所述外部事实已被证明。文档运行不支持 diff 的 spec alignment。
+**设置 → AI 工具指引** 展示当前支持的工具，并在写入、更新或移除前预览文件。**使用指南** 提供对应说明。这些命令写入项目指引，不会安装第三方工具或登录账号。卸载只移除 AhaDiff 生成的文件和标记段，保留其他指引。
 
-**补充人工 review 说明。** 选择改动来源后可填写辅助说明，CLI 也可使用：
+在 macOS/Linux 的 Git 工作流中，`ahadiff install hooks` 会在提交后提醒学习；加上 `--auto-learn` 可在后台生成课程。`ahadiff watch` 监听工作区修改并学习；`ahadiff serve --watch` 同时启动 WebUI。自动学习可能反复调用提供商，启用前请检查隐私和预算设置。
+
+也可以连接只读 MCP 服务：
 
 ```bash
-ahadiff learn --compare before.py after.py --review-context-file review-notes.md --force-learn
+claude mcp add ahadiff -- ahadiff mcp-server --repo-root /path/to/workspace
+codex mcp add ahadiff -- ahadiff mcp-server --repo-root /path/to/workspace
 ```
 
-说明最多为 8 KiB UTF-8 文本，按不可信辅助输入过滤，与证据分开标识。运行会记录是否使用及内容哈希；草稿正文不进入任务重试摘要。修改输入后，原预览会失效。
+## 环境要求与限制
 
-**显式开启主动迁移练习。** 开始前打开**此来源的更多选项 → 主动迁移练习**。默认关闭，保留 guided/recall/transfer 混合题；开启后全部为开放式 transfer 题，题数至少为 3 时覆盖预测、补全和解释错误，不执行代码。CLI 示例：
+- **Python 与 SQLite：** 使用 Python 3.11+，SQLite 需要 3.51.3+，或已修补的 3.50.4+ / 3.44.6+ 分支。SQLite 3.51.0–3.51.2 不满足要求。可在 **快速开始** 中查看 AhaDiff 实际使用的运行时；Git 仓库内也可运行 `ahadiff doctor`。
+- **平台：** 核心 CLI 和 WebUI 面向 macOS、Linux 与 Windows。目录对比（`--compare-dir`）和 Git hooks 需要 macOS/Linux。已测试平台与已知问题见 [发布说明](https://github.com/AGI-is-going-to-arrive/ahadiff/releases/tag/v1.4.0)。
+- **输入：** 单文档学习接受本地 `.md` / `.markdown` 文件，暂不支持 PDF 或网页抓取。Notebook 对比只读取单元格源码，不执行 Notebook。
+- **证据：** 不支持的结构可能回退到较弱的行级证据。Review 说明只补充背景，不充当证明。旧运行保留原有证据格式。
+- **语言：** WebUI 和生成的学习材料支持中英文。CLI 帮助和大多数诊断使用英文。
 
-```bash
-ahadiff learn --document reading.md --active-practice
-ahadiff learn --compare before.py after.py --active-practice --force-learn
-ahadiff regenerate RUN_ID --only quiz --active-practice
-```
+## 界面示例
 
-`regenerate` 会替换所选运行的测验/卡片、重算确定性分数并重新封存产物校验和。不传两种练习开关时沿用该 run 的模式；`--mixed-practice` 可明确切回混合题。旧 Judge 结果会失效，不会自动重跑。请使用你打算替换测验的 run ID。
-
-**先尝试，再揭示。** 主动迁移练习复用 Quiz、Challenge 和 SRS。先预测下一步、补全相似例子或解释错误原因，再对照参考答案，选择**独立完成 / 需要帮助 / 尚未完成**，必要时记录错误类别。WebUI 作答正文留在页面内，仅保存受限自评和时间信息。距上次已记录尝试至少 24 小时才计入延迟回忆；只有题目确实标记新场景，首次尝试才计入未见变式。Challenge 用于复现已看过的原解。Score/Judge 衡量产物与证据质量，本次更新没有建立真实参与者的学习增益结论。Dashboard 展示自报的首次练习、延迟回忆、未见变式比例与样本数，分母为空时显示未测量；既有 SRS 改善占比不是迁移学习成功率。
-
-## 配置 Provider
-
-AhaDiff 需要 LLM 来生成课程。最简单的方式是在工作目录运行 `ahadiff serve`，到**设置**添加 provider。本地模型可使用 `strict_local`；使用远端模型前需明确选择对应的远端隐私模式。安装 AI 工具指引是可选项。
-
-如果你在已有 Git 仓库中使用 CLI 配置：
-```bash
-ahadiff init
-
-# 注册并测试一个 provider（以 OpenAI-compatible 为例）
-export OPENAI_API_KEY="<your-provider-api-key>"
-export AHADIFF_PROVIDER_BASE_URL="<provider-base-url>"
-ahadiff provider test \
-  --name default \
-  --provider-class openai \
-  --base-url "$AHADIFF_PROVIDER_BASE_URL" \
-  --api-key-env OPENAI_API_KEY
-```
-`provider test` 会发送一个小探测请求。成功后，provider 配置自动写入 `.ahadiff/config.toml`。如果 provider 暴露模型上限，AhaDiff 会记录拆分后的 input / output token limit；否则自动捕获会回退到内置模型表或保守默认值。
-
-在这条 CLI 路径上，`api_key_env` 是环境变量名，不是 key 本身。Repo config 只接受 `AHADIFF_*` 名称和常见 provider 变量名（`OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`AZURE_OPENAI_API_KEY`）。identifier 形态的值都会按环境变量名处理；未设置时关闭失败，不会把变量名当成 bearer token 外发。`ahadiff provider test --api-key-env NAME` 仍然使用环境变量名，现在也能解析 `.ahadiff/.env` 里定义的引用名。
-
-在 Settings WebUI 里，你直接粘贴明文 API key，而不再填环境变量名。AhaDiff 会这样处理它：
-
-- **明文只写入一个本地文件。** key 写入仓库内的 `.ahadiff/.env`，`config.toml` 里只存一个引用名（`api_key_env` 设为 `AHADIFF_<大写ALIAS>_KEY`，如该名已被占用则加数字后缀，如 `AHADIFF_DEMO_2_KEY`）。明文绝不写入 `config.toml`。
-- **key 文件不进 Git。** AhaDiff 会确保这些 secret 模式（`.env`、`.env.*`、`audit.private.jsonl`、`*.lock`、`*.log`）被 Git 忽略：`.ahadiff/.gitignore` 不存在时会创建它，已存在时只追加缺失的 secret 行（你已有的行会保留）。如果 `.ahadiff/.gitignore` 是 symlink、hardlink、reparse point，或无法安全打开，保存会在写入 key 前失败。无论哪种情况，key 文件都会被正常的 `git add` 忽略（强制 `git add -f` 仍可能覆盖）。
-- **文件权限。** POSIX 上文件为 `chmod 0600`。Windows 上该 mode 并非 POSIX owner-only ACL，只是尽力限制（best-effort）——见下方 Windows 说明。
-- **真实 OS 环境变量优先。** `serve` 和 CLI 启动时都会把 `.ahadiff/.env` 加载进进程环境，但系统已存在同名变量时系统值优先、绝不被覆盖。
-- **填了 key 再保存才会跑一次快速 probe。** 当你在字段里填了 API key 再保存时，AhaDiff 会检查 provider 连通性；这是 best-effort，验证失败不阻塞保存，UI 会显示结果。更新已有 provider 时如果 key 字段留空，会沿用当前 key 并跳过 probe（验证结果为空）。
-- **删除会自我清理。** 删除 provider 会移除它在 `.ahadiff/.env` 里的条目，但仅限保留前缀 `AHADIFF_` 下、且无其它 provider 仍在引用的条目。共享名（如 `OPENAI_API_KEY`）以及仍被引用的名都不会被动。清理依据是 `AHADIFF_` 前缀和引用计数，所以请把该前缀留给 AhaDiff，不要在 `.ahadiff/.env` 里自定义 `AHADIFF_` 开头的变量。
-
-**Windows 说明：** 本地 `.ahadiff/.env` 由 NTFS 文件夹权限保护，而非 POSIX `0600`。想要更严格，可把 `api_key_env` 指向一个真实的 OS 环境变量（它优先生效，且绝不会被写入 `.ahadiff/.env`）。静态加密请使用全盘加密，如 BitLocker（macOS 上为 FileVault）。
-
-支持的 provider class：`openai`、`openai_responses`、`gemini`、`anthropic`、`azure`、`newapi`、`openai_compat`、`lmstudio`、`ollama`。OpenAI-compatible 但不应接收 native JSON schema payload 的端点使用 `openai_compat`；DeepSeek BYOK 使用 `base_url = "https://api.deepseek.com"`，模型选 `deepseek-v4-flash` 或 `deepseek-v4-pro`，AhaDiff 会把这条 route 上的 schema-aware 调用降级为 JSON object mode。进阶的 OpenAI-compatible 或本地 provider 可以用 `providers.<name>.capability_overrides` 覆盖已知布尔能力，例如是否支持 native JSON schema；未知 key 或非布尔值会被拒绝。NewAPI 默认关闭 `supports_native_json_schema`；如果你的 NewAPI 网关后端真的支持 native JSON schema，可在 provider config 加 `capability_overrides = { supports_native_json_schema = true }`。Provider 可存在仓库级或全局级；同名时仓库 alias 覆盖全局 alias。v1.3.8 中，Settings 保存校验、provider 列表、capture estimate 和 improve preflight 都从同一份合并后的 repo + global 配置解析 alias，因此全局 DeepSeek BYOK provider 可以直接选择并保存，不需要复制进每个仓库。更多细节见 [使用指南](./docs/USER_GUIDE.zh.html)。
-
-Settings 的 provider 卡片也能在保存前预览模型上限，只使用当前草稿 provider class、model、base URL 和可选 limits profile，不会为了预览去调用远端 provider，也不会读取 API key。`max_output_tokens` 留空就是 Auto；如果用户填写的值超过可信的已知输出上限，保存时会自动收紧并返回 warning。未知、低置信度、route-specific 或 local-runtime 上限只会显示 warning，不会伪装成确定硬上限。官方 DeepSeek v4 模型会在 preview 确认支持后显示 Thinking Level 控件；对 DeepSeek 而言，`无` 会关闭思考，`低`、`中`、`高` 都会映射为 API 的 high effort。普通 OpenAI-compatible 聚合器不会因为模型名相似就自动获得该控件。
-
-GPT-5.5 有两种内置口径：普通 `openai` 接入按 40 万上下文预算，`openai_responses` / API 接入按 105 万上下文预算。endpoint 如果通过 live probe 上报可信 total context，仍会优先使用 probe 结果。
-
-> AhaDiff 默认使用 strict_local 隐私模式：除非你明确配置远端 provider，否则内容不会离开本机。
-
-## 功能
-
-- **学习**：`ahadiff learn` 支持 10 种 diff 捕获模式：工作区（`--staged --unstaged --include-untracked`）、未暂存（`--unstaged`）、已暂存（`--staged`）、最近一次提交（`--last`，或不带任何捕获参数）、提交/范围（`REVISION`）、时间窗口（`--since`；可选 `--author` 聚焦某个作者，期望恰好命中一个 commit，否则会明确报错）、patch 文件/stdin（`--patch FILE|-`）、patch URL（`--patch-url`）、文件对比（`--compare`）、目录对比（`--compare-dir`，仅 macOS/Linux）。递归目录对比依赖仅 macOS/Linux 提供的安全目录文件描述符。Patch 文件会在工作区根目录内解析；外部生成的 patch 请走 stdin。Patch 文件/stdin 和 patch URL 运行没有仓库 symbol index；只有 hunk 证据时，AhaDiff 仍可基于 weak diff-anchored claims 生成 lesson，但不会伪装成 symbol 级证明。发布验证里，10 种模式只表示捕获覆盖；只有逐项记录 run_id 和产物时，才写成 live LLM 课程生成覆盖；v1.3.8 把全局 provider 的 DeepSeek learn run 与旧 10-mode 矩阵分开记录。
-- **证据化 Claims**：Markdown 章节/段落、Notebook 单元源内容、JSON/TOML/YAML 键路径均带前后侧、定位、内容哈希和引文。旧 hunk 锚点仍兼容；不支持的结构明确保留较弱行级证据。格式索引上限为 4,096 个锚点：diff 可展示部分索引并保留 hunk 证据，超出上限的单文档则会被拒绝。Claim 区分 verified、weak、not proven、contradicted、rejected，并区分源文本事实、语义解释与运行效果。
-- **结构化 LLM 输出**：生成链路会在支持时按 schema 约束 JSON 输出；默认使用 JSON object mode，并带 1 次有界 validation retry；原有 parser、repair 和 degraded 回退仍保留。截断或格式不完整的 fallback JSON 会触发重试，不会被直接接受。
-- **自适应捕获上限**：新配置默认使用自动捕获；已经自定义过捕获数字的旧配置保持手动模式。自动模式会结合 provider probe、内置模型表、输出预留、安全预留和 CJK diff 密度来计算上限，同时运行时 patch 读取仍封顶 50 MiB。Settings 会按当前草稿 provider class、model、base URL 和可选 limits profile 预览保存后的模型上限，不会在每次编辑时远程探测。
-- **测验与复习**：默认保留 guided/recall/transfer 混合题。勾选**主动迁移练习**或传 `--active-practice` 才显式请求全部开放式 transfer 题，支持预测下一步、补全相似例子、解释错误原因。先作答，再揭示参考答案与证据；选择题可机械核对，开放练习使用语义自评，不执行代码。`ahadiff review` 带回同一批复习卡。题量仍默认固定 3 题，可配置为 1–30，自适应默认范围为 3–12。
-- **评分**：每次 run 都会得到 8 维确定性评分；配置后也可以启用 advisory LLM judge。没有 spec 的 `spec_alignment` 会显示为 N/A / `0/0`，并从总分里排除；judge 结果不会覆盖 `score.json.verdict`。Diff 运行的 Diff Coverage 使用可见 `line_map.json` 文件和按行数加权的 hunk。文档运行将 Diff Coverage 与改动新颖度 Learnability 标为 N/A / `0/0` 并排除出总分，另用经过验证的锚点覆盖门禁；hard gate 详情记录对应来源策略。如果可选 LLM judge 失败，确定性评分仍会保留，失败信息会以脱敏后的 `judge_failure.json` 保存。
-- **S1 / A3 诊断**：S1 语义蕴含目前只是 private shadow-only / measurement-only。当前 S1 样本指标为 `route_hit=76`、`fp_rate=53.95%`，因此 enforce 和 advisory 均 blocked。A3 quiz distractor 分析仅是 diagnostic/advisory-only，不是阻塞门禁。
-- **WebUI**：`ahadiff serve` 打开 Welcome、Dashboard、Lesson、Diff、Quiz、Review、Concepts、Run Detail、Settings 和 Guide。viewer 使用浅色报纸编辑风格，字体本地打包，不依赖 CDN。Run Detail 会展示 Score、Judge、Artifacts；可选 LLM judge 失败时，会显示脱敏后的失败面板。Welcome 的 Before/After demo 会把过长的原始 diff 折叠起来，显示行数和展开/收起按钮；短 diff 或空 diff 不会多出无用控件。
-- **学习入口**：欢迎、快速上手和使用指南共用 **Git 改动 / 两份文件 / 粘贴改动 / 本地快照 / 单份 Markdown**，与 Dashboard 打开同一个新建学习对话框。文件选择和拖放接入原有文件对比链路，也保留 Notebook 单元格来源；预览和生成使用相同安全检查。高级选项保留时间窗口、提交范围、patch URL、本地文件路径和受支持的目录对比。
-- **导出**：静态预览保留独立 document/diff 来源、格式锚点和单独标识的 review 辅助说明；只读 MCP 暴露来源/锚点 provenance 与受限辅助摘录。命令行里，`ahadiff export-results` 生成 `results.tsv`，`ahadiff export preview` 生成本地静态预览包。WebUI（以及 `serve` API）还能导出 TSV / JSON 和 Anki `.apkg`；`.apkg` 导出使用内置的 `genanki`，默认即可用。
-- **概念图谱**：自动提取跨 diff 的概念关系，并用 Canvas 图谱和健康检查展示。
-- **AI 工具集成**：设置与使用指南共用 16 个当前 CLI / IDE / CI 目标的目录，新增 Pi、DeepSeek Harness（开发者预览）、Grok Build 与 Devin。Settings 支持受保护的预览、写入、更新和移除；Guide 使用同一目录，加载失败时提供重试，不伪造可用状态。Gemini CLI 保留 API key／Enterprise 用户的显式安装，个人账号转向 Antigravity；Roo 与旧 Windsurf 指引仅提供清理入口。
-- **自动迭代**：`ahadiff improve-run <run_id>` 在已有 run 上重新生成 lesson，仅当确定性评分严格更高时才保留新结果（另存为独立 run，不改动原 run）——任何安装方式（含 `pip`）都可用。另一个 `ahadiff improve` 命令用于调优 AhaDiff 自身的生成 prompt，仅在 AhaDiff 源码 checkout 内可用。
-- **隐私**：三档模式：strict_local、redacted_remote、explicit_remote；默认 strict_local。
-- **i18n**：WebUI 与 prompt 输出语言支持中英文；CLI help 与多数 CLI 诊断仍为英文。
-- **跨平台**：macOS 是 v1.3.8 的本地验证平台；Windows 路径和全局配置行为由目标单测覆盖，真实 Windows runtime 状态以 release workflow 为准。Antigravity 在真实检查跑通前仍为 Unknown/blocked。`--compare-dir` 与 `hooks` 安装目标仅支持 macOS/Linux。安装写入和回滚使用 atomic replace；POSIX 会在 replace 前恢复文件 mode，Windows 使用 replace 后的 best-effort mode 恢复。
-- **验证范围**：v1.3.8 本地验证记录在 `docs/VALIDATION_AUDIT.zh.md`，覆盖后端 unit/integration/eval、ruff/format/pyright、viewer typecheck/Vitest/build、i18n parity、真实 serve 保存复现和一次 live DeepSeek learn。GitHub Release 与 PyPI publish 由 release workflow 和 `RELEASING.md` 记录。
-- **安全**：URL secret 脱敏、provider URL 校验、provider API-key 环境变量校验、输入校验、prompt 注入检测、安全门禁和脱敏后的 judge 失败报告。WebUI 粘贴的 key 以引用方式存储：明文只写入 `.ahadiff/.env`（POSIX `chmod 0600`；Windows 尽力而为），`config.toml` 里只保留引用名，并且 AhaDiff 会确保这些 secret 模式被 Git 忽略（`.ahadiff/.gitignore` 不存在时创建它，已存在时只追加缺失的 secret 行）。如果 gitignore 文件不安全，保存会在写入 key 前失败；否则 key 文件会被正常的 `git add` 忽略（强制 `git add -f` 仍可能覆盖）。
-
-## 界面截图
+以下示例来自早期界面。五种来源的当前操作请以上文为准。
 
 <p align="center">
-  <img src="./docs/video/public/screenshots/zh/zh-dashboard.png" alt="运行面板：运行记录、分数、棘轮轨迹" width="800">
+  <img src="https://raw.githubusercontent.com/AGI-is-going-to-arrive/ahadiff/main/docs/video/public/screenshots/zh/zh-dashboard.png" alt="仪表盘展示课程运行、评分和复习记录" width="800">
 </p>
 
 <details>
-<summary>欢迎页：首次运行入口</summary>
-<img src="./docs/video/public/screenshots/zh/zh-welcome.png" alt="欢迎页" width="800">
+<summary>课程与证据</summary>
+<img src="https://raw.githubusercontent.com/AGI-is-going-to-arrive/ahadiff/main/docs/video/public/screenshots/zh/zh-lesson.png" alt="带来源证据链接的课程" width="800">
+<img src="https://raw.githubusercontent.com/AGI-is-going-to-arrive/ahadiff/main/docs/video/public/screenshots/zh/zh-diff.png" alt="带声明高亮的差异视图" width="800">
 </details>
 
 <details>
-<summary>课程：AI 根据 diff 生成的教学课程</summary>
-<img src="./docs/video/public/screenshots/zh/zh-lesson.png" alt="课程页面" width="800">
+<summary>测验与复习</summary>
+<img src="https://raw.githubusercontent.com/AGI-is-going-to-arrive/ahadiff/main/docs/video/public/screenshots/zh/zh-quiz.png" alt="根据课程生成的测验题" width="800">
+<img src="https://raw.githubusercontent.com/AGI-is-going-to-arrive/ahadiff/main/docs/video/public/screenshots/zh/zh-review.png" alt="间隔复习卡片" width="800">
 </details>
 
-<details>
-<summary>差异查看器：带 claim 关联的代码证据</summary>
-<img src="./docs/video/public/screenshots/zh/zh-diff.png" alt="差异查看器" width="800">
-</details>
+## 从源码安装
 
-<details>
-<summary>测验：基于课程的主动回忆测试</summary>
-<img src="./docs/video/public/screenshots/zh/zh-quiz.png" alt="测验页面" width="800">
-</details>
+源码安装还需要 [uv](https://docs.astral.sh/uv/) 和 pnpm：
 
-<details>
-<summary>复习：间隔重复卡片</summary>
-<img src="./docs/video/public/screenshots/zh/zh-review.png" alt="复习页面" width="800">
-</details>
-
-<details>
-<summary>概念图谱：跨 diff 的知识图谱</summary>
-<img src="./docs/video/public/screenshots/zh/zh-concepts-graph.png" alt="概念图谱" width="800">
-</details>
-
-<details>
-<summary>概念账本：已学概念表</summary>
-<img src="./docs/video/public/screenshots/zh/zh-concepts.png" alt="概念账本" width="800">
-</details>
-
-<details>
-<summary>运行详情：分数与评估细节</summary>
-<img src="./docs/video/public/screenshots/zh/zh-rundetail-overview.png" alt="运行详情概览" width="800">
-</details>
-
-<details>
-<summary>运行详情评分：8 维评分明细</summary>
-<img src="./docs/video/public/screenshots/zh/zh-rundetail-score.png" alt="运行详情评分" width="800">
-</details>
-
-<details>
-<summary>设置：Provider、偏好和 AI 工具指引</summary>
-<img src="./docs/video/public/screenshots/zh/zh-settings.png" alt="设置页面" width="800">
-</details>
-
-模型限制与思考参数已按 2026-09-07 资料更新。“使用模型默认值”与“关闭思考”是不同设置，可用等级由模型和接口决定。
-
-## AI 工具集成
-
-AhaDiff 会在当前仓库写入项目级 AI 工具指引文件；不会重新安装 AhaDiff CLI，也不会写入全局用户目录：
 ```bash
-ahadiff install --detect        # 自动检测可用工具
-ahadiff install claude          # 也支持: codex, pi, deepseek-harness, grok, devin, cursor, copilot, antigravity, ...
-```
-当前目录包含 16 个目标。运行 `ahadiff install --detect` 查看项目指引，或使用设置 → AI 工具指引。旧指引可通过 `ahadiff uninstall roo`、`ahadiff uninstall windsurf` 显式清理。
-
-Git hooks 默认仅提醒。`ahadiff install hooks --auto-learn` 会让 post-commit hook 在后台运行 `ahadiff learn --last`（日志：`.ahadiff/hooks.log`）。GUI 客户端提交也能用：hook 会回退到安装时记录的路径；实在找不到 `ahadiff` 时只在日志里记一条跳过，绝不卡住 commit。想按保存而不是按 commit 触发学习？`ahadiff watch` 会在工作区变更时自动 learn（防抖 2s、冷却 30s）；`ahadiff serve --watch` 用同一个监听并带起 WebUI。把只读 MCP server（7 个工具）注册给你的 agent：
-```bash
-claude mcp add ahadiff -- ahadiff mcp-server --repo-root <path>   # Claude Code
-codex mcp add ahadiff -- ahadiff mcp-server --repo-root <path>    # Codex CLI
+git clone https://github.com/AGI-is-going-to-arrive/ahadiff.git
+cd ahadiff
+uv sync --locked --dev
+pnpm --dir viewer install --frozen-lockfile
+pnpm --dir viewer build
+uv tool install --editable .
 ```
 
-Settings 会按 CLI / IDE / CI 分组展示这些目标，并显示快速开始步骤、示例提示词、预期输出、平台说明和不调用 provider 的本地演示。Guide 使用同一套使用提示，并在折叠卡片展开后展示实际会写入哪些文件；真正写入和移除仍在 Settings 中完成。
+## 致谢与许可
 
-Guide 和新建学习对话框在 Windows 高对比 / forced-colors 模式下也会保持卡片、note marker 和底部操作可辨；使用提示沿用 viewer 的 token 化字号体系。
+AhaDiff 参考了 karpathy/autoresearch、alchaincyf/darwin-skill、Evol-ai/SkillCompass、ZJU-REAL/SkillZero、safishamsi/graphify 和 karpathy/llm-wiki 的思路。感谢 [linux.do](https://linux.do/) 社区的反馈。
 
-部分目标会写入工具原生的生成文件，例如 `.claude/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff/SKILL.md`、`.gemini/skills/ahadiff/SKILL.md`、`.agents/skills/ahadiff-antigravity/SKILL.md`、`.agents/skills/ahadiff-antigravity-cli/SKILL.md`、`.agents/rules/ahadiff.md`、`.github/instructions/ahadiff.instructions.md`、`.opencode/agents/ahadiff.md`、`.clinerules/ahadiff.md`、`.continue/rules/ahadiff.md`、`.cursor/rules/ahadiff.mdc`、`.pi/skills/ahadiff/SKILL.md`、`.dsh/skills/ahadiff/SKILL.md`、`.grok/skills/ahadiff/SKILL.md` 和 `.devin/rules/ahadiff.md`。repo 指引标记段仍写在 `CLAUDE.md`、`AGENTS.md`、`GEMINI.md`、`.github/copilot-instructions.md` 等用户管理文件中。卸载时只移除 AhaDiff 生成的文件和 AhaDiff 标记段。
-
-本仓库会忽略生成出来的 `.agents/` 安装产物，所以 repo-local Codex / Antigravity skill 默认只留在本机，除非用户明确把它们纳入 Git。
-
-## 8 维评分 Rubric
-
-| # | 维度 | 权重 | 硬门禁 |
-|---|------|------|--------|
-| 1 | Accuracy | 20 | 基准门禁：< 14 → FAIL。运行时策略可对很大的可见 diff 降低阈值，但 rejected claim 比例过高和安全门禁仍会阻止 PASS。 |
-| 2 | Evidence | 18 | 基准门禁：< 12 → FAIL。运行时策略可对很大的可见 diff 降低阈值，但无效或缺失证据仍会拉低本次 run。 |
-| 3 | Diff Coverage | 14 | 自适应 claim-anchor 门禁。普通 diff 低于 7.70 会 FAIL；大而分散的 diff 阈值会降低，单/双文件但 hunk 很多的 diff 阈值会更严格。具体 ratio、regime 和 visible basis 会写进 hard gate detail。 |
-| 4 | Learnability | 14 | 无 |
-| 5 | Quiz Transfer | 10 | 无 |
-| 6 | Spec Alignment | 10 | 无 |
-| 7 | Conciseness | 8 | 无 |
-| 8 | Safety & Privacy | 6 | 未缓解 Critical → FAIL |
-
-三档 verdict：**PASS** ≥ 80 / **CAUTION** 60–80 / **FAIL** < 60。即使总分很高，hard gate 也可以直接让 run 变成 **FAIL**；contradicted claims 是 0 容忍，未缓解 Critical safety finding 也会 FAIL。
-
-## 项目结构
-
-```text
-ahadiff/
-├─ src/ahadiff/         # Python 源码
-├─ viewer/              # React 19 前端
-├─ tests/               # 测试套件
-├─ prompts/             # LLM prompt 模板
-├─ benchmarks/          # Eval benchmark fixtures
-├─ docs/                # Landing page、使用指南、教程视频
-├─ .github/workflows/   # CI/CD
-├─ pyproject.toml       # Python 包配置
-└─ LICENSE              # MIT
-```
-
-## 核心理念（N-文件契约）
-
-AhaDiff 受 Karpathy / autoresearch 三文件契约启发，扩展成 N-文件变体：
-
-| 文件 | 谁来改 | 作用 |
-|------|--------|------|
-| `program.md` | 人类 | 用自然语言描述 improve loop 的状态机 |
-| evaluation bundle | **不可变** | `evaluator.py` + `rubric.py` + `rubric.yaml` + `gates.py` + `deterministic.py`，作为整体锁定 |
-| `prompts/*.md` | Agent | improve loop 只允许改白名单里的生成 prompt；`eval_judge.md` 是评判 prompt 资源，不在可写集合里 |
-
-循环：编辑 → commit → 评估 → 更好就保留，更差就回退 → 把结果记录下来，供之后复习和比较。
-
-## 灵感来源、设计公理与 License
-
-### 灵感来源
-
-- **karpathy/autoresearch**：N-文件契约和 git ratchet
-- **alchaincyf/darwin-skill**：8 维 rubric 和 Phase 2.5 rewrite
-- **Evol-ai/SkillCompass**：PASS / CAUTION / FAIL 与 weakest-dimension-first
-- **ZJU-REAL/SkillZero**：helpfulness-driven retention 和 compact context
-- **safishamsi/graphify**：repo 级图谱 overlay
-- **karpathy/llm-wiki** gist：持续积累的 wiki
-
-### 设计公理
-
-1. **Evidence first**：有支持的 claim 必须能回到来源行、结构定位与内容哈希
-2. **Learning over summary**：出题和复习比漂亮总结更重要
-3. **Local-first trust**：隐私层级必须明确，本地优先是默认值
-4. **Paper-like seriousness**：像认真论文，不像喧闹的 SaaS landing page
-5. **One accent per style**：暖白纸感，加一个明确的 accent 色
-
-### 致谢
-
-感谢 [linux.do](https://linux.do/) 社区的反馈与支持。
-
-### License
-
-[MIT](./LICENSE)
-
----
-
-> 知返 / AhaDiff：Δ知 ↺
+[MIT 许可证](https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE)

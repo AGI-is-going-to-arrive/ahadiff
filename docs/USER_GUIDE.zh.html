@@ -18,17 +18,17 @@
   --ink: #1C1B18;
   --ink-2: #38362F;
   --muted: #6A6456;
-  --muted-2: #8F8878;
+  --muted-2: #6A6456;
   --hair: #E6E3D8;
   --accent: #D27050;
-  --accent-ink: #B04E28;
+  --accent-ink: #953E1F;
   --accent-soft: #F4E4D9;
   --add-bg: #E4EFE0;
   --add-fg: #2F6F4F;
   --del-bg: #F6DCD5;
   --del-fg: #A33D2B;
   --success: #2F6F4F;
-  --warning: #B4791F;
+  --warning: #855600;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-serif: "Newsreader", "Noto Serif SC", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -50,7 +50,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 a { color: var(--accent-ink); text-decoration: none; transition: color .15s; }
-a:hover { color: var(--accent); }
+a:hover { color: var(--accent-ink); }
 img { max-width: 100%; display: block; }
 ::selection { background: var(--accent-soft); color: var(--accent-ink); }
 
@@ -111,7 +111,7 @@ img { max-width: 100%; display: block; }
   border: 1px solid var(--hair); background: var(--elevated);
   color: var(--muted); transition: all .15s; letter-spacing: .04em;
 }
-.lang-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.lang-toggle:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
 
 /* ===== Hero ===== */
 .hero {
@@ -157,7 +157,7 @@ img { max-width: 100%; display: block; }
 .btn-primary {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
-  background: var(--accent); color: #fff; border: none; cursor: pointer;
+  background: var(--accent-ink); color: #fff; border: none; cursor: pointer;
   box-shadow: 0 2px 8px -2px rgba(176,78,40,.4);
   transition: all .2s;
 }
@@ -168,7 +168,7 @@ img { max-width: 100%; display: block; }
   background: transparent; color: var(--ink); cursor: pointer;
   border: 1.5px solid var(--hair); transition: all .2s;
 }
-.btn-secondary:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.btn-secondary:hover { border-color: var(--accent-ink); color: var(--accent-ink); transform: translateY(-1px); }
 
 /* Hero diff preview */
 .hero-diff {
@@ -194,12 +194,12 @@ img { max-width: 100%; display: block; }
 .hero-diff-code .line-del { background: var(--del-bg); color: var(--del-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
 .hero-diff-code .line-add { background: var(--add-bg); color: var(--add-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
 .hero-diff-code .line-ctx { color: var(--muted); padding: 1px 8px; margin: 0 -16px; display: block; }
-.hero-diff-code .line-hdr { color: var(--accent); padding: 1px 8px; margin: 0 -16px; display: block; font-weight: 500; }
+.hero-diff-code .line-hdr { color: var(--accent-ink); padding: 1px 8px; margin: 0 -16px; display: block; font-weight: 500; }
 
 /* Arrow between diff and insight */
 .hero-arrow {
   display: flex; justify-content: center; padding: 20px 0;
-  color: var(--accent); font-size: 28px; animation: fadeIn .6s ease .8s both;
+  color: var(--accent-ink); font-size: 28px; animation: fadeIn .6s ease .8s both;
 }
 
 .hero-insight {
@@ -224,13 +224,13 @@ img { max-width: 100%; display: block; }
 }
 .claim-badge.weak { background: #FFF3CD; color: var(--warning); }
 .claim-text { color: var(--ink-2); }
-.claim-ref { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.claim-ref { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); }
 
 /* ===== Problem Section ===== */
 .problem { background: var(--subtle); }
 .section-eyebrow {
   font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+  text-transform: uppercase; color: var(--accent-ink); margin-bottom: 12px;
 }
 .section-title {
   font-family: var(--font-serif); font-size: clamp(28px, 4vw, 40px);
@@ -262,7 +262,7 @@ img { max-width: 100%; display: block; }
 }
 .step-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: var(--accent); background: var(--accent-soft);
+  color: var(--accent-ink); background: var(--accent-soft);
   width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
   place-items: center; margin-bottom: 14px;
 }
@@ -275,7 +275,7 @@ img { max-width: 100%; display: block; }
 .step-card p { color: var(--muted); font-size: 13px; line-height: 1.6; }
 .step-arrow {
   position: absolute; top: 50%; right: -12px; transform: translateY(-50%);
-  color: var(--accent); font-size: 18px; z-index: 1;
+  color: var(--accent-ink); font-size: 18px; z-index: 1;
 }
 
 /* ===== Features ===== */
@@ -304,7 +304,7 @@ img { max-width: 100%; display: block; }
   border: 1px solid transparent; transition: all .25s;
   position: relative;
 }
-.arch-layer:hover { border-color: var(--accent); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
+.arch-layer:hover { border-color: var(--accent-ink); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
 .arch-layer:hover .arch-tooltip { opacity: 1; visibility: visible; transform: translateX(0); }
 .arch-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
@@ -403,7 +403,7 @@ img { max-width: 100%; display: block; }
 }
 .start-card .start-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: #fff; background: var(--accent);
+  color: #fff; background: var(--accent-ink);
   width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
   place-items: center; margin-bottom: 14px;
 }
@@ -425,7 +425,7 @@ img { max-width: 100%; display: block; }
   background: var(--elevated); border: 1px solid var(--hair);
   color: var(--ink-2); transition: all .15s;
 }
-.badge:hover { border-color: var(--accent); color: var(--accent-ink); }
+.badge:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
 .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .badge-dot.python { background: #3776AB; }
 .badge-dot.react { background: #61DAFB; }
@@ -442,7 +442,7 @@ img { max-width: 100%; display: block; }
 }
 .footer-links { display: flex; justify-content: center; gap: 24px; margin-bottom: 16px; }
 .footer-links a { color: var(--muted); font-weight: 500; }
-.footer-links a:hover { color: var(--accent); }
+.footer-links a:hover { color: var(--accent-ink); }
 .footer-version {
   font-family: var(--font-mono); font-size: 11px;
   color: var(--muted-2); margin-top: 8px;
@@ -561,7 +561,7 @@ img { max-width: 100%; display: block; }
   position:absolute; left: 16px; top: -2px;
   font-family: var(--font-serif); font-style: italic; font-weight: 700;
   font-size: 88px; line-height: 1;
-  color: var(--accent); opacity: .32;
+  color: var(--accent-ink); opacity: .32;
   pointer-events:none;
 }
 .b-pullquote cite{
@@ -617,7 +617,7 @@ img { max-width: 100%; display: block; }
 .b-crown{
   position: absolute; z-index: 0; pointer-events: none;
   font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  color: var(--accent); opacity: .06;
+  color: var(--accent-ink); opacity: .06;
   font-size: clamp(240px, 36vw, 520px); line-height: .82;
   letter-spacing: -0.04em; user-select: none;
 }
@@ -691,7 +691,7 @@ img { max-width: 100%; display: block; }
 .faq-item { background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
 .faq-item summary { cursor: pointer; list-style: none; padding: 18px 22px; font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .faq-item summary::-webkit-details-marker { display: none; }
-.faq-item summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent); font-size: 20px; flex: none; }
+.faq-item summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent-ink); font-size: 20px; flex: none; }
 .faq-item[open] summary::after { content: "\2212"; }
 .faq-item .faq-a { padding: 0 22px 20px; color: var(--muted); font-size: 14px; line-height: 1.7; }
 .faq-item .faq-a code { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
@@ -704,6 +704,9 @@ img { max-width: 100%; display: block; }
 @media (forced-colors: active) { .shot, .video-frame, .faq-item, .cmd-table, .start-step { border: 1px solid CanvasText; } }
 @media print { .video-frame { display: none; } .shot, .faq-item, .start-step { box-shadow: none; break-inside: avoid; } }
 
+p a, .g-note a, .start-tip a { text-decoration: underline; text-underline-offset: .15em; }
+.cmp-wrap:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
+
 /* === End theme extensions === */
 
 /* ===== Guide layout ===== */
@@ -712,7 +715,7 @@ img { max-width: 100%; display: block; }
 .guide-toc-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 12px; }
 .guide-toc a { display: block; padding: 7px 12px; border-radius: 8px; font-size: 13.5px; color: var(--muted); border-left: 2px solid transparent; transition: all .15s; }
 .guide-toc a:hover { color: var(--ink); background: var(--subtle); }
-.guide-toc a.is-active { color: var(--accent-ink); border-left-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.guide-toc a.is-active { color: var(--accent-ink); border-left-color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
 .guide-main { min-width: 0; }
 .guide-hero { border-bottom: 1px solid var(--hair); padding-bottom: 28px; margin-bottom: 8px; }
 .guide-hero h1 { font-family: var(--font-serif); font-size: clamp(36px, 5vw, 56px); font-weight: 600; letter-spacing: -.02em; line-height: 1.08; margin: 10px 0 14px; }
@@ -738,7 +741,7 @@ img { max-width: 100%; display: block; }
   .guide-toc { position: static; max-height: none; overflow-y: visible; overflow-x: hidden; min-width: 0; max-width: 100%; margin-bottom: 28px; border-bottom: 1px solid var(--hair); padding-bottom: 14px; }
   .guide-toc-list { display: flex; gap: 8px; min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
   .guide-toc a { white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; }
-  .guide-toc a.is-active { border-left: none; border-bottom-color: var(--accent); }
+  .guide-toc a.is-active { border-left: none; border-bottom-color: var(--accent-ink); }
 }
 @media print { .topnav, .guide-toc, .b-grain { display: none; } .guide-layout { display: block; padding-top: 0; } }
 @media (forced-colors: active) { .guide-toc a.is-active { border-left-color: CanvasText; } }
@@ -797,7 +800,7 @@ img { max-width: 100%; display: block; }
 .claim-badge.verified{ background: var(--add-bg); color: var(--add-fg); border: 2px solid var(--add-fg); border-radius: 4px; transform: rotate(-3deg); }
 .claim-badge.not_proven{ background: var(--subtle); color: var(--muted); border: 1px dotted var(--muted); }
 .claim-badge.contradicted{ background: var(--del-bg); color: var(--del-fg); border: 1px solid var(--del-fg); }
-.claim-badge.rejected{ background: var(--del-bg); color: var(--del-fg); border: 1px dashed var(--del-fg); text-decoration: line-through; opacity: .78; }
+.claim-badge.rejected{ background: var(--del-bg); color: var(--del-fg); border: 1px dashed var(--del-fg); text-decoration: line-through; opacity: 1; }
 .claim-legend .claim-badge.weak{ background: #FBF1DD; color: var(--warning); border: 1px dashed var(--warning); }
 @media (max-width: 760px){ .claim-legend{ grid-template-columns: repeat(2, 1fr); } }
 
@@ -838,7 +841,7 @@ img { max-width: 100%; display: block; }
 .mini-step{ position: relative; flex: 1 1 160px; min-width: 150px; background: var(--accent-softer); border: 1px solid var(--hair-strong); border-radius: 10px; padding: 14px 14px 14px 42px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
 .mini-step::before{ counter-increment: mf; content: counter(mf); position: absolute; left: 12px; top: 12px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-ink); color: #fff; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
 .mini-step code{ font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
-.mini-arrow{ display: grid; place-items: center; color: var(--accent); font-size: 18px; flex: 0 0 auto; max-width: 100%; }
+.mini-arrow{ display: grid; place-items: center; color: var(--accent-ink); font-size: 18px; flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 600px){ .mini-arrow{ transform: rotate(90deg); } }
 
 /* ---- Folder tree ---- */
@@ -853,7 +856,7 @@ img { max-width: 100%; display: block; }
 .tab-btns{ display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--hair); margin-bottom: 14px; }
 .tab-btn{ font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--muted); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; cursor: pointer; transition: color .15s, border-color .15s; }
 .tab-btn:hover{ color: var(--ink); }
-.tab-btn.is-active{ color: var(--accent-ink); border-bottom-color: var(--accent); }
+.tab-btn.is-active{ color: var(--accent-ink); border-bottom-color: var(--accent-ink); }
 .tab-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .tab-panel[hidden]{ display: none; }
 
@@ -925,47 +928,48 @@ img { max-width: 100%; display: block; }
     <div class="guide-toc-title">目录</div>
     <nav class="guide-toc-list">
       <a href="#quickstart">快速开始</a>
-      <a href="#provider">配置 Provider</a>
+      <a href="#provider">配置模型提供商</a>
       <a href="#learn">生成课程</a>
       <a href="#webui">使用 WebUI</a>
       <a href="#commands">常用命令</a>
       <a href="#export">导出和分享</a>
       <a href="#features">能力说明</a>
       <a href="#faq">常见问题</a>
-      <a href="#about">关于本文档</a>
+      <a href="#about">平台与发布</a>
     </nav>
   </aside>
 
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.8</span></div>
-      <h1>知返 AhaDiff 用户使用指南</h1>
-      <p class="guide-lead">学习自己的修复、同事的修改或 AI 生成的变化。选择 <strong>Git 改动</strong>、<strong>两份文件</strong>、<strong>粘贴改动</strong>、<strong>本地快照</strong>或<strong>单份 Markdown</strong>，再读课程、查证据、做测验和复习。学习记录保存在工作区的 <code>.ahadiff/</code>；文件、patch、快照和文档学习无需创建 Git 仓库。</p>
-      <div class="g-note">源码更新说明（2026-09-08）：五来源入口、持久快照、格式锚点、人工 review 说明和主动迁移练习属于当前源码改动，尚未发布，版本号仍为 1.3.8。已发布版本可先用 CLI 的 <code>--compare</code> 和 <code>--patch</code>；体验新界面需构建包含这些改动的源码。</div>
-      <div class="start-tip">视频教程：<a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 英文讲解（YouTube）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。视频展示较早的界面，当前源码的操作以本文步骤为准。安装已发布版本推荐用 <code>pipx install ahadiff</code> 隔离安装。</div>
+      <div class="b-eyebrow"><span>知返 AhaDiff 使用指南 &middot; v1.4.0</span></div>
+      <h1>知返 AhaDiff 使用指南</h1>
+      <p class="guide-lead">自己的修复、同事的修改、AI 生成的代码或单份 Markdown，都可以用来学习。选择来源并预览后，对照证据阅读课程，再通过测验和复习巩固理解。学习记录保存在工作目录的 <code>.ahadiff/</code> 中；文件、补丁、快照和文档学习无需 Git。</p>
+      <div class="g-note">1.4.0 新增 <a href="#snapshots">本地快照</a>、<a href="#document-learning">Markdown 文档学习</a>、<a href="#format-evidence">格式引用</a>、<a href="#review-context">Review 说明</a>、<a href="#transfer-practice">主动迁移练习</a>，并整理了 <a href="#model-controls">模型设置</a>。</div>
+      <div class="start-tip">教程视频： <a href="https://youtu.be/lvL7GMvDPvI">英文演示（YouTube）</a> · <a href="https://www.bilibili.com/video/BV1b57k6yEWm">中文演示（B 站）</a>。视频与截图来自早期界面，当前操作请以本指南为准。</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
     <section id="quickstart">
       <div class="section-eyebrow">上手</div>
       <h2>1. 快速开始</h2>
-      <p>安装 CLI，在工作目录打开本地 WebUI，再配置一个 provider。手头有修改前后的两份文件，就可以开始，无需建仓库或安装 AI 工具指引。</p>
+      <p>安装 AhaDiff，在工作目录打开本地 WebUI，再添加提供商。两份文件、本地快照或单份 Markdown 都能开始学习，无需 Git 仓库或 AI 工具集成。</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>安装</h3>
-          <p>推荐用 pipx 隔离安装 CLI 和内置 WebUI（无需 git clone）。<code>uv tool install ahadiff</code> 同样可用；在 venv/conda 里 <code>pip install ahadiff</code> 也可以。在 Homebrew/系统自带 Python 上直接 <code>pip install</code> 会触发 externally-managed-environment（PEP 668），改用 pipx 或 <code>uv tool install ahadiff</code> 即可。</p>
+          <p>用 pipx 或 uv tool 安装 CLI 和配套 WebUI，无需下载源码。在虚拟环境或 conda 环境中，也可用 <code>python -m pip install ahadiff</code>。如果 pip 提示 <code>externally-managed-environment</code>，请改用隔离安装工具。</p>
           <div class="code-block"><span class="cmd">pipx install ahadiff
-ahadiff --version</span></div>
+# 或：uv tool install ahadiff
+ahadiff --version
+# ahadiff 1.4.0</span></div>
         </div>
         <div class="g-card">
-          <h3>构建当前源码</h3>
-          <p>在包含本次改动的源码目录中，安装锁定的依赖并构建 WebUI。</p>
-          <div class="code-block"><span class="cmd">uv sync --locked --dev
-pnpm --dir viewer install --frozen-lockfile
-pnpm --dir viewer build
-uv tool install --editable .
+          <h3>升级已有安装</h3>
+          <p>先停止 AhaDiff 服务，备份工作目录的 <code>.ahadiff/</code>，再用原来的安装工具升级。完成后重新运行 <code>ahadiff serve</code>。备份可能包含源码片段和密钥，请私下保存。</p>
+          <div class="code-block"><span class="cmd">pipx upgrade ahadiff
+# 或：uv tool upgrade ahadiff
 ahadiff --version</span></div>
+          <p>虚拟环境中的 pip 用户可用：<code>python -m pip install --upgrade ahadiff</code>。</p>
         </div>
       </div>
       <h3>打开你的工作目录</h3>
@@ -990,7 +994,7 @@ ahadiff --version</span></div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
         <div class="mini-step">到<strong>课程</strong>读解释、<strong>差异</strong>查证据、<strong>测验</strong>作答，再到<strong>复习</strong>处理到期卡片。</div>
       </div>
-      <p class="g-lead">同一次运行会把这些页面连接起来。修改前可显式保存快照；单份 Markdown 可直接生成文档课程。本试点不包含自动快照、PDF 或网页抓取。安装 Agent 是可选项。</p>
+      <p class="g-lead">同一次运行会把这些页面连接起来。修改前可显式保存快照；单份 Markdown 可直接生成文档课程。快照需要手动保存。暂不支持 PDF 或网页抓取。AI 工具集成是可选项。</p>
       <details class="faq-item"><summary>已有 Git 仓库中的可选 CLI 初始化</summary><div class="faq-a">
         <p>以下命令只在 Git 仓库内使用。普通目录从 <code>ahadiff serve</code> 开始；CLI 的 <code>init</code>、<code>doctor</code> 仍要求 Git 仓库元数据。</p>
         <div class="code-block"><span class="cmd">ahadiff init
@@ -1030,87 +1034,58 @@ ahadiff config show --resolved</span></div>
 
     <!-- ===== 2. Configure a Provider ===== -->
     <section id="provider">
-      <div class="section-eyebrow">配置</div>
-      <h2>2. 配置 Provider</h2>
-      <p>环境就绪后，生成课程前需要配置一个 LLM provider，AI 编程 Agent 则是可选项。有两条配置路径。在 CLI 上，密钥放在环境变量里，你只把变量名交给 AhaDiff。在 WebUI Settings 里，你直接粘贴明文密钥，由 AhaDiff 替你存储（见下文「WebUI 如何存储你的密钥」）。无论哪种方式，密钥都不会进入 Git、README、manifest 或纳管的脚本。</p>
-
-      <h3><code>provider test</code> 做了什么</h3>
-      <div class="mini-flow">
-        <div class="mini-step">用一个小请求探测模型。</div>
-        <div class="mini-arrow" aria-hidden="true">&rarr;</div>
-        <div class="mini-step">成功后把 provider 保存到 <code>.ahadiff/config.toml</code>。</div>
-        <div class="mini-arrow" aria-hidden="true">&rarr;</div>
-        <div class="mini-step">密钥环境变量未设置时 fail closed。</div>
-      </div>
-
-      <p class="g-lead">仓库配置里接受的密钥环境变量<strong>名称</strong>：</p>
-      <div class="badges" style="justify-content:flex-start">
-        <span class="badge mono">AHADIFF_PROVIDER_API_KEY</span>
-        <span class="badge mono">OPENAI_API_KEY</span>
-        <span class="badge mono">ANTHROPIC_API_KEY</span>
-        <span class="badge mono">GEMINI_API_KEY</span>
-        <span class="badge mono">AZURE_OPENAI_API_KEY</span>
-      </div>
-
-      <div class="g-cards">
-        <div class="g-card">
-          <h3>名称</h3>
-          <p><code>--api-key-env</code> 是变量的名称。当变量未设置时，标识符形态的值会 fail closed，所以名称不会被误当作 bearer token 发出去。</p>
-        </div>
-        <div class="g-card">
-          <h3>密钥</h3>
-          <p>在这条 CLI 路径上，真正的密钥留在你的 shell 环境里，从不进入命令行参数。WebUI 路径不同：它会把明文密钥写入 <code>.ahadiff/.env</code>（见下文）。两种方式都不会让密钥进入 Git。</p>
-        </div>
-      </div>
-
-      <h3>配置 provider</h3>
-      <p>运行 <code>ahadiff serve</code> 在 Settings 里添加 provider（卡片会在保存前预览模型限额，不发远程请求、不读取密钥），或在下面对应的标签里运行一次 <code>provider test</code>。</p>
-      <div class="tabset" aria-label="Provider 配置方式">
-        <div class="tab-btns" role="tablist" aria-label="Provider 配置">
-          <button class="tab-btn" role="tab" id="ptab-openai" aria-controls="ppanel-openai" data-tab="openai">OpenAI（默认）</button>
-          <button class="tab-btn" role="tab" id="ptab-gpt55" aria-controls="ppanel-gpt55" data-tab="gpt55">Responses/API 示例</button>
-          <button class="tab-btn" role="tab" id="ptab-deepseek" aria-controls="ppanel-deepseek" data-tab="deepseek">DeepSeek BYOK</button>
-          <button class="tab-btn" role="tab" id="ptab-local" aria-controls="ppanel-local" data-tab="local">本地（Ollama / LM Studio）</button>
+      <div class="section-eyebrow">设置</div>
+      <h2>2. 配置模型提供商</h2>
+      <p>打开 <strong>设置</strong>，添加本地或远程提供商。填写接口协议、基础 URL，以及你的账号或本地服务可用的模型。选择生成提供商和模型；可选的评判可以使用另一组配置。保存成功不代表连接成功，开始学习前请查看测试结果。</p>
+      <p>模型限制预览只读取本地配置和注册表，不联系提供商。测试提供商会发送小型真实请求，可能产生费用。远程生成需要 <code>redacted_remote</code> 或 <code>explicit_remote</code>；默认为 <code>strict_local</code>。</p>
+      <h3>通过终端配置</h3>
+      <p>下方示例会测试提供商，并在成功后保存配置。请将基础 URL 和模型占位符替换为你的服务提供的值。<code>--api-key-env</code> 接受环境变量名。后续 CLI 调用仍需该变量中的密钥，也可以通过设置页保存密钥。</p>
+      <div class="tabset" role="group" aria-label="提供商配置方式">
+        <div class="tab-btns" role="tablist" aria-label="提供商配置">
+          <button class="tab-btn" role="tab" id="ptab-openai" aria-controls="ppanel-openai" data-tab="openai">OpenAI Chat</button>
+          <button class="tab-btn" role="tab" id="ptab-gpt55" aria-controls="ppanel-gpt55" data-tab="gpt55">OpenAI Responses</button>
+          <button class="tab-btn" role="tab" id="ptab-deepseek" aria-controls="ppanel-deepseek" data-tab="deepseek">DeepSeek</button>
+          <button class="tab-btn" role="tab" id="ptab-local" aria-controls="ppanel-local" data-tab="local">本地模型</button>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-openai" aria-labelledby="ptab-openai" data-tab="openai">
-          <p>导出密钥和 provider base URL，然后运行一次探测。</p>
-          <div class="code-block"><span class="cmd">export OPENAI_API_KEY="&lt;your-provider-api-key&gt;"
+          <p>用于 OpenAI Chat Completions。macOS/Linux 终端示例：</p>
+          <div class="code-block"><span class="cmd">export AHADIFF_PROVIDER_API_KEY="&lt;your-provider-api-key&gt;"
 export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
 ahadiff provider test \
-  --name default \
+  --name remote \
   --provider-class openai \
   --base-url "$AHADIFF_PROVIDER_BASE_URL" \
-  --api-key-env OPENAI_API_KEY</span></div>
-        </div>
-        <div class="tab-panel" role="tabpanel" id="ppanel-gpt55" aria-labelledby="ptab-gpt55" data-tab="gpt55">
-          <p>不回显地读入密钥，再探测一个 Responses/API provider 示例。在 macOS / Linux 上：</p>
-          <div class="code-block"><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
-read -rsp "Provider API key: " AHADIFF_PROVIDER_API_KEY; export AHADIFF_PROVIDER_API_KEY; printf '\n'
-
-ahadiff provider test \
-  --name gpt55 \
-  --provider-class openai_responses \
-  --base-url "$AHADIFF_PROVIDER_BASE_URL" \
-  --model gpt-5.5 \
+  --model "&lt;model-id&gt;" \
   --api-key-env AHADIFF_PROVIDER_API_KEY \
   --privacy-mode explicit_remote</span></div>
-          <p>在 Windows PowerShell 上，用 <code>Read-Host -AsSecureString</code> 读入：</p>
+          <p>OpenAI 兼容网关通常使用 <code>--provider-class openai_compat</code>；若服务明确支持其他对应协议，请按其说明选择。</p>
+        </div>
+        <div class="tab-panel" role="tabpanel" id="ppanel-gpt55" aria-labelledby="ptab-gpt55" data-tab="gpt55">
+          <p>用于 Responses 接口。下面的 macOS/Linux 命令会以隐藏输入方式读取密钥：</p>
+          <div class="code-block"><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
+export AHADIFF_PROVIDER_API_KEY="$(python3 -c 'import getpass; print(getpass.getpass("Provider API key: "))')"
+ahadiff provider test \
+  --name remote \
+  --provider-class openai_responses \
+  --base-url "$AHADIFF_PROVIDER_BASE_URL" \
+  --model "&lt;model-id&gt;" \
+  --api-key-env AHADIFF_PROVIDER_API_KEY \
+  --privacy-mode explicit_remote</span></div>
+          <p>Windows PowerShell：</p>
           <div class="code-block"><span class="cmd">$env:AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
 $secure = Read-Host "Provider API key" -AsSecureString
 $env:AHADIFF_PROVIDER_API_KEY = [System.Net.NetworkCredential]::new("", $secure).Password
-
 ahadiff provider test `
-  --name gpt55 `
+  --name remote `
   --provider-class openai_responses `
   --base-url $env:AHADIFF_PROVIDER_BASE_URL `
-  --model gpt-5.5 `
+  --model "&lt;model-id&gt;" `
   --api-key-env AHADIFF_PROVIDER_API_KEY `
   --privacy-mode explicit_remote</span></div>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-deepseek" aria-labelledby="ptab-deepseek" data-tab="deepseek">
-          <p>官方 DeepSeek API 请使用 <code>openai_compat</code>，这样结构化输出会走 JSON object mode。Settings preview 确认支持后，DeepSeek v4 flash/pro 也会显示 Thinking Level 控件；<code>无</code> 会关闭思考，<code>低</code>、<code>中</code>、<code>高</code> 都会映射为 API 的 high effort。全局级 DeepSeek provider 可直接用于 Settings 保存、learn 和 improve preflight，不需要复制进每个仓库。</p>
+          <p>官方 DeepSeek API 使用 <code>openai_compat</code>。该示例采用 JSON object 输出模式。</p>
           <div class="code-block"><span class="cmd">export DEEPSEEK_API_KEY="&lt;your-deepseek-api-key&gt;"
-
 ahadiff provider test \
   --name deepseek \
   --provider-class openai_compat \
@@ -1120,80 +1095,40 @@ ahadiff provider test \
   --privacy-mode explicit_remote</span></div>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-local" aria-labelledby="ptab-local" data-tab="local">
-          <p>指向一个本地的 OpenAI 兼容服务。Ollama 和 LM Studio 各自暴露自己的 base URL。</p>
+          <p>先启动 LM Studio 本地服务并加载模型。替换下方模型 ID；若使用其他端口，请修改 URL。不要求认证的本地服务无需密钥。</p>
           <div class="code-block"><span class="cmd">ahadiff provider test \
   --name local \
   --provider-class lmstudio \
-  --base-url "$LOCAL_PROVIDER_BASE_URL" \
-  --api-key-env AHADIFF_PROVIDER_API_KEY</span></div>
+  --base-url http://127.0.0.1:1234/v1 \
+  --model "&lt;loaded-model-id&gt;"</span></div>
+          <p>Ollama 使用 <code>--provider-class ollama --base-url http://127.0.0.1:11434</code>，并指定已经下载的模型。</p>
         </div>
       </div>
-
-      <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-settings.png" alt="设置：provider、隐私、审计、偏好和项目级 AI 工具指引。" width="3840" height="1892" />
-        <figcaption class="shot-cap">设置：配置与诊断。</figcaption>
-        <ol class="shot-legend">
-          <li>左侧设置栏：Account、Provider、Capture、Privacy、Audit。</li>
-          <li>隐私控制：隐私模式、本地模式、脱敏门、审计日志。</li>
-          <li>Server 区块含 serve 端口输入框与 Save 按钮。</li>
-        </ol>
-      </figure>
-
-      <h3>WebUI 如何存储你的密钥</h3>
-      <p>在 Settings 里，你把明文密钥直接粘贴进 API Key 输入框；你不在那里填变量名。随后 AhaDiff 会：</p>
+      <h3 id="model-controls">模型限制与思考设置</h3>
       <ul>
-        <li>生成一个形如 <code>AHADIFF_&lt;ALIAS&gt;_KEY</code> 的唯一引用名。唯一性会避开你系统环境里已有的变量名，以及 <code>.ahadiff/.env</code> 里已有的名；冲突时加数字后缀（例如 <code>AHADIFF_DEMO_2_KEY</code>）。</li>
-        <li>只把明文密钥写入仓库内的 <code>.ahadiff/.env</code> 文件。在 POSIX 上权限为 <code>chmod 0600</code>；在 Windows 上 <code>chmod</code> 不等价于 POSIX owner-only ACL，只是尽力限制（best-effort），并非强隔离。</li>
-        <li>会确保这些 secret 模式（<code>.env</code>、<code>.env.*</code>、<code>audit.private.jsonl</code>、<code>*.lock</code>、<code>*.log</code>）被 Git 忽略：<code>.ahadiff/.gitignore</code> 不存在时会创建它，已存在时只追加缺失的 secret 行（你已有的行会保留）。如果这个 <code>.gitignore</code> 是 symlink、hardlink、reparse point，或无法安全打开，保存会被拒绝，不会写入 key。无论哪种情况，key 文件都会被正常的 <code>git add</code> 忽略（强制 <code>git add -f</code> 仍可能覆盖）。</li>
-        <li>在 <code>config.toml</code> 里只存引用名（<code>api_key_env</code> 等于 <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>）；明文绝不写入 <code>config.toml</code>。</li>
-        <li>当你在字段里填了 API key 再保存时，会探测 provider 以验证连通性。这是 best-effort：探测失败不阻塞保存，UI 会显示验证结果。更新已有 provider 时如果 key 字段留空，会沿用当前 key 并跳过探测（验证结果为空）。</li>
+        <li><strong>模型默认</strong> 由提供商决定思考行为。只有受支持的模型和接口才提供 <strong>关闭</strong>。其他模型可能提供思考等级、开关，或不提供思考控件。</li>
+        <li>输出上限留空即为自动。超过已知上限时，知返会下调数值并提示。未知或部署专属的限制仍是估计；云端限制不能代表本地服务的容量。</li>
+        <li>生成与评判的限制分别计算。只有与所用接口匹配时才选择对应限制配置。切换模型后，保存前请重新检查已指定的思考设置。</li>
+        <li>多个工作目录可以共用全局提供商配置。同名时，工作目录提供商优先。模型列表只能确认名称，不能确认账号调用权限。</li>
       </ul>
-      <p>启动时，<code>serve</code> 和 CLI 都会把 <code>.ahadiff/.env</code> 加载进进程环境变量。如果系统环境里已存在同名变量，系统值优先、不会被覆盖。</p>
-      <p>删除 provider 时会清理它在 <code>.ahadiff/.env</code> 里的条目，但仅限使用 AhaDiff 保留前缀 <code>AHADIFF_</code> 且没有被其它 provider 引用的条目。系统或共享的 env 名（如 <code>OPENAI_API_KEY</code>），以及仍被引用的名，都不会被改动。清理依据是 <code>AHADIFF_</code> 前缀和引用计数，并不记录某行是否由 AhaDiff 写入，所以请把该前缀留给 AhaDiff，不要在 <code>.ahadiff/.env</code> 里自定义 <code>AHADIFF_</code> 开头的变量。</p>
-      <p>CLI 路径未变：<code>ahadiff provider test --api-key-env NAME</code> 仍然使用环境变量名，现在也能解析 <code>.ahadiff/.env</code> 里的引用名。标识符形态、但并非已设置环境变量的值会 fail closed（不会被当作字面 key 发出）；含连字符（dash）的值则按字面 key 使用。</p>
-      <p><strong>Windows 说明：</strong>本地 <code>.ahadiff/.env</code> 由 NTFS 文件夹权限保护，而非 POSIX <code>0600</code>。想要更严格，可把 <code>api_key_env</code> 指向一个真实的 OS 环境变量（它优先生效，且绝不会被写入 <code>.ahadiff/.env</code>）。静态加密请使用全盘加密，如 BitLocker（macOS 上为 FileVault）。</p>
-
-      <h3>Registry 上下文示例</h3>
-      <div class="cmp2">
-        <div class="cmp2-col">
-          <h4>openai</h4>
-          <div class="cmp2-big">&asymp;400k</div>
-          <div class="cmp2-sub">普通 <code>openai</code> 访问的上下文预算</div>
-        </div>
-        <div class="cmp2-vs">vs</div>
-        <div class="cmp2-col">
-          <h4>openai_responses / API</h4>
-          <div class="cmp2-big">&asymp;1.05M</div>
-          <div class="cmp2-sub">Responses / API 访问的上下文预算</div>
-        </div>
-      </div>
-      <p class="cmp2-foot">对于 <code>gpt-5.5</code>，内置 registry 保留这两种上下文 profile。当端点报告真实的总上下文时，可信的实时探测可以覆盖任一 profile。</p>
-
-      <p>配置好后，你唯一的仓库级或全局级 provider（或你在 Settings 里选的生成 provider/model）会被 <code>ahadiff learn</code> 自动使用。同名时仓库 provider 覆盖全局 provider。只有想覆盖单次运行时才传 <code>--provider</code> / <code>--model</code>。</p>
-      <div class="code-block"><span class="cmd">ahadiff learn --last</span></div>
-
-      <h3>保存的 <code>max_output_tokens</code> 如何处理</h3>
-      <div class="g-cards">
-        <div class="g-card">
-          <h3>留空 &rarr; Auto</h3>
-          <p>不填值表示由 AhaDiff 为你确定输出限额。</p>
-        </div>
-        <div class="g-card">
-          <h3>可信硬上限</h3>
-          <p>已知且可信的上限会在保存时被 clamp，并返回一条 warning。</p>
-        </div>
-        <div class="g-card">
-          <h3>未知 / 低置信度 / route-specific / local-runtime</h3>
-          <p>这些只作为 warning。不会被当成硬性保证。</p>
-        </div>
-      </div>
-
+      <h3>密钥保存在哪里</h3>
+      <p>在设置页的 API Key 字段中填写密钥本身。知返将其写入所选范围的 <code>.env</code>，在 <code>config.toml</code> 中只保存引用。工作目录提供商使用 <code>.ahadiff/.env</code>；全局提供商使用下表目录。全局配置需要与学习记录分开备份。工作目录的忽略规则会让普通 <code>git add</code> 排除密钥文件；分享压缩包时也请排除它。同名系统环境变量优先。</p>
+      <div class="cmp-wrap" tabindex="0"><table class="cmp-table">
+        <thead><tr><th>平台</th><th>全局密钥文件</th></tr></thead>
+        <tbody>
+          <tr><td>macOS</td><td><code>~/Library/Application Support/ahadiff/.env</code></td></tr>
+          <tr><td>Linux</td><td><code>${XDG_CONFIG_HOME:-~/.config}/ahadiff/.env</code></td></tr>
+          <tr><td>Windows</td><td><code>%APPDATA%/ahadiff/.env</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>编辑已有提供商时，密钥字段留空会保留原密钥。保存新密钥时可以测试连接，但测试失败不会撤销保存，请查看结果。移除提供商时，会清理使用保留前缀 <code>AHADIFF_</code> 且不再被引用的密钥；不要在本地密钥文件中为无关变量使用该前缀。</p>
+      <p>macOS/Linux 上的密钥文件仅限所有者访问。Windows 上请用 NTFS 权限保护目录。需要由操作系统管理凭证时，可用 <code>api_key_env</code> 指定环境变量，无需粘贴密钥。</p>
       <details class="faq-item">
-        <summary>本地服务报告了错误的 JSON 能力？</summary>
+        <summary>进阶：网关的 JSON 能力与默认设置不一致</summary>
         <div class="faq-a">
-          <p>只在 <code>.ahadiff/config.toml</code> 里设置已知的布尔 override。NewAPI 默认 <code>supports_native_json_schema=false</code>；如果你的网关支持原生 JSON schema，就加上 override。</p>
-          <div class="code-block"><span class="cmd">[providers.local.capability_overrides]
-supports_native_json_schema = false</span></div>
+          <p>确认接口实际接受的格式后，再设置布尔能力覆盖项。例如 NewAPI 默认使用 JSON object 模式；若你的网关支持原生 JSON schema，可在对应提供商别名下启用：</p>
+          <div class="code-block"><span class="cmd">[providers.my_gateway.capability_overrides]
+supports_native_json_schema = true</span></div>
         </div>
       </details>
     </section>
@@ -1287,7 +1222,7 @@ supports_native_json_schema = false</span></div>
         <li>下次打开时点击<strong>使用此基准</strong>，再选择修改后文件。预览比较结果，随后开始学习。</li>
         <li>删除时点击<strong>删除快照</strong>并确认具体名称。已有课程和源文件会保留。</li>
       </ol>
-      <div class="code-block"><span class="cmd">ahadiff snapshot save before.md --name "修改前" --repo-root .
+      <div class="code-block"><span class="cmd">ahadiff snapshot save before.md --name before-edit --repo-root .
 ahadiff snapshot list --repo-root .
 ahadiff snapshot show SNAPSHOT_ID --expected-hash CONTENT_HASH --repo-root .
 ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.md --force-learn</span></div>
@@ -1299,7 +1234,7 @@ ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.
       <h3 id="document-learning">学习单份 Markdown 文档</h3>
       <p>选择<strong>单份 Markdown</strong>，点选一份最多 256 KiB 的 UTF-8 <code>.md</code> 或 <code>.markdown</code> 文件，预览过滤后的原文，然后开始学习。</p>
       <div class="code-block"><span class="cmd">ahadiff learn --document reading.md</span></div>
-      <p>独立 <code>document</code> 来源保存 <code>document.md</code> 及章节/段落锚点。证据页展示原文行，不添加增删标记；课程、测验、复习仍连接同一 run。该模式不支持 diff 的 spec alignment。Diff Coverage 与改动新颖度 Learnability 显示 N/A / <code>0/0</code>，不计入总分；经过验证的文档锚点覆盖使用独立硬门禁。PDF、URL 或多文档集合需要独立输入契约，不在此试点范围。</p>
+      <p>独立 <code>document</code> 来源保存 <code>document.md</code> 及章节/段落锚点。证据页展示原文行，不添加增删标记；课程、测验、复习仍连接同一 run。该模式不支持 diff 的 spec alignment。Diff Coverage 与改动新颖度 Learnability 显示 N/A / <code>0/0</code>，不计入总分；文档课程按正文中的证据检查覆盖；只有文档没有正文、全是标题时才使用标题。含正文的文档不能只靠引用标题通过检查。此模式接受单份本地 Markdown，不接受 PDF、URL 或多文档集合。</p>
       <div class="g-note">引文已验证，表示文档确实在此位置包含该文本。解释它的含义属于语义判断；有关外部事实或运行效果的断言，需要文档之外的证据。</div>
 
       <h3 id="review-context">补充人工 review 说明</h3>
@@ -1308,7 +1243,7 @@ ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.
       <p>说明最多为 8 KiB UTF-8 文本，按不可信输入过滤，并独立标成辅助上下文。它不能产生证据位置或替代代码反证。运行记录是否使用与内容哈希；草稿不进入任务重试摘要，编辑说明会使旧预览失效。请勿包含凭证。</p>
 
       <h3 id="format-evidence">阅读格式专用证据</h3>
-      <div class="cmp-wrap"><table class="cmp-table">
+      <div class="cmp-wrap" tabindex="0"><table class="cmp-table">
         <thead><tr><th>输入</th><th>定位</th><th>检查内容</th></tr></thead>
         <tbody>
           <tr><td>Markdown</td><td>章节路径与段落</td><td>引文、行范围和内容哈希</td></tr>
@@ -1329,7 +1264,7 @@ ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.
       <p>运行下面任意一条打开本地 React SPA。<code>serve</code> 默认会打开浏览器；加 <code>--no-browser</code> 保持无头，或加 <code>--watch</code> 在 Git 工作区文件改动时自动 learn。</p>
       <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # 文件监听，默认已包含</span></div>
+ahadiff serve --watch</span></div>
 
       <h3>工作流一览</h3>
       <div class="g-rail">
@@ -1341,11 +1276,11 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       </div>
 
       <h3>页面地图</h3>
-      <div class="cmp-wrap">
+      <div class="cmp-wrap" tabindex="0">
         <table class="cmp-table">
           <thead><tr><th>页面</th><th>用途</th></tr></thead>
           <tbody>
-            <tr><td><code>/welcome</code></td><td>选择 Git 改动、两份文件或粘贴改动，打开最新课程。</td></tr>
+            <tr><td><code>/welcome</code></td><td>选择 Git 改动、两份文件、粘贴改动、本地快照或单份 Markdown，打开最新课程。</td></tr>
             <tr><td><code>/onboarding</code></td><td>打开工作目录、配置 provider、检查诊断并开始第一次学习。Agent 配置是可选项。</td></tr>
             <tr><td><code>/</code></td><td>仪表盘：最新运行、KPI、棘轮趋势和复习活动。</td></tr>
             <tr><td><code>/run/:runId</code></td><td>运行详情：Overview、Score、Judge、Artifacts。可选的 LLM judge 失败时，Judge 标签显示脱敏的失败面板，而非原始 provider 输出。</td></tr>
@@ -1374,7 +1309,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
           <li><code>.continue/rules/ahadiff.md</code></li>
           <li><code>.cursor/rules/ahadiff.mdc</code></li>
         </ul>
-        仓库级指引段落仍写在用户自管的文件里，例如 <code>CLAUDE.md</code>、<code>AGENTS.md</code>、<code>GEMINI.md</code> 和 <code>.github/copilot-instructions.md</code>。本仓库忽略生成的 <code>.agents/</code> 安装，所以本地 Codex / Antigravity 的 skill 产出默认不会被提交。hooks 目标与 MCP 注册见常用命令一节。</div>
+        仓库级指引段落仍写在用户自管的文件里，例如 <code>CLAUDE.md</code>、<code>AGENTS.md</code>、<code>GEMINI.md</code> 和 <code>.github/copilot-instructions.md</code>。hooks 目标与 MCP 注册见常用命令一节。</div>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/zh/zh-dashboard.png" alt="仪表盘：最近运行、分数、通过率、棘轮趋势和复习活动。" width="3840" height="1892" />
@@ -1388,7 +1323,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       </figure>
 
       <h3>Claim 与 diff</h3>
-      <p class="g-lead">每条 claim 都链到 <strong>file:line</strong> 证据，并带五种徽章之一。glyph 和语义是产品里真实的；色调是映射到本页配色的。</p>
+      <p class="g-lead">打开声明可查看来源位置和证据状态。下面五种状态说明知返从已捕获材料中确认了什么。</p>
       <div class="claim-legend">
         <div class="cl-item">
           <span class="claim-badge verified"><span class="cb-glyph">&#10003;</span> verified</span>
@@ -1444,12 +1379,12 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       <div class="code-block"><span class="cmd">ahadiff learn --document reading.md --active-practice
 ahadiff learn --compare before.py after.py --active-practice --force-learn
 ahadiff regenerate RUN_ID --only quiz --active-practice</span></div>
-      <p><code>regenerate</code> 会替换所选运行的测验/卡片、重算确定性分数并重新封存校验和。不传两种练习开关时沿用该 run 的模式，<code>--mixed-practice</code> 可明确切回混合题。旧 Judge 结果会失效，不会自动重跑 judge。请选择打算替换测验的 run。学习和重新生成使用已配置的 provider/隐私策略，预览本身不调用模型。</p>
+      <p><code>regenerate</code> 会替换本次运行的测验和卡片，重新评分，并清除旧的评判结果，不会重新调用评判模型。不传练习开关时沿用原模式；<code>--mixed-practice</code> 可生成混合测验。请选择打算修改的运行。生成过程使用已配置的提供商和隐私模式。</p>
       <p>Transfer 复用现有 Quiz 与 SRS：<strong>预测下一步</strong>、<strong>补全相似例子</strong>、<strong>解释错误原因</strong>。先写尝试，再揭示参考答案；作答前不下发参考答案、解释和证据，也不会执行代码。</p>
       <p>对照参考含义后选择<strong>独立完成</strong>、<strong>需要帮助</strong>或<strong>尚未完成</strong>。必要时标明困难属于概念回忆、应用、推理还是证据边界。等价表述也可能正确。选择题核对是机械判断，开放练习反馈是语义自评。</p>
       <p>WebUI 作答正文保留在页面内存，仅保存受限自评、错误类别和时间信息。复习会带回同一卡片；距上次记录尝试至少 24 小时才计入延迟回忆，只有明确标记新场景的首次尝试才计为未见变式。</p>
       <p>Dashboard 分别展示首次练习、延迟回忆、未见变式的自报完成情况、样本数与错误类别。分母为空时显示未测量，不当成零成功率。既有 SRS 评分改善占比与这些练习指标分开呈现。</p>
-      <div class="g-note">Challenge 先展示原解，再让你复现。补丁文本匹配与证据覆盖，不能证明未见变式的独立完成或运行正确。Score/Judge 衡量学习产物质量；缺少真实参与者样本与分母时，本次更新不宣称已测得学习增益。</div>
+      <div class="g-note">Challenge 先展示原解，再让你复现。补丁文本匹配与证据覆盖，不能证明未见变式的独立完成或运行正确。Score/Judge 衡量学习产物质量；缺少真实参与者样本与分母时，请通过自己的作答和后续回忆评估学习情况。</div>
 
       <h3>测验与复习</h3>
       <p class="g-lead">复习给每张卡片评分；评分驱动下一次到期日。</p>
@@ -1530,7 +1465,7 @@ ahadiff improve-run RUN_ID</span></div>
           <p>打开本地 WebUI。<code>--watch</code> 会附带工作区改动自动 learn。</p>
           <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # 文件监听，默认已包含</span></div>
+ahadiff serve --watch</span></div>
         </div>
         <div class="g-card">
           <h3>Watch</h3>
@@ -1568,7 +1503,7 @@ ahadiff concepts lint</span></div>
           <h3><span class="cap-group-label">Export</span></h3>
           <p>把结果写到磁盘以便分享（见导出和分享）。</p>
           <div class="code-block"><span class="cmd">ahadiff export-results
-ahadiff export preview RUN_ID</span></div>
+ahadiff export preview RUN_ID --out ./preview</span></div>
         </div>
         <div class="g-card">
           <h3><span class="cap-group-label">Challenge</span></h3>
@@ -1586,7 +1521,7 @@ codex mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;</span></div
         </div>
         <div class="g-card">
           <h3><span class="cap-group-label">Git hooks</span></h3>
-          <p><code>ahadiff install hooks</code> 写入仅提醒的 git hooks：每次 commit 后，post-commit hook 打印一行提示（运行 <code>ahadiff learn HEAD~1..HEAD</code> 学回这次提交）；push 前 pre-push hook 打印 verify 提醒。这些 hooks 不会运行 learn，不会阻塞 commit，自身失败也会被吞掉。加 <code>--auto-learn</code> 进入免操作模式：post-commit hook 在后台运行 <code>ahadiff learn --last</code>，输出追加到 <code>.ahadiff/hooks.log</code>。GUI 客户端提交也能用：hook 会回退到安装时记录的 <code>ahadiff</code> 路径；实在找不到时只在日志里追加一条跳过记录，不会卡住 commit。learnability gate 照常生效，琐碎提交在调用 LLM 前就会跳过。两次 commit 间隔过近时，per-repo 写锁会让第二个 learn 直接失败并写入日志；查看日志或自己重跑 <code>ahadiff learn --last</code>。带或不带该 flag 重跑 <code>ahadiff install hooks</code> 即可原地切换模式。仅支持 macOS/Linux。</p>
+          <p><code>ahadiff install hooks</code> 会在提交后和推送前提醒。加上 <code>--auto-learn</code> 后，每次提交会在后台运行 <code>ahadiff learn --last</code>。若运行被跳过或失败，请查看 <code>.ahadiff/hooks.log</code>。Hooks 不阻塞提交；自动运行仍执行正常的隐私、预算和可学习性检查。重新安装时添加或去掉该开关即可切换模式。Git hooks 需要 macOS/Linux。</p>
           <div class="code-block"><span class="cmd">ahadiff install hooks
 ahadiff install hooks --auto-learn</span></div>
         </div>
@@ -1613,14 +1548,14 @@ ahadiff install hooks --auto-learn</span></div>
     <section id="export">
       <div class="section-eyebrow">输出</div>
       <h2>6. 导出和分享</h2>
-      <p>WebUI 里的 Ratchet / Export 入口提供四种格式。CLI 覆盖同样的范围。</p>
+      <p>WebUI 提供静态预览、TSV/JSON 结果和 Anki 卡片。CLI 可用 <code>export-results</code> 导出 TSV，用 <code>export preview</code> 导出本地预览：</p>
       <div class="code-block"><span class="cmd">ahadiff export-results
 ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
 
       <div class="feat-grid">
         <div class="feat-card">
           <h3>静态预览</h3>
-          <p>一个 strict-local 静态包，带确定性 zip。没有任何东西离开本机。</p>
+          <p>本地 HTML 预览与 ZIP 文件，由你决定是否分享。</p>
         </div>
         <div class="feat-card">
           <h3>TSV</h3>
@@ -1645,166 +1580,52 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
 
     <!-- ===== 7. Capabilities ===== -->
     <section id="features">
-      <div class="section-eyebrow">能力</div>
-      <h2>7. 能力说明：默认、opt-in 与依赖</h2>
-      <p>能力徽章区分默认行为、opt-in 流程和依赖支撑的导出。点开任意卡片的 Details 看确切行为。</p>
-
-      <h3><span class="status-pill ok">默认</span> 安装即可用</h3>
-      <div class="feat-grid">
-        <div class="feat-card">
-          <h3>Lesson / Claims / Quiz / Score</h3>
-          <p>默认流水线，在 <code>ahadiff learn</code> 之后产出。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>会生成哪些产物取决于 diff 及其 learnability。缺少符号级证明时，仅 patch 的捕获可以使用偏弱的 diff 锚定 claim。S1 语义蕴含仍是私有 shadow-only 测量，不是语义证明。在 Quiz 里，源证据在你答题前一直锁定。</p></div></details>
+      <div class="section-eyebrow">可选设置</div>
+      <h2>7. 可选功能与评分</h2>
+      <h3>选择每次运行的内容</h3>
+      <div class="g-cards">
+        <div class="g-card">
+          <h3>题量与练习模式</h3>
+          <p>默认测验有 3 题。可在设置中固定为 1–30 题，或使用自适应模式（默认范围 3–12）。主动迁移练习会生成开放题；题量至少为 3 时，包含预测、补全和解释错误三种形式。</p>
         </div>
-        <div class="feat-card">
-          <h3>可选 LLM judge</h3>
-          <p>仅供参考；确定性分数仍是主判据。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>judge 成功运行会写 <code>judge.json</code>。失败会写一份有界、脱敏的 <code>judge_failure.json</code>，含 provider、model、错误类型和一条安全消息。缺失的 judge 产物返回 404，而不是让 API 崩溃。</p></div></details>
+        <div class="g-card">
+          <h3>捕获限制</h3>
+          <p>自动模式会结合提供商信息、模型限制和输出预留空间计算大小；手动模式使用你设定的限制。生成课程前，请检查捕获不完整的提示。预览显示上限与捕获上限是两回事。</p>
         </div>
-        <div class="feat-card">
-          <h3>测验题量</h3>
-          <p>默认固定为 3；自适应需 opt-in。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>固定模式接受 1-30 题。在 Settings 里，或用 <code>--quiz-mode auto</code>，AhaDiff 会用 diff 统计选一个有界题量；自适应默认范围是 3-12。</p></div></details>
+        <div class="g-card">
+          <h3>规范对齐</h3>
+          <p>对 diff 运行添加 <code>--against-spec SPEC.md</code>，可把改动与本地规范比较。加上 <code>--spec-semantic-review</code> 可获取可选的模型反馈。单文档学习不使用 diff 规范对齐。</p>
         </div>
-        <div class="feat-card">
-          <h3>结构化 JSON 输出</h3>
-          <p>JSON object 模式，带一次 validation retry。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>公开产物保持不变。只有 provider 能力报告支持时才用原生 schema。不支持的模式会降级；截断或畸形的 fallback JSON 会被重试，而非接受。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>自适应捕获限额</h3>
-          <p>全新配置走 Auto；你定制某个限额后转 Manual。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a">
-            <p>Auto 模式从五个输入确定捕获限额：</p>
-            <div class="badges" style="justify-content:flex-start">
-              <span class="badge">provider 探测</span>
-              <span class="badge">model registry</span>
-              <span class="badge">输出预留</span>
-              <span class="badge">安全预留</span>
-              <span class="badge">CJK 密度</span>
-            </div>
-            <p style="margin-top:10px">编辑其中任意一项都会把仓库迁移到 Manual 模式：</p>
-            <div class="badges" style="justify-content:flex-start">
-              <span class="badge"><code style="background:none;padding:0;color:inherit">capture.max_files</code></span>
-              <span class="badge"><code style="background:none;padding:0;color:inherit">capture.hard_limit</code></span>
-              <span class="badge"><code style="background:none;padding:0;color:inherit">capture.max_patch_bytes</code></span>
-            </div>
-            <div class="badges" style="justify-content:flex-start;margin-top:10px">
-              <span class="badge">patch 上限 50 MiB</span>
-            </div>
-          </div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Provider 智能配置</h3>
-          <p>在 Settings 里保存前预览草稿模型限额。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>provider 卡片按草稿 provider class、model、base URL 和可选的 limits profile 预览限额，而不会在每次编辑都做远程探测。它显示是否支持 thinking、低置信度 warning、建议的最大输出，以及保存 API 返回的任何 clamp。只有检测到官方 DeepSeek API 路由时，DeepSeek v4 flash/pro 才会显示 Thinking Level；<code>无</code> 会关闭思考，<code>低</code>、<code>中</code>、<code>高</code> 会映射为 API 的 high effort。普通 OpenAI-compatible 路由仍以后端 metadata 为准。生成与评判限额分开展示。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>WebUI</h3>
-          <p>Welcome、Dashboard、Diff 和 Review 用 <code>ahadiff serve</code> 打开。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Welcome 的 Before/After 演示会把过长的原始 diff 折叠到课程高度，并显示可见 / 总行数。短或空的 diff 没有折叠控件。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>AI Tool Guidance</h3>
-          <p>Settings 负责写文件；Guide 只读。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a">
-            <p>Settings 为 16 个当前工具目标显示：</p>
-            <ul>
-              <li>CLI / IDE / CI 分组</li>
-              <li>本地化的快速上手步骤</li>
-              <li>示例 prompt 与预期行为</li>
-              <li>平台说明</li>
-              <li>一个无需 provider 的本地演示</li>
-            </ul>
-            <div class="g-cards">
-              <div class="g-card"><h3>Settings</h3><p>用受保护的原子替换写文件。</p></div>
-              <div class="g-card"><h3>Guide</h3><p>对同样的提示和文件写入只读预览；没有写入 / 移除按钮。</p></div>
-            </div>
-            <div class="badges" style="justify-content:flex-start">
-              <span class="badge">在平台支持处，回滚会恢复内容和权限模式</span>
-            </div>
-          </div></details>
+        <div class="g-card">
+          <h3>挑战练习</h3>
+          <p>挑战练习默认关闭。在配置的 <code>[challenge]</code> 下设置 <code>enabled = true</code> 后，可用 <code>ahadiff challenge build RUN_ID</code> 创建练习，再到 WebUI 继续。你可以先学习原解，因此这属于对已知示例的复现练习。</p>
         </div>
       </div>
-
-      <h3><span class="status-pill warn">Opt-in</span> 默认关闭，开了才用</h3>
-      <div class="feat-grid feat-grid--3">
-        <div class="feat-card">
-          <h3>Challenge</h3>
-          <p>默认关闭；通过 config 启用。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>CLI 暴露 <code>build</code> / <code>status</code>；完整进阶通过 WebUI / API 进行。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Spec alignment</h3>
-          <p>仅在带 <code>--against-spec</code> 时运行。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>加 <code>--spec-semantic-review</code> 走语义检查。没有 spec 的运行会把该维度渲染为 N/A。</p></div></details>
-        </div>
-      </div>
-
-      <h3><span class="status-pill warn">依赖</span> 需要 extra 或外部产物</h3>
-      <div class="feat-grid feat-grid--3">
-        <div class="feat-card">
-          <h3>LLM Provider（自带 BYOK）</h3>
-          <p>知返用你自己配置的 LLM Provider 运行：9 种格式任选，模型自己定，不限定具体型号。在『配置 Provider』里设置。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>使用前设置好 provider、base URL、model 和 API 密钥环境变量。DeepSeek BYOK 使用 <code>openai_compat</code> 和 <code>https://api.deepseek.com</code>；AhaDiff 在这条 route 上使用 JSON object mode，而不是 native JSON schema。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>APKG 导出</h3>
-          <p>默认即可用；已内置 <code>genanki</code>。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG 导出在标准安装下默认即可用，因为已内置 <code>genanki</code>。当前活跃复习卡无需额外安装即可导出。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Serve --watch（serve + 自动 learn）</h3>
-          <p>默认即可用；文件监听已内置。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>文件监听默认已包含，<code>ahadiff serve --watch</code> 开箱即用：一边提供 WebUI，一边在工作区改动时自动 learn——和 <code>ahadiff watch</code> 是同一套监听。你也可以手动运行 <code>ahadiff learn</code>。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Watch（自动 learn）</h3>
-          <p>监听工作区变更并自动 learn。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p><code>ahadiff watch</code> 监听工作区（未暂存 + 未跟踪文件），变更后自动运行 learn。默认 debounce 2.0s、cooldown 30.0s。<code>--dry-run</code> 只捕获 diff 不生成 lesson；<code>--force-learn</code> 跳过 learnability gate。可在任意目录运行。日志文件请放在仓库之外：写进被监听目录会再次触发 watcher。</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Graphify refresh</h3>
-          <p>导入已有产物；上限 50000 个节点。</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>它把 <code>graphify-out/graph.json</code> 重新导入 AhaDiff 缓存，不运行 <code>graphify update</code>。上限是 <code>graph.max_nodes_import</code>（默认 <code>50000</code>）；超限的 refresh 返回 <code>GRAPH_NODE_LIMIT</code>。</p></div></details>
-        </div>
-      </div>
-
-      <h3>一次运行如何评分</h3>
-      <p class="g-lead">八个维度，100 分。分数门禁、contradicted claims、证据覆盖或安全门禁都可能让运行失败。</p>
-      <div class="score-bars">
-        <div class="score-row"><span class="score-name">accuracy</span><span class="score-track"><span class="score-fill" style="width:100%"></span></span><span class="score-pts">20 分<span class="gate">门禁 &ge;14</span></span></div>
-        <div class="score-row"><span class="score-name">evidence</span><span class="score-track"><span class="score-fill" style="width:90%"></span></span><span class="score-pts">18 分<span class="gate">门禁 &ge;12</span></span></div>
-        <div class="score-row"><span class="score-name">diff_coverage</span><span class="score-track"><span class="score-fill" style="width:70%"></span></span><span class="score-pts">14 分</span></div>
-        <div class="score-row"><span class="score-name">learnability</span><span class="score-track"><span class="score-fill" style="width:70%"></span></span><span class="score-pts">14 分</span></div>
-        <div class="score-row"><span class="score-name">quiz_transfer</span><span class="score-track"><span class="score-fill" style="width:50%"></span></span><span class="score-pts">10 分</span></div>
-        <div class="score-row"><span class="score-name">spec_alignment</span><span class="score-track"><span class="score-fill" style="width:50%"></span></span><span class="score-pts">10 分</span></div>
-        <div class="score-row"><span class="score-name">conciseness</span><span class="score-track"><span class="score-fill" style="width:40%"></span></span><span class="score-pts">8 分</span></div>
-        <div class="score-row"><span class="score-name">safety_privacy</span><span class="score-track"><span class="score-fill" style="width:30%"></span></span><span class="score-pts">6 分</span></div>
-      </div>
-      <div class="g-note">当一道硬门禁触发，或 <code>critical_safety_findings</code> 命中时，一个运行即使分数很高也会 FAIL。</div>
-
-      <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-rundetail-overview.png" alt="运行详情概览：单次 learn 运行的结果与元数据。" width="1920" height="1080" />
-        <figcaption class="shot-cap">运行详情概览：单次 learn 运行的结果与元数据。</figcaption>
-        <ol class="shot-legend">
-          <li>Overview / Score / Judge / Artifacts 标签栏。</li>
-          <li>FAIL 横幅含分数与未通过门禁原因。</li>
-          <li>元数据行：base ref、语言、来源类型、prompt 版本。</li>
-          <li>Graphify Signoff 卡：passed、新鲜度、节点与边数。</li>
-        </ol>
-      </figure>
-
-      <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-rundetail-score.png" alt="运行详情评分：8 维评估明细。" width="1920" height="1080" />
-        <figcaption class="shot-cap">运行详情评分：8 维评估明细。</figcaption>
-        <ol class="shot-legend">
-          <li>FAIL 徽章、总分、未通过门禁数。</li>
-          <li>八个维度评分卡片，各带进度条。</li>
-          <li>Hard Gates 行，critical safety findings 红色未通过。</li>
-          <li>Spec Alignment 区块说明本次运行无相关产物。</li>
-        </ol>
-      </figure>
+      <h3>可选工具与自动化</h3>
+      <ul>
+        <li>标准安装包含 Anki 导出与文件监听。自动学习可能反复调用提供商；在 Git 工作目录启用 <code>ahadiff watch</code> 或 <code>ahadiff serve --watch</code> 前，请检查隐私和预算设置。</li>
+        <li>FSRS 参数优化需要可选的 <code>optimizer</code> 扩展，并会安装 torch。基础卡片复习和排程无需此扩展。</li>
+        <li>仓库图谱叠加需要 Graphify 图文件。<code>ahadiff graph refresh</code> 导入已有图谱，不运行 Graphify。</li>
+        <li>AI 工具指引是可选项。设置页在写入、更新或移除前预览具体项目文件；使用指南展示相同工具并说明用法。</li>
+      </ul>
+      <h3 id="score-policy">理解一次运行的评分</h3>
+      <p>确定性评分检查课程和证据。排除不适用的维度前，各维度满分如下：</p>
+      <div class="cmp-wrap" tabindex="0"><table class="cmp-table">
+        <thead><tr><th>维度</th><th>满分</th><th>查看什么</th></tr></thead>
+        <tbody>
+          <tr><td>准确性</td><td>20</td><td>得到支持与被反驳的声明</td></tr>
+          <tr><td>证据</td><td>18</td><td>与已捕获来源的引用对应</td></tr>
+          <tr><td>Diff 覆盖度</td><td>14</td><td>可见改动中有证据声明覆盖的部分</td></tr>
+          <tr><td>可学习性</td><td>14</td><td>改动中的学习内容</td></tr>
+          <tr><td>测验迁移</td><td>10</td><td>应用课程内容的问题</td></tr>
+          <tr><td>规范对齐</td><td>10</td><td>提供的规范</td></tr>
+          <tr><td>简洁性</td><td>8</td><td>课程长度与信息密度</td></tr>
+          <tr><td>安全与隐私</td><td>6</td><td>未解决的安全问题</td></tr>
+        </tbody>
+      </table></div>
+      <p>未提供规范时，规范对齐显示 N/A。文档运行的 Diff 覆盖度和变更新颖度可学习性也显示 N/A。这些维度不会拉低总分；文档证据使用独立的覆盖检查。</p>
+      <p>80 分起为 PASS，60 分至不足 80 分为 CAUTION，低于 60 分为 FAIL。即使分数高，必需检查失败仍会让运行判为 FAIL。打开 <strong>运行详情 → 评分</strong> 可查看失败项和原因。</p>
+      <p>可选的 LLM 评判补充反馈，不覆盖该结论。评判失败时，运行详情会显示失败信息，并保留确定性分数。两种分数都不衡量你能否独立完成类似修改；请通过自己的作答和后续回忆来评估。</p>
     </section>
 
     <!-- ===== 8. FAQ ===== -->
@@ -1819,10 +1640,10 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
         <details class="faq-item">
           <summary>provider 失败了怎么办？</summary>
           <div class="faq-a">
-            <p>到快速上手查看诊断，再在设置中重测 provider。下方 CLI 诊断命令要求 Git 仓库。在 Windows PowerShell 上，用 <code>$env:</code> 形式设置变量并传 <code>--base-url $env:AHADIFF_PROVIDER_BASE_URL</code>，如<a href="#provider">配置 Provider</a>所示。</p>
+            <p>到快速上手查看诊断，再在设置中重测 provider。下方 CLI 诊断命令要求 Git 仓库。在 Windows PowerShell 上，用 <code>$env:</code> 形式设置变量并传 <code>--base-url $env:AHADIFF_PROVIDER_BASE_URL</code>，如<a href="#provider">配置模型提供商</a>所示。</p>
             <div class="code-block"><span class="cmd">ahadiff doctor
 ahadiff config show --resolved</span></div>
-            <p>然后重新运行<a href="#provider">配置 Provider</a>里的对应 provider 命令。</p>
+            <p>然后重新运行<a href="#provider">配置模型提供商</a>里的对应 provider 命令。</p>
           </div>
         </details>
         <details class="faq-item">
@@ -1895,60 +1716,33 @@ ahadiff config show --resolved</span></div>
 
     <!-- ===== 9. About ===== -->
     <section id="about">
-      <div class="section-eyebrow">说明</div>
-      <h2>9. 关于本文档</h2>
-      <p>本指南里的截图仅为示例。它们不含任何真实 provider 凭证、仓库内容或用户数据。</p>
-
-      <h3>平台支持</h3>
-      <p class="g-lead">2026-09-08 源码更新已在 macOS 和 Linux arm64 本地验证。Windows 原生未执行；目标 Windows 分支测试与准备好的验证包不构成原生通过结论。Antigravity 在真实检查跑通前仍为 Unknown/blocked。两个功能仅限 POSIX。</p>
-      <div class="cmp-wrap">
+      <div class="section-eyebrow">补充说明</div>
+      <h2>9. 平台与发布信息</h2>
+      <p>核心 CLI 与 WebUI 面向 macOS、Linux 和 Windows。Python 的 SQLite 运行时需满足“快速开始”中的要求。以下功能有明确的平台限制。</p>
+      <div class="cmp-wrap" tabindex="0">
         <table class="cmp-table">
-          <thead><tr><th>功能</th><th>macOS &middot; Linux</th><th>Windows</th></tr></thead>
+          <thead><tr><th>功能</th><th>macOS / Linux</th><th>Windows</th></tr></thead>
           <tbody>
-            <tr><td>核心 CLI</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-check">&#10003;</span></td></tr>
-            <tr><td><code>serve</code> + WebUI</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-check">&#10003;</span></td></tr>
-            <tr><td><code>--compare-dir</code></td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-cross">&#10007;</span></td></tr>
-            <tr><td><code>hooks</code> 安装目标</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-cross">&#10007;</span></td></tr>
-            <tr><td>安装回滚</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-partial">部分</span></td></tr>
+            <tr><td><code>--compare-dir</code></td><td>可用</td><td>不可用；请改用文件对比</td></tr>
+            <tr><td><code>hooks</code></td><td>POSIX shell hooks</td><td>不可用；请手动运行 learn</td></tr>
+            <tr><td>本地密钥文件保护</td><td>仅限所有者的文件权限</td><td>NTFS 目录权限</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="g-note"><code>--compare-dir</code> 需要仅在 macOS / Linux 上可用的安全目录文件描述符，其他平台 fail closed。<code>hooks</code> 目标使用 POSIX shell 钩子。hooks 默认仅提醒；--auto-learn 变体见 Git hooks 卡片。回滚在 POSIX 上于原子替换前恢复权限模式，并在缺少 <code>fchmod</code> 的平台于替换后尽力恢复权限模式。</div>
-
-      <p>表格说明设计支持面与明确的平台例外。浏览器检查和模拟 Windows 分支不等于 Windows 原生运行，执行结论需查看对应平台的当前结果。</p>
-
-      <h3>当前源码验收</h3>
-      <p>五项功能仍是未发布源码，版本为 1.3.8。下列本地检查已经完成，Windows 原生缺口仍明确保留。详细日志、生成课程和本地验收报告继续保持 gitignore。</p>
-      <div class="cmp-wrap"><table class="cmp-table">
-        <thead><tr><th>范围</th><th>检查范围</th><th>当前状态</th></tr></thead>
-        <tbody>
-          <tr><td>macOS</td><td>后端、来源完整性、CLI/API、快照与真实 serve</td><td>已完成</td></tr>
-          <tr><td>Linux arm64</td><td>原生文件保护、锁、前后端测试、构建与真实 serve</td><td>已在隔离容器中完成</td></tr>
-          <tr><td>Windows</td><td>原生 NTFS/Unicode/reparse/锁与 CLI/WebUI</td><td>未执行；已准备验证包</td></tr>
-          <tr><td>中英双语 WebUI</td><td>类型、单测、构建、桌面/移动交互、空错态与无障碍</td><td>已完成；末尾文案调整单独复验</td></tr>
-          <tr><td>真实模型 / wheel</td><td>单独预算的合成数据生成、安装后静态资源与来源元数据</td><td>已完成；失败、重试和旧响应复用均有记录</td></tr>
-        </tbody>
-      </table></div>
-
-      <p>浏览器覆盖 macOS 三引擎、多视口矩阵和 Linux Chromium 桌面/移动端。末尾标题与文案调整做了目标检查，没有重跑全部 macOS 组合。真实用户学习效果尚未通过实验测量，练习指标仍是自报告。本轮仅本地提交，没有触发远端 CI、push 或发布。</p>
-
-      <h3>历史验证快照</h3>
-      <p class="g-lead">以下记录早于 2026-09-08 源码更新，不代表五来源、主动练习或新完整性契约已经通过验证。v1.3.8 本地 gate 覆盖后端 unit/integration/eval、ruff/format/pyright、viewer typecheck/Vitest/build、i18n parity、真实 serve 保存复现和一次 live DeepSeek learn。发布和 CI 状态以 GitHub Actions 为准。</p>
-      <div class="g-cards">
-        <div class="g-card">
-          <h3>已验证</h3>
-          <div class="badges" style="justify-content:flex-start">
-            <span class="badge"><span class="badge-dot python"></span>后端 unit</span>
-            <span class="badge">ruff / format / pyright</span>
-            <span class="badge"><span class="badge-dot react"></span>viewer Vitest + build</span>
-            <span class="badge">i18n parity</span>
-            <span class="badge">macOS 本地 v1.3.8 gate 已记录</span>
-            <span class="badge">live DeepSeek 全局 provider run</span>
-            <span class="badge">Antigravity Unknown/blocked</span>
-          </div>
+      <p>已测试平台、已知问题和下载见 <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/releases/tag/v1.4.0">v1.4.0 发布说明</a>。<a href="https://pypi.org/project/ahadiff/1.4.0/">PyPI 安装包</a>包含 WebUI。</p>
+      <details class="faq-item">
+        <summary>从源码安装</summary>
+        <div class="faq-a">
+          <p>源码安装还需要 uv 和 pnpm。在终端运行：</p>
+          <div class="code-block"><span class="cmd">git clone https://github.com/AGI-is-going-to-arrive/ahadiff.git
+cd ahadiff
+uv sync --locked --dev
+pnpm --dir viewer install --frozen-lockfile
+pnpm --dir viewer build
+uv tool install --editable .</span></div>
         </div>
-      </div>
-      <div class="g-note">本指南里的 10 种 learn 口径指捕获覆盖；只有验证审计逐项列出 command、run_id、exit code 和 lesson/claims/quiz/cards 产物时，才可写成 live LLM 课程生成覆盖。v1.3.8 审计把 DeepSeek 全局 provider 回归与旧 10-mode 矩阵分开记录；GitHub Release 和 PyPI publish 由 release workflow 与 release notes 记录。</div>
+      </details>
+      <p>截图和视频用于展示流程，部分细节来自早期界面。1.4.0 的操作与标签请以本指南正文为准。</p>
     </section>
 
     <!-- ===== Footer ===== -->
@@ -1959,8 +1753,8 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener">GitHub</a>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
-      <p>截图是从文档树提供的已提交 PNG；工作流动画用 CSS 实现。发布状态见 GitHub Actions。</p>
-      <div class="footer-version">v1.3.8</div>
+      <p>知返 AhaDiff 1.4.0 · 本地课程、证据与复习。</p>
+      <div class="footer-version">v1.4.0</div>
     </footer>
   </main>
 </div>
@@ -1985,7 +1779,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var target = document.getElementById(id);
     if (target) {
       e.preventDefault();
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
     }
   });
 });
@@ -2050,10 +1844,11 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
       var b = clone.querySelector('.copy-btn');
       if (b) b.remove();
       var text = (clone.textContent || '').replace(/\s+$/, '');
-      function done(){
-        btn.textContent = '已复制';
-        btn.setAttribute('aria-label', copiedLabel);
-        btn.classList.add('is-copied');
+      function done(success){
+        var copied = success !== false;
+        btn.textContent = copied ? '已复制' : '复制失败';
+        btn.setAttribute('aria-label', copied ? copiedLabel : '复制失败');
+        btn.classList.toggle('is-copied', copied);
         setTimeout(function(){
           btn.textContent = '复制';
           btn.setAttribute('aria-label', copyLabel);
@@ -2070,8 +1865,10 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     ta.value = text; ta.setAttribute('readonly', '');
     ta.style.position = 'absolute'; ta.style.left = '-9999px';
     document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); cb(); } catch (e) {}
+    var copied = false;
+    try { copied = document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta);
+    cb(copied);
   }
 })();
 </script>

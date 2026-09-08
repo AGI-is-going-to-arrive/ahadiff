@@ -138,15 +138,15 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
+      - name: Install Chromium for Windows viewer smoke
+        working-directory: viewer
+        run: pnpm exec playwright install chromium
       - name: Check Windows viewer types and unit tests
         working-directory: viewer
         shell: bash
         run: |
           pnpm run typecheck
           pnpm exec vitest run --maxWorkers=2 --minWorkers=1
-      - name: Install Chromium for Windows viewer smoke
-        working-directory: viewer
-        run: pnpm exec playwright install chromium
       - name: Check Windows learning, provider, guidance, and locale interactions
         working-directory: viewer
         env:

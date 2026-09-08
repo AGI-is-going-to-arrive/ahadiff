@@ -17,7 +17,7 @@ const LearnModeDialog = lazy(() => import('../components/LearnModeDialog'));
 const SAMPLE_DIFF = `diff --git a/demo.py b/demo.py
 --- a/demo.py
 +++ b/demo.py
-@@ -1,3 +1,4 @@
+@@ -1,2 +1,3 @@
  def hello():
 -    return "world"
 +    return "AhaDiff"
@@ -28,18 +28,18 @@ const SAMPLE_LESSON = `## What Changed
 The return value was updated from \`"world"\` to \`"AhaDiff"\`,
 and a \`# learn-from-diff\` marker was added.
 
-**Claim c007** (verified): The function now returns
-the project name instead of a generic greeting.
-\`demo.py:3\` — evidence: line 3 shows the new return value.`;
+**Claim c007** (source text): The return statement contains
+the string literal \`"AhaDiff"\`.
+\`demo.py:2\`: line 2 contains the updated statement.`;
 
 const SAMPLE_LESSON_ZH = `## 这次改了什么
 
 返回值从 \`"world"\` 改成了 \`"AhaDiff"\`，
 并新增了一个 \`# learn-from-diff\` 标记。
 
-**声明 c007**（已验证）：该函数现在返回
-项目名，而不是通用的问候语。
-\`demo.py:3\` — 证据：第 3 行展示了新的返回值。`;
+**声明 c007**（来源文本）：return 语句中包含
+字符串字面量 \`"AhaDiff"\`。
+\`demo.py:2\`：第 2 行是修改后的语句。`;
 
 const STEP_KEYS = ['01', '02', '03', '04', '05'] as const;
 const FEATURE_CARDS = [

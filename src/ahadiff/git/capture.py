@@ -2417,13 +2417,14 @@ def _open_compare_directory_fd(path: Path, *, missing_message: str) -> int | Non
 
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_DIRECTORY", 0)
     try:
-        fd = os.open(str(path), flags)
+        fd = _open_capture_path_fd(path, flags)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
             raise InputError("compare-dir input directory must not be a symlink") from exc
         raise InputError("compare-dir input directory is unreadable") from exc
     try:
         fd_stat = os.fstat(fd)
+        validate_state_path_no_symlinks(path.parent, allow_missing_leaf=False)
         if not stat.S_ISDIR(fd_stat.st_mode):
             raise InputError("compare-dir input must be a directory")
         if (fd_stat.st_dev, fd_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
@@ -2778,7 +2779,7 @@ def _read_regular_file_no_follow_bounded(
 
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     try:
-        fd = os.open(str(path), flags)
+        fd = _open_capture_path_fd(path, flags)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
             raise InputError(f"{label} must not be a symlink") from exc
@@ -2786,6 +2787,7 @@ def _read_regular_file_no_follow_bounded(
 
     try:
         file_stat = os.fstat(fd)
+        validate_state_path_no_symlinks(path.parent, allow_missing_leaf=False)
         if not stat.S_ISREG(file_stat.st_mode):
             raise InputError(f"{label} must be a regular file")
         if _has_windows_reparse_point(file_stat):
@@ -2819,6 +2821,24 @@ def _read_regular_file_no_follow_bounded(
         raise InputError(f"{label} is unreadable") from exc
     finally:
         os.close(fd)
+
+
+def _open_capture_path_fd(path: Path, flags: int) -> int:
+    """Bind parent directories so a validated workspace path cannot become an outside read."""
+    absolute = path.absolute()
+    validate_state_path_no_symlinks(absolute.parent, allow_missing_leaf=False)
+    if os.open not in os.supports_dir_fd:
+        return os.open(str(absolute), flags)
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    parent_fd = os.open(absolute.anchor, directory_flags)
+    try:
+        for part in absolute.parts[1:-1]:
+            child_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            os.close(parent_fd)
+            parent_fd = child_fd
+        return os.open(absolute.name, flags, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
 
 
 def _read_regular_file_from_dir_fd(

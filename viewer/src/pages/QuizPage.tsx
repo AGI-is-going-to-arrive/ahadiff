@@ -208,6 +208,8 @@ export default function QuizPage() {
 
   const handleAnswer = useCallback(
     (questionId: string, answer: string, correct: boolean | null, revealed: QuizItem) => {
+      const controller = abortRef.current;
+      if (!controller || controller.signal.aborted || loadedRunId !== runId) return;
       setAnswered((prev) => ({
         ...prev,
         [questionId]: { answer, correct, peekAt: Date.now(), revealed },
@@ -234,7 +236,7 @@ export default function QuizPage() {
           correct,
           ...(selectedChoiceLabel ? { selected_choice_label: selectedChoiceLabel } : {}),
         }).catch((err: unknown) => {
-          setSignalError(errorMessage(err));
+          if (!controller.signal.aborted) setSignalError(errorMessage(err));
         });
 
         if (
@@ -254,7 +256,7 @@ export default function QuizPage() {
         }
       }
     },
-    [currentQuiz, runId],
+    [currentQuiz, loadedRunId, runId],
   );
 
   const allAttempted = loadedRunId === runId && quizzes.length > 0 && Object.keys(answered).length === quizzes.length;
@@ -272,7 +274,9 @@ export default function QuizPage() {
 
   const handleRate = useCallback(
     async (rating: SrsRating, assessment?: ExerciseAssessment): Promise<boolean> => {
-      if (!currentQuiz || !runId) return false;
+      const controller = abortRef.current;
+      if (!currentQuiz || !runId || !controller || controller.signal.aborted || loadedRunId !== runId) return false;
+      const attemptKey = attemptKeyRef.current;
       setSignalError(null);
 
       const qid = currentQuiz.question_id;
@@ -280,16 +284,17 @@ export default function QuizPage() {
         if (!assessment || !answered[qid]) return false;
         try {
           await quizAnswer({
-            idempotency_key: makeStableKey(runId, attemptKeyRef.current, qid, 'assessment'),
+            idempotency_key: makeStableKey(runId, attemptKey, qid, 'assessment'),
             run_id: runId, quiz_id: qid, correct: null,
             exercise_kind: currentQuiz.exercise_kind,
             feedback_kind: 'semantic_self_assessment',
             self_assessment: assessment.selfAssessment, error_type: assessment.errorType,
           });
         } catch (err: unknown) {
-          setSignalError(errorMessage(err));
+          if (!controller.signal.aborted) setSignalError(errorMessage(err));
           return false;
         }
+        if (controller.signal.aborted) return false;
       }
 
       if (isReviewRating(rating)) {
@@ -317,16 +322,17 @@ export default function QuizPage() {
         try {
           const cardId = currentQuiz.review_card_id;
           await srsReview({
-            idempotency_key: makeStableKey(runId, attemptKeyRef.current, cardId, rating),
+            idempotency_key: makeStableKey(runId, attemptKey, cardId, rating),
             card_id: cardId,
             answer: rating,
             peeked_this_session: peekedThisSession,
             ...(selectedChoiceLabel ? { selected_choice_label: selectedChoiceLabel } : {}),
           });
         } catch (err: unknown) {
-          setSignalError(errorMessage(err));
+          if (!controller.signal.aborted) setSignalError(errorMessage(err));
           return false;
         }
+        if (controller.signal.aborted) return false;
       }
 
       // Mark this card as rated so the Next button can appear; the user
@@ -335,7 +341,7 @@ export default function QuizPage() {
       setRated((prev) => ({ ...prev, [qid]: true }));
       return true;
     },
-    [answered, currentQuiz, runId, t],
+    [answered, currentQuiz, loadedRunId, runId, t],
   );
 
   const ratedCount = Object.keys(rated).length;
@@ -360,6 +366,7 @@ export default function QuizPage() {
    */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
       if (!currentQuiz) return;
       if (rated[currentQuiz.question_id]) return;
       if (!answered[currentQuiz.question_id]) return;
@@ -368,6 +375,7 @@ export default function QuizPage() {
         target &&
         (target.tagName === 'INPUT' ||
           target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
           target.isContentEditable)
       ) {
         return;
@@ -553,6 +561,8 @@ export default function QuizPage() {
                         type="button"
                         className="quiz-page__nav-btn quiz-page__nav-btn--ghost"
                         onClick={() => {
+                          const controller = abortRef.current;
+                          if (!controller || controller.signal.aborted || loadedRunId !== runId) return;
                           const qid = currentQuiz.question_id;
                           const claimId = currentSourceClaims[0];
                           if (!claimId) return;
@@ -565,6 +575,7 @@ export default function QuizPage() {
                             claim_id: claimId,
                             reason: 'quiz_self_override',
                           }).then(() => {
+                            if (controller.signal.aborted) return;
                             setAnswered((prev) => {
                               const existing = prev[qid];
                               if (!existing) return prev;
@@ -573,7 +584,7 @@ export default function QuizPage() {
                             setSignalError(null);
                           }).catch((err: unknown) => {
                             sentMarkWrongKeys.current.delete(key);
-                            setSignalError(errorMessage(err));
+                            if (!controller.signal.aborted) setSignalError(errorMessage(err));
                           });
                         }}
                       >

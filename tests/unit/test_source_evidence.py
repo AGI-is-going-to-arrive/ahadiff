@@ -371,6 +371,16 @@ def test_ambiguous_config_is_explicit_text_fallback(name: str, text: str) -> Non
     assert all(anchor.format == "text" and anchor.locator.fallback_reason for anchor in anchors)
 
 
+@pytest.mark.parametrize(
+    "name,text",
+    [("x.json", '{"\\ud800":1}'), ("x.yaml", '"\\uD800": 1\n')],
+)
+def test_escaped_invalid_unicode_key_uses_line_fallback(name: str, text: str) -> None:
+    anchors = build_source_anchors(text, file=name, side="new")
+    assert anchors
+    assert all(anchor.format == "text" and anchor.locator.fallback_reason for anchor in anchors)
+
+
 def test_notebook_uses_real_source_spans_and_ignores_forged_headers(tmp_path: Path) -> None:
     old = json.dumps(
         {

@@ -144,6 +144,9 @@ class QuizSet(BaseModel):
     def validate_questions(cls, values: list[QuizQuestion]) -> list[QuizQuestion]:
         if not values:
             raise ValueError("quiz set must contain at least one question")
+        supplied_ids = [question.question_id for question in values if question.question_id]
+        if len(supplied_ids) != len(set(supplied_ids)):
+            raise ValueError("quiz question identities must be unique")
         return values
 
 

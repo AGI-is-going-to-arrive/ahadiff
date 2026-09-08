@@ -183,7 +183,11 @@ def _provider_config(
 
 
 def _request(case: StructuredLiveCase, *, model: str) -> ProviderRequest:
-    diff = "diff --git a/a.py b/a.py\n+def add(a, b):\n+    return a + b\n"
+    diff = (
+        "diff --git a/a.py b/a.py\n"
+        "--- /dev/null\n+++ b/a.py\n@@ -0,0 +1,2 @@\n"
+        "+def add(a, b):\n+    return a + b\n"
+    )
     if case.smoke_kind == "quiz":
         prompt = (
             "Return valid JSON only. Create exactly one multiple-choice quiz question "
@@ -202,6 +206,8 @@ def _request(case: StructuredLiveCase, *, model: str) -> ProviderRequest:
             "Return valid JSON only. Extract one concise claim candidate from this diff. "
             'Use run_id "phase72_live_smoke". Use source_hunks with file "a.py", '
             'start 1, end 2, side "new". Use extractor "regex". '
+            "No validated source anchors are supplied: use source_anchors: [] "
+            "and assertion_kind: null; do not invent anchor identifiers or hashes. "
             'The claim text field must be named "text", not "claim".'
         )
     prompt = f"{prompt}\n\nDiff:\n{diff}"

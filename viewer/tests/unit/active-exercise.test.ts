@@ -252,6 +252,86 @@ describe('practice measurement display', () => {
 });
 
 describe('practice route and card identity', () => {
+  it.each(['browser shortcut', 'select input'] as const)(
+    'does not treat a %s as a quiz rating',
+    async inputKind => {
+      await installServeMock(page);
+      await page.route('**/api/run/run-1/quiz/questions', route => route.fulfill({ json: {
+        run_id: 'run-1', questions: [{ question_id: QUIZ.question_id, review_card_id: QUIZ.review_card_id,
+          question: QUESTION, quiz_kind: 'transfer', exercise_kind: 'completion',
+          scenario_kind: 'new_variant', answer_mode: 'open', choices: null }],
+      } }));
+      await page.route('**/api/run/run-1/quiz/quiz-practice/reveal', route => route.fulfill({ json: {
+        run_id: 'run-1', question: QUIZ, correct: null, feedback_kind: 'semantic_self_assessment',
+      } }));
+      await page.goto(`${baseUrl}${TEST_PATH}`);
+      await page.waitForFunction(() => window.__activeReady);
+      await page.evaluate(() => window.__mountQuizRoute('run-1'));
+      await expect.poll(() => page.locator('textarea').count()).toBe(1);
+      await page.locator('textarea').fill('My own attempt');
+      await page.locator('.srs-card__btn--primary').click();
+      await expect.poll(() => page.locator('.srs-card__rating-btn--good').isEnabled(), { timeout: 5000 }).toBe(true);
+      if (inputKind === 'select input') {
+        await page.locator('.practice-error-select').focus();
+        await page.keyboard.press('3');
+      } else {
+        await page.locator('.srs-card__question').click();
+        await page.keyboard.press('Control+3');
+        await page.keyboard.press('Meta+3');
+        await page.keyboard.press('Alt+1');
+      }
+      await page.waitForTimeout(100);
+      expect(requests.filter(request => request.path.endsWith('/quiz-answer') || request.path.endsWith('/srs-review'))).toEqual([]);
+      expect(await page.locator('.srs-card__rating-btn--good').isEnabled()).toBe(true);
+    },
+  );
+
+  it.each(['quiz-answer', 'srs-review'] as const)(
+    'does not complete a new run when the previous run %s response arrives late',
+    async pendingSignal => {
+      await installServeMock(page);
+      const publicQuestion = { question_id: QUIZ.question_id, review_card_id: QUIZ.review_card_id,
+        question: QUESTION, quiz_kind: 'transfer', exercise_kind: 'completion',
+        scenario_kind: 'new_variant', answer_mode: 'open', choices: null };
+      let release: (() => void) | undefined;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      await page.route('**/api/run/run-A/quiz/questions', route => route.fulfill({ json: {
+        run_id: 'run-A', questions: [publicQuestion],
+      } }));
+      await page.route('**/api/run/run-A/quiz/quiz-practice/reveal', route => route.fulfill({ json: {
+        run_id: 'run-A', question: QUIZ, correct: null, feedback_kind: 'semantic_self_assessment',
+      } }));
+      await page.route('**/api/run/run-B/quiz/questions', route => route.fulfill({ json: {
+        run_id: 'run-B', questions: [{ ...publicQuestion, question: 'B has not been attempted',
+          review_card_id: 'card_exercise_B' }],
+      } }));
+      await page.route(`**/api/signals/${pendingSignal}`, async route => {
+        await pending;
+        await route.fulfill({ json: { inserted: true } }).catch(() => {});
+      });
+      await page.goto(`${baseUrl}${TEST_PATH}`);
+      await page.waitForFunction(() => window.__activeReady);
+      await page.evaluate(() => window.__mountQuizRoute('run-A'));
+      await expect.poll(() => page.locator('textarea').count()).toBe(1);
+      await page.locator('textarea').fill('Attempt at A');
+      await page.locator('.srs-card__btn--primary').click();
+      await expect.poll(() => page.locator('.srs-card__rating-btn--good').isEnabled(), { timeout: 5000 }).toBe(true);
+      await page.locator('.srs-card__rating-btn--good').click();
+      await expect.poll(() => requests.filter(request => request.path.endsWith(`/${pendingSignal}`)).length).toBe(1);
+      await page.evaluate(() => window.__navigateQuiz('/run/run-B/quiz'));
+      await expect.poll(() => page.locator('.srs-card__question').textContent()).toBe('B has not been attempted');
+      const settled = page.waitForResponse(response => new URL(response.url()).pathname === `/api/signals/${pendingSignal}`);
+      release?.();
+      await (await settled).finished();
+      await page.waitForTimeout(100);
+      expect(await page.locator('.quiz-progress-badge--done').count()).toBe(0);
+      expect(await page.locator('.quiz-page__progress--summary').count()).toBe(0);
+      expect(requests.filter(request => request.path.endsWith('/srs-review'))).toHaveLength(
+        pendingSignal === 'srs-review' ? 1 : 0,
+      );
+    },
+  );
+
   it('never rates B when A assessment finishes after the learner switched cards', async () => {
     let release: (() => void) | undefined;
     const submitted = new Promise<void>(resolve => { release = resolve; });

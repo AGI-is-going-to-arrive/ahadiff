@@ -485,7 +485,9 @@ class ManagedProvider:
             temperature=request_to_send.temperature,
         )
         cache_key = build_cache_key(cache_parts)
-        if self.workspace_root is not None:
+        # Connectivity checks must authenticate and dispatch every time, including
+        # when an earlier successful probe exists in the response cache.
+        if self.workspace_root is not None and self.execution_origin != "provider_test":
             cached_response = lookup_cached_response(
                 self.workspace_root,
                 cache_parts,
@@ -567,12 +569,13 @@ class ManagedProvider:
                     notes=merged_notes,
                 )
                 if self.workspace_root is not None:
-                    store_cached_response(
-                        self.workspace_root,
-                        cache_parts,
-                        final_response,
-                        cache_key=cache_key,
-                    )
+                    if self.execution_origin != "provider_test":
+                        store_cached_response(
+                            self.workspace_root,
+                            cache_parts,
+                            final_response,
+                            cache_key=cache_key,
+                        )
                     self._append_usage_record(
                         request=request_to_send,
                         response=final_response,

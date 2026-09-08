@@ -126,6 +126,10 @@ docs/USER_GUIDE.*.txt
 viewer/AUDIT-REPORT.md
 viewer/AUDIT_V6_FIDELITY.md
 viewer/V6_DEEP_ANALYSIS.md
+viewer/DEEPSEEK_FRONTEND_EVAL.md
+viewer/DEEPSEEK_FRONTEND_FIX.md
+DESIGN.md
+RELEASING.md
 
 # Release cleanup: development-only directories and files
 

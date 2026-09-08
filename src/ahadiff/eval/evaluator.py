@@ -36,11 +36,12 @@ from .gates import HardGatePolicy, HardGateResult, HardGateSummary, evaluate_har
 from .rubric import load_rubric
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     import httpx
 
     from ahadiff.contracts import PrivacyMode, ProviderConfig
+    from ahadiff.contracts.source_anchor import SourceAnchor
     from ahadiff.core.config import SecurityConfig
 
     from .rubric import RubricDefinition, RubricDimension
@@ -173,15 +174,7 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         safety_findings=safety_findings,
         diff_coverage_basis=_diff_coverage_basis_from_line_maps(line_maps),
         document_anchor_coverage=(
-            len(
-                {
-                    anchor.anchor_id
-                    for claim in claims
-                    if claim.status in {"verified", "weak"}
-                    for anchor in claim.source_anchors
-                }
-            )
-            / max(len(source_anchors), 1)
+            _document_anchor_coverage(claims, source_anchors)
             if metadata.get("source_kind") == "document"
             else None
         ),
@@ -215,6 +208,24 @@ def evaluate_run(run_path: Path) -> ScoreReport:
         hard_gates=hard_gates,
         notes=deterministic.notes,
     )
+
+
+def _document_anchor_coverage(
+    claims: Sequence[ClaimRecord], source_anchors: Sequence[SourceAnchor]
+) -> float:
+    # Paragraph anchors already carry their heading path. When body content
+    # exists, headings provide context rather than extra required content units.
+    content_ids = {
+        anchor.anchor_id for anchor in source_anchors if anchor.locator.kind != "heading"
+    }
+    units = content_ids or {anchor.anchor_id for anchor in source_anchors}
+    covered_ids = {
+        anchor.anchor_id
+        for claim in claims
+        if claim.status in {"verified", "weak"}
+        for anchor in claim.source_anchors
+    }
+    return len(units & covered_ids) / max(len(units), 1)
 
 
 def evaluate_run_for_replay_calibration(run_path: Path) -> ScoreReport:

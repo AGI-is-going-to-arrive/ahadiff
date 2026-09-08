@@ -236,7 +236,7 @@ describe('LandingPage diff collapse', () => {
     await expect.poll(() => toggle.count()).toBe(1);
     await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('false');
     await expect.poll(() => toggle.getAttribute('aria-controls')).toBe('landing-diff-content');
-    await expect.poll(() => toggle.getAttribute('aria-label')).toMatch(/Before: the change: Show all/);
+    await expect.poll(() => toggle.getAttribute('aria-label')).toMatch(/Source: Show all/);
     await expect.poll(() => page.locator('.ba-diff-line-count').textContent()).toMatch(/Showing \d+ of 84 lines/);
 
     const collapsedMaxHeight = await page.locator('#landing-diff-content').evaluate(
@@ -247,7 +247,7 @@ describe('LandingPage diff collapse', () => {
     await toggle.focus();
     await page.keyboard.press('Enter');
     await expect.poll(() => toggle.getAttribute('aria-expanded')).toBe('true');
-    await expect.poll(() => toggle.getAttribute('aria-label')).toBe('Before: the change: Collapse');
+    await expect.poll(() => toggle.getAttribute('aria-label')).toBe('Source: Collapse');
     await expect.poll(() => page.locator('.ba-diff-line-count').count()).toBe(0);
     await expect.poll(() => page.locator('#landing-diff-content').evaluate(
       (el) => getComputedStyle(el).maxHeight,
@@ -275,7 +275,7 @@ describe('LandingPage diff collapse', () => {
     await renderLanding(page);
     await page.waitForFunction(() =>
       Array.from(document.querySelectorAll('.ba-grid .hero-demo__artifact-empty'))
-        .some((el) => el.textContent?.includes('no displayable diff artifact')),
+        .some((el) => el.textContent?.includes('This run has no diff to display.')),
     );
 
     await expect.poll(() => page.locator('.ba-diff-toggle').count()).toBe(0);

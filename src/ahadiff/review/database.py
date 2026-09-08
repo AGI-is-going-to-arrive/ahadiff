@@ -1042,6 +1042,7 @@ def record_card_review_once(
         _ensure_schema(connection)
         choice_payload = _review_choice_signal_payload(
             connection,
+            state_dir=db_path.parent,
             card_id=card_id,
             selected_choice_label=selected_choice_label,
         )
@@ -1073,28 +1074,39 @@ def record_card_review_once(
 def _review_choice_signal_payload(
     connection: sqlite3.Connection,
     *,
+    state_dir: Path,
     card_id: str,
     selected_choice_label: QuizChoiceLabel | None,
 ) -> dict[str, object]:
-    if selected_choice_label is None:
-        return {}
-
     row = connection.execute(
         """
-        SELECT answer, answer_mode, choices_json
+        SELECT run_id, source_ref, answer, answer_mode, choices_json
         FROM cards
-        WHERE id = ? AND card_state = 'active'
+        WHERE id = ?
         """,
         (card_id,),
     ).fetchone()
     if row is None:
         raise InputError(f"active review card does not exist: {card_id}")
 
-    answer_mode, choices = _deserialize_card_choices(
-        row["answer_mode"],
-        row["choices_json"],
-        expected_answer=cast("str | None", row["answer"]),
-    )
+    from ahadiff.core.card_sources import load_card_sources
+
+    sources = load_card_sources(state_dir, str(row["run_id"]))
+    source = sources.get(card_id)
+    if source is None and (sources or str(row["source_ref"] or "").startswith("document:")):
+        raise InputError("review card source artifacts are unavailable")
+    if source is not None and row["source_ref"] != source.source_ref:
+        raise InputError("review card source identity does not match its artifacts")
+    if selected_choice_label is None:
+        return {}
+    if source is not None:
+        answer_mode, choices = source.answer_mode, source.choices
+    else:
+        answer_mode, choices = _deserialize_card_choices(
+            row["answer_mode"],
+            row["choices_json"],
+            expected_answer=cast("str | None", row["answer"]),
+        )
     if answer_mode != "multiple_choice" or choices is None:
         raise InputError("selected_choice_label is only valid for multiple_choice review cards")
 

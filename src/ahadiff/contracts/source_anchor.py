@@ -30,6 +30,12 @@ class AnchorLocator(BaseModel):
     def validate_path_parts(cls, value: list[str | int]) -> list[str | int]:
         if any(isinstance(part, str) and len(part) > 512 for part in value):
             raise ValueError("source locator part exceeds 512 characters")
+        for part in value:
+            if isinstance(part, str):
+                try:
+                    part.encode("utf-8")
+                except UnicodeEncodeError:
+                    raise ValueError("source locator part must be valid Unicode") from None
         return value
 
 

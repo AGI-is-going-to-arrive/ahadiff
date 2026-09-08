@@ -13,8 +13,10 @@ from typer.testing import CliRunner
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, ProviderConfig, SourceHunk, compute_eval_bundle_version
 from ahadiff.contracts.eval_bundle import compute_runtime_eval_bundle_version
+from ahadiff.contracts.run_source import DocumentInput
 from ahadiff.core.config import SecurityConfig
 from ahadiff.core.errors import InputError, ProviderError
+from ahadiff.core.source_evidence import load_evidence_anchors
 from ahadiff.eval import evaluate_run, write_score_report
 from ahadiff.eval import evaluator as evaluator_module
 from ahadiff.eval.evaluator import evaluate_run_for_replay_calibration, run_llm_judge_for_run
@@ -25,8 +27,10 @@ from ahadiff.eval.spec_alignment import (
     run_semantic_alignment_review_for_run,
     write_spec_alignment_artifact,
 )
+from ahadiff.git.capture import capture_patch, write_input_artifacts
 from ahadiff.git.line_map import build_line_map, serialize_line_map_payload
 from ahadiff.llm.schemas import ProviderRequest, ProviderResponse
+from ahadiff.quiz.schemas import QuizQuestion
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -40,6 +44,114 @@ if TYPE_CHECKING:
 
 _RUNNER = CliRunner()
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+
+_RETRY_DOCUMENT = """# Bounded retries
+
+## Temporary failures
+
+A retry repeats an operation after a temporary failure. Limit the number of
+attempts so a caller receives a result or an error within a known time.
+
+## Waiting between attempts
+
+Exponential backoff doubles the wait after each failed attempt. A maximum delay
+caps the waiting time. Random jitter spreads requests from different clients.
+
+## Repeating writes
+
+An idempotency key identifies one intended operation. A server can use the key
+to return the earlier result when the client retries the same write.
+"""
+
+
+@pytest.mark.parametrize(
+    ("document", "cited_kind", "cited_count", "expected_coverage", "passed"),
+    [
+        pytest.param(_RETRY_DOCUMENT, "paragraph", 3, 1.0, True, id="all-body-paragraphs"),
+        pytest.param(_RETRY_DOCUMENT, "paragraph", 1, 1 / 3, False, id="missing-body-paragraphs"),
+        pytest.param(_RETRY_DOCUMENT, "heading", 4, 0.0, False, id="headings-cannot-cover-body"),
+        pytest.param(
+            "# Bounded retries\n\n## Temporary failures\n\n## Waiting between attempts\n",
+            "heading",
+            2,
+            2 / 3,
+            True,
+            id="heading-only-document",
+        ),
+    ],
+)
+def test_document_coverage_counts_body_units_without_double_counting_heading_context(
+    tmp_path: Path,
+    document: str,
+    cited_kind: str,
+    cited_count: int,
+    expected_coverage: float,
+    passed: bool,
+) -> None:
+    capture = capture_patch(
+        workspace_root=tmp_path,
+        document=DocumentInput(name="notes.md", content=document),
+        use_graphify=False,
+    )
+    source_path, _ = write_input_artifacts(capture)
+    run_path = source_path.parent
+    anchors = load_evidence_anchors(run_path)
+    if document == _RETRY_DOCUMENT:
+        assert sum(anchor.locator.kind == "heading" for anchor in anchors) == 4
+        assert sum(anchor.locator.kind == "paragraph" for anchor in anchors) == 3
+    selected = [anchor for anchor in anchors if anchor.locator.kind == cited_kind][:cited_count]
+    assert len(selected) == cited_count
+    claims = [
+        ClaimRecord(
+            claim_id=f"claim-{index}",
+            run_id=run_path.name,
+            text=anchor.quote,
+            status="weak",
+            confidence="low",
+            source_anchors=[anchor],
+        )
+        for index, anchor in enumerate(selected)
+    ]
+    claims_path = run_path / "claims.jsonl"
+    claims_path.write_text("".join(claim.model_dump_json() + "\n" for claim in claims))
+    claims_before = claims_path.read_bytes()
+    lesson_dir = run_path / "lesson"
+    lesson_dir.mkdir()
+    for variant in ("full", "hint", "compact"):
+        (lesson_dir / f"lesson.{variant}.md").write_text(
+            "# Source overview\n\n" + "\n\n".join(anchor.quote for anchor in selected)
+        )
+    quiz_dir = run_path / "quiz"
+    quiz_dir.mkdir()
+    questions = [
+        QuizQuestion(
+            question_id=f"quiz-{index}",
+            question=f"Exercise {index}: explain the boundary for a similar retry operation.",
+            expected_answer="Bound the attempts and preserve the source's stated assumptions.",
+            quiz_kind="transfer",
+            exercise_kind=kind,
+            answer_mode="open",
+            source_claims=[claims[0].claim_id],
+            concepts=["bounded retries"],
+            source_anchors=[selected[0]],
+        )
+        for index, kind in enumerate(("prediction", "completion", "error_reason"))
+    ]
+    (quiz_dir / "quiz.jsonl").write_text(
+        "".join(question.model_dump_json() + "\n" for question in questions)
+    )
+
+    report = evaluate_run(run_path)
+    coverage = next(gate for gate in report.hard_gates.results if gate.name == "evidence_coverage")
+    assert coverage.score == expected_coverage
+    assert coverage.threshold == 0.5
+    assert coverage.passed is passed
+    assert all(
+        gate.passed for gate in report.hard_gates.results if gate.name != "evidence_coverage"
+    )
+    assert report.verdict == ("PASS" if passed else "FAIL")
+    assert claims_path.read_bytes() == claims_before
+    assert all(claim.status == "weak" and claim.assertion_kind is None for claim in claims)
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="requires symlink support")

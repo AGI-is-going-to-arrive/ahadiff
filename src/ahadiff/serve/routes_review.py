@@ -38,6 +38,7 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
 
+    from ahadiff.core.card_sources import CardSourceDetails
     from ahadiff.quiz.schemas import QuizQuestion
     from ahadiff.review.schemas import DueReviewCard, ReviewUpdate
 
@@ -65,10 +66,17 @@ def _review_queue_projection(
     state: ServeState, cards: tuple[DueReviewCard, ...]
 ) -> list[dict[str, Any]]:
     """Exercise metadata lives in the immutable quiz artifact, not new DB columns."""
+    sources_by_run: dict[str, dict[str, CardSourceDetails] | None] = {}
     by_run: dict[str, dict[str, QuizQuestion]] = {}
     projected: list[dict[str, Any]] = []
     for card in cards:
-        if card.run_id not in by_run:
+        if card.run_id not in sources_by_run:
+            sources_by_run[card.run_id] = _review_source_cards(state, card.run_id)
+        sources = sources_by_run[card.run_id]
+        if not _review_source_identity_matches(card, sources):
+            continue
+        source = sources.get(card.card_id) if sources is not None else None
+        if source is None and card.run_id not in by_run:
             try:
                 by_run[card.run_id] = {
                     q.review_card_id: q
@@ -77,32 +85,63 @@ def _review_queue_projection(
                 }
             except (InputError, StorageError, OSError, ValueError, HTTPException):
                 by_run[card.run_id] = {}
-        question = by_run[card.run_id].get(card.card_id)
+        question = by_run.get(card.run_id, {}).get(card.card_id)
+        reference = source if source is not None else question
         if card.card_id.startswith("card_exercise_") and (
-            question is None or question.exercise_kind is None
+            reference is None or reference.exercise_kind is None
         ):
             # This opaque ID survives a lost/corrupt artifact without a DB migration.
             # Never fall back to the DB's reference answer for a new exercise.
             continue
         values = dict(card.__dict__)
-        if question is not None:
+        if source is not None:
+            values.update(
+                question=source.question,
+                answer=source.answer,
+                answer_mode=source.answer_mode,
+                choices=source.choices,
+                source_anchors=source.source_anchors,
+            )
+        elif question is not None:
             values["source_anchors"] = question.source_anchors
-            if question.exercise_kind is not None:
-                values.update(
-                    question_id=question.question_id,
-                    exercise_kind=question.exercise_kind,
-                    question=question.question,
-                    answer=None,
-                    choices=None,
-                    answer_mode="open",
-                    source_anchors=[],
-                    concept="",
-                    display_path="",
-                    symbol=None,
-                    source_ref=None,
-                )
+        if reference is not None and reference.exercise_kind is not None:
+            values.update(
+                question_id=reference.question_id,
+                exercise_kind=reference.exercise_kind,
+                question=reference.question,
+                answer=None,
+                choices=None,
+                answer_mode="open",
+                source_anchors=[],
+                concept="",
+                display_path="",
+                symbol=None,
+                source_ref=None,
+            )
         projected.append(DueReviewCardResponse(**values).model_dump(mode="json"))
     return projected
+
+
+def _review_source_cards(state: ServeState, run_id: str) -> dict[str, CardSourceDetails] | None:
+    from ahadiff.core.card_sources import load_card_sources
+
+    try:
+        return load_card_sources(state.state_dir, run_id)
+    except (InputError, StorageError, OSError, ValueError, HTTPException):
+        # None means a declared source is invalid; an empty mapping is the
+        # legacy contract and must remain distinct from validation failure.
+        return None
+
+
+def _review_source_identity_matches(
+    card: DueReviewCard, sources: dict[str, CardSourceDetails] | None
+) -> bool:
+    if sources is None:
+        return False
+    source = sources.get(card.card_id)
+    if source is not None:
+        return card.source_ref == source.source_ref
+    return not sources and not (card.source_ref or "").startswith("document:")
 
 
 async def post_review_rate(request: Request) -> JSONResponse:
@@ -179,7 +218,7 @@ def _review_queue_sync(state: ServeState) -> tuple[DueReviewCard, ...]:
         return ()
     try:
         cards: list[DueReviewCard] = []
-        invalid_marker_by_run: dict[str, bool] = {}
+        sources_by_run: dict[str, dict[str, CardSourceDetails] | None] = {}
         offset = 0
         while len(cards) < _REVIEW_QUEUE_TARGET_LIMIT and offset < _REVIEW_QUEUE_MAX_SCAN:
             batch_limit = min(_REVIEW_QUEUE_SCAN_BATCH_SIZE, _REVIEW_QUEUE_MAX_SCAN - offset)
@@ -193,11 +232,13 @@ def _review_queue_sync(state: ServeState) -> tuple[DueReviewCard, ...]:
             if not batch:
                 break
             for card in batch:
-                invalid_marker = invalid_marker_by_run.get(card.run_id)
-                if invalid_marker is None:
-                    invalid_marker = _run_has_invalid_finalized_marker(state, card.run_id)
-                    invalid_marker_by_run[card.run_id] = invalid_marker
-                if not invalid_marker:
+                if card.run_id not in sources_by_run:
+                    sources_by_run[card.run_id] = (
+                        None
+                        if _run_has_invalid_finalized_marker(state, card.run_id)
+                        else _review_source_cards(state, card.run_id)
+                    )
+                if _review_source_identity_matches(card, sources_by_run[card.run_id]):
                     cards.append(card)
                     if len(cards) >= _REVIEW_QUEUE_TARGET_LIMIT:
                         break

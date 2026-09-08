@@ -1565,12 +1565,12 @@ test.describe('walkthrough: full-app functional test', () => {
     // All primary sources are visible without opening CLI documentation.
     await expect(page.locator('.hero [data-learn-source]')).toHaveCount(5);
     await expect(page.locator('.hero [data-learn-source="files"]')).toContainText(/Two files|两份文件/);
-    await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
+    await expect(page.locator('.hero-demo__source')).toContainText(/Latest completed run|最新完成运行/);
 
     // Feature cards (4)
     const featureCards = page.locator('.feature-card');
     await expect(featureCards).toHaveCount(4);
-    await expect(featureCards.first()).toContainText(/Evidence-bound claims|证据绑定声明/);
+    await expect(featureCards.first()).toContainText(/Check the evidence|核对证据/);
 
     // Pipeline steps (5)
     const steps = page.locator('.step');

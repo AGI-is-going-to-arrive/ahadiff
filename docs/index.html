@@ -18,17 +18,17 @@
   --ink: #1C1B18;
   --ink-2: #38362F;
   --muted: #6A6456;
-  --muted-2: #8F8878;
+  --muted-2: #6A6456;
   --hair: #E6E3D8;
   --accent: #D27050;
-  --accent-ink: #B04E28;
+  --accent-ink: #953E1F;
   --accent-soft: #F4E4D9;
   --add-bg: #E4EFE0;
   --add-fg: #2F6F4F;
   --del-bg: #F6DCD5;
   --del-fg: #A33D2B;
   --success: #2F6F4F;
-  --warning: #B4791F;
+  --warning: #855600;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-serif: "Newsreader", "Noto Serif SC", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -50,7 +50,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 a { color: var(--accent-ink); text-decoration: none; transition: color .15s; }
-a:hover { color: var(--accent); }
+a:hover { color: var(--accent-ink); }
 img { max-width: 100%; display: block; }
 ::selection { background: var(--accent-soft); color: var(--accent-ink); }
 
@@ -111,7 +111,7 @@ img { max-width: 100%; display: block; }
   border: 1px solid var(--hair); background: var(--elevated);
   color: var(--muted); transition: all .15s; letter-spacing: .04em;
 }
-.lang-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.lang-toggle:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
 
 /* ===== Hero ===== */
 .hero {
@@ -157,7 +157,7 @@ img { max-width: 100%; display: block; }
 .btn-primary {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
-  background: var(--accent); color: #fff; border: none; cursor: pointer;
+  background: var(--accent-ink); color: #fff; border: none; cursor: pointer;
   box-shadow: 0 2px 8px -2px rgba(176,78,40,.4);
   transition: all .2s;
 }
@@ -168,7 +168,7 @@ img { max-width: 100%; display: block; }
   background: transparent; color: var(--ink); cursor: pointer;
   border: 1.5px solid var(--hair); transition: all .2s;
 }
-.btn-secondary:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.btn-secondary:hover { border-color: var(--accent-ink); color: var(--accent-ink); transform: translateY(-1px); }
 
 /* Hero diff preview */
 .hero-diff {
@@ -194,12 +194,12 @@ img { max-width: 100%; display: block; }
 .hero-diff-code .line-del { background: var(--del-bg); color: var(--del-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
 .hero-diff-code .line-add { background: var(--add-bg); color: var(--add-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
 .hero-diff-code .line-ctx { color: var(--muted); padding: 1px 8px; margin: 0 -16px; display: block; }
-.hero-diff-code .line-hdr { color: var(--accent); padding: 1px 8px; margin: 0 -16px; display: block; font-weight: 500; }
+.hero-diff-code .line-hdr { color: var(--accent-ink); padding: 1px 8px; margin: 0 -16px; display: block; font-weight: 500; }
 
 /* Arrow between diff and insight */
 .hero-arrow {
   display: flex; justify-content: center; padding: 20px 0;
-  color: var(--accent); font-size: 28px; animation: fadeIn .6s ease .8s both;
+  color: var(--accent-ink); font-size: 28px; animation: fadeIn .6s ease .8s both;
 }
 
 .hero-insight {
@@ -224,13 +224,13 @@ img { max-width: 100%; display: block; }
 }
 .claim-badge.weak { background: #FFF3CD; color: var(--warning); }
 .claim-text { color: var(--ink-2); }
-.claim-ref { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.claim-ref { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); }
 
 /* ===== Problem Section ===== */
 .problem { background: var(--subtle); }
 .section-eyebrow {
   font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+  text-transform: uppercase; color: var(--accent-ink); margin-bottom: 12px;
 }
 .section-title {
   font-family: var(--font-serif); font-size: clamp(28px, 4vw, 40px);
@@ -262,7 +262,7 @@ img { max-width: 100%; display: block; }
 }
 .step-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: var(--accent); background: var(--accent-soft);
+  color: var(--accent-ink); background: var(--accent-soft);
   width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
   place-items: center; margin-bottom: 14px;
 }
@@ -275,7 +275,7 @@ img { max-width: 100%; display: block; }
 .step-card p { color: var(--muted); font-size: 13px; line-height: 1.6; }
 .step-arrow {
   position: absolute; top: 50%; right: -12px; transform: translateY(-50%);
-  color: var(--accent); font-size: 18px; z-index: 1;
+  color: var(--accent-ink); font-size: 18px; z-index: 1;
 }
 
 /* ===== Features ===== */
@@ -304,7 +304,7 @@ img { max-width: 100%; display: block; }
   border: 1px solid transparent; transition: all .25s;
   position: relative;
 }
-.arch-layer:hover { border-color: var(--accent); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
+.arch-layer:hover { border-color: var(--accent-ink); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
 .arch-layer:hover .arch-tooltip { opacity: 1; visibility: visible; transform: translateY(0); }
 .arch-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
@@ -401,7 +401,7 @@ img { max-width: 100%; display: block; }
 }
 .start-card .start-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: #fff; background: var(--accent);
+  color: #fff; background: var(--accent-ink);
   width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
   place-items: center; margin-bottom: 14px;
 }
@@ -423,7 +423,7 @@ img { max-width: 100%; display: block; }
   background: var(--elevated); border: 1px solid var(--hair);
   color: var(--ink-2); transition: all .15s;
 }
-.badge:hover { border-color: var(--accent); color: var(--accent-ink); }
+.badge:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
 .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .badge-dot.python { background: #3776AB; }
 .badge-dot.react { background: #61DAFB; }
@@ -443,7 +443,7 @@ a.badge { text-decoration: none; }
 }
 .footer-links { display: flex; justify-content: center; gap: 24px; margin-bottom: 16px; }
 .footer-links a { color: var(--muted); font-weight: 500; }
-.footer-links a:hover { color: var(--accent); }
+.footer-links a:hover { color: var(--accent-ink); }
 .footer-version {
   font-family: var(--font-mono); font-size: 11px;
   color: var(--muted-2); margin-top: 8px;
@@ -562,7 +562,7 @@ a.badge { text-decoration: none; }
   position:absolute; left: 16px; top: -2px;
   font-family: var(--font-serif); font-style: italic; font-weight: 700;
   font-size: 88px; line-height: 1;
-  color: var(--accent); opacity: .32;
+  color: var(--accent-ink); opacity: .32;
   pointer-events:none;
 }
 .b-pullquote cite{
@@ -618,7 +618,7 @@ a.badge { text-decoration: none; }
 .b-crown{
   position: absolute; z-index: 0; pointer-events: none;
   font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  color: var(--accent); opacity: .06;
+  color: var(--accent-ink); opacity: .06;
   font-size: clamp(240px, 36vw, 520px); line-height: .82;
   letter-spacing: -0.04em; user-select: none;
 }
@@ -693,7 +693,7 @@ a.badge { text-decoration: none; }
 .faq-item { background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
 .faq-item summary { cursor: pointer; list-style: none; padding: 18px 22px; font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .faq-item summary::-webkit-details-marker { display: none; }
-.faq-item summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent); font-size: 20px; flex: none; }
+.faq-item summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent-ink); font-size: 20px; flex: none; }
 .faq-item[open] summary::after { content: "\2212"; }
 .faq-item .faq-a { padding: 0 22px 20px; color: var(--muted); font-size: 14px; line-height: 1.7; }
 .faq-item .faq-a code { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
@@ -703,6 +703,9 @@ a.badge { text-decoration: none; }
 
 @media (forced-colors: active) { .shot, .video-frame, .faq-item, .cmd-table, .start-step { border: 1px solid CanvasText; } }
 @media print { .video-frame { display: none; } .shot, .faq-item, .start-step { box-shadow: none; break-inside: avoid; } }
+
+p a, .g-note a, .start-tip a { text-decoration: underline; text-underline-offset: .15em; }
+.cmp-wrap:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
 
 /* === End theme extensions === */
 </style>
@@ -721,7 +724,6 @@ a.badge { text-decoration: none; }
       <a href="#problem" data-nav data-i18n="nav.problem">学习来源</a>
       <a href="#how" data-nav data-i18n="nav.how">原理</a>
       <a href="#features" data-nav data-i18n="nav.features">特性</a>
-      <a href="#arch" data-nav data-i18n="nav.arch">架构</a>
       <a href="#screens" data-nav data-i18n="nav.screens">预览</a>
       <a href="#start" data-nav data-i18n="nav.start">开始</a>
       <button class="lang-toggle" id="langToggle" aria-label="切换为英文">zh / EN</button>
@@ -732,13 +734,13 @@ a.badge { text-decoration: none; }
 <!-- ===== Hero ===== -->
 <section class="hero container" id="hero">
   <div class="b-crown" aria-hidden="true">&Delta;</div>
-  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v1.3.8</span></div>
-  <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">Local-first Diff-Anchored Learning</span></div>
+  <div class="b-eyebrow"><span data-i18n="hero.eyebrow">本地优先 · v1.4.0</span></div>
+  <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">从改动与文档中学习</span></div>
   <h1 class="b-display"><span data-i18n="hero.title.pre">知返 Aha</span><span class="delta shout">Diff</span></h1>
   <p class="hero-tagline" data-i18n="hero.tagline">读懂<span class="b-mark">这次改动</span>。</p>
-  <p class="hero-tagline-en" data-i18n="hero.tagline_en">Git 改动 · 两份文件 · 粘贴改动</p>
-  <p class="hero-desc" data-i18n="hero.desc">自己的修复、同事和 AI 的修改，或一篇 Markdown，都可以拿来学。五种来源在本机预览，再读有证据的课程、先作答迁移练习并延后复习。文件、快照和文档无需 Git 仓库。</p>
-  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.8 · 当前源码入口更新，尚未发布</p>
+  <p class="hero-tagline-en" data-i18n="hero.tagline_en">Git · 文件 · Diff · 快照 · Markdown</p>
+  <p class="hero-desc" data-i18n="hero.desc">自己的修复、同事的修改、AI 输出或一份 Markdown，都可以用来学习。先在本地预览来源，再对照证据阅读讲解，之后回来复习问题。文件与文档学习无需 Git。</p>
+  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.4.0 · 五种来源，同一套学习流程</p>
   <div class="hero-ctas">
     <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
@@ -754,7 +756,7 @@ a.badge { text-decoration: none; }
       <span>auth/session.py</span>
     </div>
     <div class="hero-diff-code">
-      <span class="line-hdr">@@ -12,6 +12,10 @@ class SessionManager:</span>
+      <span class="line-hdr">@@ -12,2 +12,6 @@ class SessionManager:</span>
       <span class="line-ctx">&nbsp;&nbsp;&nbsp;&nbsp;def validate(self, token: str):</span>
       <span class="line-del">-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return jwt.decode(token, KEY)</span>
       <span class="line-add">+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;try:</span>
@@ -775,14 +777,14 @@ a.badge { text-decoration: none; }
       <span data-i18n="hero.insight_title">AhaDiff 证据链课程示例</span>
     </div>
     <div class="hero-insight-body">
-      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim1">解码调用显式传入 algorithms=["HS256"]</span> <span class="claim-ref">auth/session.py:15</span></div>
-      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim2">新增代码将 payload["exp"] 与 time.time() 比较</span> <span class="claim-ref">auth/session.py:16</span></div>
-      <div class="claim"><span class="claim-badge weak">weak</span><span class="claim-text" data-i18n="hero.claim3">新增 jwt.InvalidTokenError 异常处理；运行行为仍需测试</span> <span class="claim-ref">auth/session.py:17</span></div>
+      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim1">解码调用显式传入 algorithms=["HS256"]</span> <span class="claim-ref">auth/session.py:14</span></div>
+      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim2">新增代码将 payload["exp"] 与 time.time() 比较</span> <span class="claim-ref">auth/session.py:15</span></div>
+      <div class="claim"><span class="claim-badge weak">weak</span><span class="claim-text" data-i18n="hero.claim3">新增 jwt.InvalidTokenError 异常处理；运行行为仍需测试</span> <span class="claim-ref">auth/session.py:16</span></div>
     </div>
   </div>
 </section>
 
-<blockquote class="b-pullquote container"><span data-i18n="quote.core">把解释和修改前后的内容放在一起看。</span><cite>AhaDiff</cite></blockquote>
+<blockquote class="b-pullquote container"><span data-i18n="quote.core">把解释和来源放在一起看。</span><cite>AhaDiff</cite></blockquote>
 
 <!-- ===== Problem Statement ===== -->
 <section class="section-pad problem" id="problem">
@@ -825,7 +827,7 @@ a.badge { text-decoration: none; }
         <p data-i18n="problem.p5.desc">选择一份 .md 或 .markdown，预览原文并从章节、段落引用中学习。不伪造 diff，引用只支持这篇文档写了什么。</p>
       </div>
     </div>
-    <p class="start-tip" data-i18n="problem.notes">比较两版本时可补充人工 review 说明（最多 8 KiB）。说明按不可信辅助输入过滤，不生成伪来源行，也不能替代代码反证。</p>
+    <p class="start-tip" data-i18n="problem.notes">需要交代背景时，可在对比中添加 Review 说明（最多 8 KiB）。说明只提供上下文，不计入来源证据。</p>
   </div>
 </section>
 
@@ -846,22 +848,22 @@ a.badge { text-decoration: none; }
       <div class="step-card reveal reveal-delay-1">
         <div class="step-num">2</div>
         <div class="step-cmd">verify</div>
-        <h3 data-i18n="how.s2.title">证据链路分析</h3>
-        <p data-i18n="how.s2.desc">Markdown 章节/段落、Notebook 单元、JSON/TOML/YAML 键路径带位置与哈希。解析不足时保留行级弱证据；4,096 锚点上限下，diff 可保留部分索引和 hunk，单文档超限则拒绝。</p>
+        <h3 data-i18n="how.s2.title">沿引用核对来源</h3>
+        <p data-i18n="how.s2.desc">查看 Markdown 章节、Notebook 单元格或 JSON/TOML/YAML 键路径。每条声明保留证据状态；不支持的结构可能使用较弱的行级证据。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-2">
         <div class="step-num">3</div>
         <div class="step-cmd">learn</div>
         <h3 data-i18n="how.s3.title">生成学习材料</h3>
-        <p data-i18n="how.s3.desc">默认生成混合测验。需要主动练习时，在此来源的更多选项中勾选“主动迁移练习”，改为开放式 transfer 题；题数至少 3 时覆盖预测、补全和解释错误，不执行代码。</p>
+        <p data-i18n="how.s3.desc">阅读课程，回答混合测验。需要预测、补全和解释错误的开放题时，在预览前启用“主动迁移练习”。知返不执行练习代码。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-3">
         <div class="step-num">4</div>
         <div class="step-cmd">ratchet</div>
-        <h3 data-i18n="how.s4.title">棘轮质量追踪</h3>
-        <p data-i18n="how.s4.desc">确定性评分与硬门禁衡量课程质量，可选 Judge 不覆盖判定。延迟回忆与未见变式另记样本，不能把高分写成学习增益。</p>
+        <h3 data-i18n="how.s4.title">查看课程质量</h3>
+        <p data-i18n="how.s4.desc">查看评分和必需的证据检查，可选模型评判会补充反馈。通过自己的作答和后续回忆，评估学到了多少。</p>
       </div>
     </div>
   </div>
@@ -873,7 +875,7 @@ a.badge { text-decoration: none; }
 <section class="section-pad" id="features" style="background: var(--subtle);">
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="feat.eyebrow">FEATURES</div>
-    <h2 class="section-title reveal" data-i18n="feat.title">每个细节都为学习设计</h2>
+    <h2 class="section-title reveal" data-i18n="feat.title">阅读、核对、练习、复习</h2>
     <p class="section-subtitle reveal" data-i18n="feat.subtitle">读解释、查证据、独立作答，再按计划复习。</p>
     <div class="feat-grid">
       <!-- 1: Verified Claims -->
@@ -881,7 +883,7 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         </div>
-        <h3 data-i18n="feat.f1.title">Verified Claims</h3>
+        <h3 data-i18n="feat.f1.title">带来源链接的声明</h3>
         <p data-i18n="feat.f1.desc">断言附来源行、结构定位、前后侧、内容哈希和证据状态。源文本存在、语义解释和运行效果分别判断。</p>
       </div>
       <!-- 2: FSRS -->
@@ -889,7 +891,7 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
-        <h3 data-i18n="feat.f2.title">主动练习与间隔复习</h3>
+        <h3 data-i18n="feat.f2.title">练习与间隔复习</h3>
         <p data-i18n="feat.f2.desc">主动迁移练习需显式开启，默认仍为混合题。先尝试，再对照参考并自评，复用原有 SRS。Challenge 用于复现已看过的原解。</p>
       </div>
       <!-- 3: Scaffolding -->
@@ -897,7 +899,7 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         </div>
-        <h3 data-i18n="feat.f3.title">Three-Stage Scaffolding</h3>
+        <h3 data-i18n="feat.f3.title">选择讲解深度</h3>
         <p data-i18n="feat.f3.desc">Full &rarr; Hint &rarr; Compact 三阶段学习撤架。由 FSRS 记忆稳定度自动驱动，越熟悉提示越少。</p>
       </div>
       <!-- 4: Rubric -->
@@ -905,7 +907,7 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
         </div>
-        <h3 data-i18n="feat.f4.title">8-Dimension Rubric</h3>
+        <h3 data-i18n="feat.f4.title">八个评分维度</h3>
         <p data-i18n="feat.f4.desc">Accuracy、Evidence 等维度与安全门禁衡量产物质量。Score/Judge 不代表实际掌握度，也不能替代真实学习样本。</p>
       </div>
       <!-- 5: Ratchet -->
@@ -921,7 +923,7 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </div>
-        <h3 data-i18n="feat.f6.title">Privacy First</h3>
+        <h3 data-i18n="feat.f6.title">控制发送的内容</h3>
         <p data-i18n="feat.f6.desc">strict_local / redacted_remote / explicit_remote 三档隐私。远端请求前会执行隐私与脱敏门禁。</p>
       </div>
       <!-- 7: Providers -->
@@ -929,8 +931,8 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
         </div>
-        <h3 data-i18n="feat.f7.title">9 LLM Providers</h3>
-        <p data-i18n="feat.f7.desc">OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama 等 9 种 API 格式。BYOK，自动探测上下文长度；DeepSeek 走 JSON object 兼容模式，全局 provider 可直接选择并保存。</p>
+        <h3 data-i18n="feat.f7.title">选择你的模型</h3>
+        <p data-i18n="feat.f7.desc">使用本地模型，或自备密钥接入远程服务。设置页展示模型限制和受支持的思考选项。模型出现在列表中，不代表账号能调用它。</p>
       </div>
       <!-- 8: Multi-Agent -->
       <div class="feat-card reveal reveal-delay-3">
@@ -965,67 +967,6 @@ a.badge { text-decoration: none; }
   </div>
 </section>
 
-<!-- ===== Architecture ===== -->
-<section class="section-pad arch" id="arch">
-  <div class="container">
-    <div class="section-eyebrow reveal" data-i18n="arch.eyebrow">ARCHITECTURE</div>
-    <h2 class="section-title reveal" data-i18n="arch.title">八层分层架构</h2>
-    <p class="section-subtitle reveal" data-i18n="arch.subtitle">从 diff 捕获到 UI 渲染，每一层各司其职。</p>
-    <div class="arch-stack">
-      <div class="arch-layer al-0 reveal">
-        <div class="arch-num">0</div>
-        <div class="arch-layer-name">Schema & Contract</div>
-        <div class="arch-layer-sub" data-i18n="arch.l0">ClaimStatus / RunSource / EvalBundle / EventLog</div>
-        <div class="arch-tooltip" data-i18n="arch.l0.tip">Core contract freeze: immutable type definitions</div>
-      </div>
-      <div class="arch-layer al-1 reveal reveal-delay-1">
-        <div class="arch-num">1</div>
-        <div class="arch-layer-name">Diff Capture</div>
-        <div class="arch-layer-sub" data-i18n="arch.l1">worktree / range / since / patch / URL / compare</div>
-        <div class="arch-tooltip" data-i18n="arch.l1.tip">统一捕获 Git、patch、文件和受支持的目录差异</div>
-      </div>
-      <div class="arch-layer al-2 reveal reveal-delay-1">
-        <div class="arch-num">2</div>
-        <div class="arch-layer-name">Context</div>
-        <div class="arch-layer-sub" data-i18n="arch.l2">2a Assembly + 2b Safety Gate + 2c Budget</div>
-        <div class="arch-tooltip" data-i18n="arch.l2.tip">Repo files, secret scan, token budget</div>
-      </div>
-      <div class="arch-layer al-3 reveal reveal-delay-2">
-        <div class="arch-num">3</div>
-        <div class="arch-layer-name">Lesson Generation</div>
-        <div class="arch-layer-sub" data-i18n="arch.l3">prompts/*.md + claim extraction</div>
-        <div class="arch-tooltip" data-i18n="arch.l3.tip">Markdown prompts generate structured lessons</div>
-      </div>
-      <div class="arch-layer al-4 reveal reveal-delay-2">
-        <div class="arch-num">4</div>
-        <div class="arch-layer-name">Verification</div>
-        <div class="arch-layer-sub" data-i18n="arch.l4">claims.jsonl + score + judge artifacts</div>
-        <div class="arch-tooltip" data-i18n="arch.l4.tip">5-state claims: verified / weak / not_proven / contradicted / rejected</div>
-      </div>
-      <div class="arch-layer al-5 reveal reveal-delay-3">
-        <div class="arch-num">5</div>
-        <div class="arch-layer-name">Ratchet</div>
-        <div class="arch-layer-sub" data-i18n="arch.l5">evaluation bundle (immutable) + review.sqlite</div>
-        <div class="arch-tooltip" data-i18n="arch.l5.tip">质量历史：接受结果前检查确定性门禁</div>
-      </div>
-      <div class="arch-layer al-6 reveal reveal-delay-3">
-        <div class="arch-num">6</div>
-        <div class="arch-layer-name">Learning</div>
-        <div class="arch-layer-sub" data-i18n="arch.l6">quiz + SRS review + concepts.jsonl</div>
-        <div class="arch-tooltip" data-i18n="arch.l6.tip">FSRS-6 spaced repetition + concept graph</div>
-      </div>
-      <div class="arch-layer al-7 reveal">
-        <div class="arch-num">7</div>
-        <div class="arch-layer-name">Wiki + UI</div>
-        <div class="arch-layer-sub" data-i18n="arch.l7">React SPA via ahadiff serve</div>
-        <div class="arch-tooltip" data-i18n="arch.l7.tip">Starlette API + Vite + React 19</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="b-divider" aria-hidden="true"><span class="mark">&sect;</span></div>
-
 <!-- ===== Tutorial Video ===== -->
 <section class="section-pad" id="video">
   <div class="container">
@@ -1043,7 +984,7 @@ a.badge { text-decoration: none; }
         <a class="badge" href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:-2px"> <span data-i18n="video.zh">中文视频（B 站）</span></a>
       </div>
       <p class="video-link"><a id="tutorialVideoLink" href="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" target="_blank" rel="noopener" data-i18n="video.open">在新标签页打开视频 ↗</a> &middot; <a href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener" data-i18n="video.bilibili">中文版在 B 站观看 ↗</a></p>
-      <p class="video-note" data-i18n="video.note">视频展示较早界面。五来源、快照和主动练习请按当前源码指南操作；已发布安装仍推荐 pipx 或 uv tool。</p>
+      <p class="video-note" data-i18n="video.note">视频展示早期界面。快照、Markdown 学习与主动练习请按 1.4.0 使用指南操作。</p>
     </div>
   </div>
 </section>
@@ -1072,7 +1013,7 @@ a.badge { text-decoration: none; }
         <div><span class="arrow">&rarr; </span><span data-i18n="demo.t5">Opening</span> <span class="info">http://127.0.0.1:8765</span> ...</div>
       </div>
     </div>
-    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="demo.caption">示例输出，不是验证结果。分数、题数和证据状态取决于输入与配置。</p>
+    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;margin-top:16px;font-size:0.85em;" data-i18n="demo.caption">示例输出，不是验证结果。分数、题数和证据状态取决于输入与配置。</p>
   </div>
 </section>
 
@@ -1101,7 +1042,7 @@ a.badge { text-decoration: none; }
     <div class="section-eyebrow reveal" data-i18n="cmp.eyebrow">适用场景</div>
     <h2 class="section-title reveal" data-i18n="cmp.title">这些改动，可以怎么学</h2>
     <p class="section-subtitle reveal" data-i18n="cmp.subtitle">选择来源后，共用同一套课程、测验、复习和质量历史。</p>
-    <div class="cmp-wrap reveal">
+    <div class="cmp-wrap reveal" tabindex="0">
       <table class="cmp-table">
         <thead><tr><th data-i18n="cmp.col0">你要学什么</th><th data-i18n="cmp.col1">怎么输入</th><th data-i18n="cmp.col2">证据边界</th></tr></thead>
         <tbody>
@@ -1111,11 +1052,11 @@ a.badge { text-decoration: none; }
           <tr><td data-i18n="cmp.r4.material">复制来的 review patch</td><td data-i18n="cmp.r4.input">粘贴改动：统一 diff 文本</td><td data-i18n="cmp.r4.evidence">只有 diff hunk 支持时使用较弱证据，不冒充仓库符号证明。</td></tr>
           <tr><td data-i18n="cmp.r5.material">一份 Markdown 文档</td><td data-i18n="cmp.r5.input">单份 Markdown：.md / .markdown</td><td data-i18n="cmp.r5.evidence">独立 document 来源，章节与段落引用不证明外部事实。</td></tr>
           <tr><td data-i18n="cmp.r6.material">希望下次继续比较的文件</td><td data-i18n="cmp.r6.input">显式保存本地快照，再选择修改后文件</td><td data-i18n="cmp.r6.evidence">过滤后的学习基准，最多 100 份 / 16 MiB；不是原文件备份。</td></tr>
-          <tr><td data-i18n="cmp.r7.material">PDF、网页或任意目录自动快照</td><td data-i18n="cmp.r7.input">不在本次试点范围</td><td data-i18n="cmp.r7.evidence">需要各自的采集、权限与证据契约。</td></tr>
+          <tr><td data-i18n="cmp.r7.material">PDF、网页或任意目录自动快照</td><td data-i18n="cmp.r7.input">暂不支持</td><td data-i18n="cmp.r7.evidence">请使用单份本地 Markdown、统一 diff 或两份文本文件。</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmp.footnote">源引用可核对文本，不等于语义或执行效果已证实。新来源面向 Windows/macOS/Linux 与中英双语；实际平台验收需独立记录。目录对比和 Git hooks 仍仅限 macOS/Linux。</p>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;" data-i18n="cmp.footnote">来源引用确认文本与位置；运行时行为需要另行测试。目录对比与 Git hooks 需要 macOS/Linux。</p>
   </div>
 </section>
 
@@ -1125,33 +1066,32 @@ a.badge { text-decoration: none; }
 <section class="section-pad" id="commands">
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="cmds.eyebrow">COMMANDS</div>
-    <h2 class="section-title reveal" data-i18n="cmds.title">一套命令覆盖学习闭环</h2>
-    <p class="section-subtitle reveal" data-i18n="cmds.subtitle">从捕获到复习，常用命令一览。</p>
-    <div class="cmp-wrap reveal">
+    <h2 class="section-title reveal" data-i18n="cmds.title">常用命令</h2>
+    <p class="section-subtitle reveal" data-i18n="cmds.subtitle">按任务选择命令，把 RUN_ID 替换为运行结束后输出的 ID。</p>
+    <div class="cmp-wrap reveal" tabindex="0">
       <table class="cmd-table">
         <tbody>
           <tr><td class="cmd-name"><code>ahadiff init</code></td><td class="cmd-desc" data-i18n="cmds.init">在仓库里初始化 .ahadiff/ 状态目录</td></tr>
-          <tr><td class="cmd-name"><code>ahadiff provider test</code></td><td class="cmd-desc" data-i18n="cmds.provider">注册并探测一个 LLM 供应商</td></tr>
-          <tr><td class="cmd-name"><code>ahadiff learn &lt;range&gt;</code></td><td class="cmd-desc" data-i18n="cmds.learn">把一段 diff 变成带证据的课程</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff provider test --help</code></td><td class="cmd-desc" data-i18n="cmds.provider">查看提供商配置参数</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff learn HEAD~1..HEAD</code></td><td class="cmd-desc" data-i18n="cmds.learn">把一段 diff 变成带证据的课程</td></tr>
           <tr><td class="cmd-name"><code>ahadiff snapshot save before.md --name "Baseline"</code></td><td class="cmd-desc" data-i18n="cmds.snapshot">显式保存过滤后的本地学习基准</td></tr>
           <tr><td class="cmd-name"><code>ahadiff learn --document reading.md</code></td><td class="cmd-desc" data-i18n="cmds.document">从一篇 Markdown 原文生成课程</td></tr>
-          <tr><td class="cmd-name"><code>ahadiff learn --compare before.py after.py --review-context-file notes.md</code></td><td class="cmd-desc" data-i18n="cmds.context">为两版本比较补充不可信辅助说明</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff learn --compare before.py after.py --review-context-file notes.md</code></td><td class="cmd-desc" data-i18n="cmds.context">为文件对比添加 Review 说明，补充背景</td></tr>
           <tr><td class="cmd-name"><code>ahadiff learn --document reading.md --active-practice</code></td><td class="cmd-desc" data-i18n="cmds.active_practice">显式生成主动迁移题；默认运行保留混合题</td></tr>
-          <tr><td class="cmd-name"><code>ahadiff regenerate RUN_ID --only quiz --active-practice</code></td><td class="cmd-desc" data-i18n="cmds.practice_regenerate">替换所选 run 的测验/卡片、重算分数并重新封存。旧 Judge 失效、不自动重跑；可用 --mixed-practice 切回混合题。</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff regenerate RUN_ID --only quiz --active-practice</code></td><td class="cmd-desc" data-i18n="cmds.practice_regenerate">将本次测验替换为主动练习，重新评分并清除旧评判结果。使用 --mixed-practice 可生成混合题。</td></tr>
           <tr><td class="cmd-name"><code>ahadiff quiz &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.quiz">对刚学的 run 做主动回忆测验</td></tr>
           <tr><td class="cmd-name"><code>ahadiff review</code></td><td class="cmd-desc" data-i18n="cmds.review">按 FSRS 复习到期卡片</td></tr>
           <tr><td class="cmd-name"><code>ahadiff verify &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.verify">重新校验 claims 与评分</td></tr>
-          <tr><td class="cmd-name"><code>ahadiff improve --rounds N</code></td><td class="cmd-desc" data-i18n="cmds.improve">在 git worktree 里迭代优化生成 prompt（仅源码 checkout）</td></tr>
           <tr><td class="cmd-name"><code>ahadiff improve-run &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.improverun">重新生成课程，仅当确定性评分更高时保留；任何安装方式可用（含 pip）</td></tr>
           <tr><td class="cmd-name"><code>ahadiff serve</code></td><td class="cmd-desc" data-i18n="cmds.serve">在仓库或普通目录打开本地 WebUI</td></tr>
-          <tr><td class="cmd-name"><code>ahadiff export preview</code></td><td class="cmd-desc" data-i18n="cmds.export">生成本地静态预览包</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff export preview RUN_ID --out ./preview</code></td><td class="cmd-desc" data-i18n="cmds.export">生成本地静态预览包</td></tr>
           <tr><td class="cmd-name"><code>ahadiff watch</code></td><td class="cmd-desc" data-i18n="cmds.watch">工作区变更自动 learn</td></tr>
           <tr><td class="cmd-name"><code>ahadiff install hooks --auto-learn</code></td><td class="cmd-desc" data-i18n="cmds.hooksauto">每次 commit 后后台自动 learn</td></tr>
           <tr><td class="cmd-name"><code>ahadiff mcp-server</code></td><td class="cmd-desc" data-i18n="cmds.mcp">面向 AI 工具的只读 MCP server（7 个工具）</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整 CLI 命令、输入限制和跨平台说明见中英文使用指南；历史验证记录与本次尚未发布的源码更新分开记录。</p>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;" data-i18n="cmds.footnote">中英使用指南介绍输入限制、模型配置、导出与平台要求。</p>
   </div>
 </section>
 
@@ -1166,8 +1106,8 @@ a.badge { text-decoration: none; }
         <div class="start-step__head">
           <div class="start-step__n">1</div>
           <h3 data-i18n="start.c1.title">打开本地界面</h3>
-          <p data-i18n="start.c1.desc">用 pipx 或 uv tool 安装已发布版本。在准备保存学习记录的文件夹运行 ahadiff serve，再到设置添加一个本地或远端 provider。普通目录也可以，Agent 集成是可选项。</p>
-          <div class="start-tip" data-i18n="start.c1.tip">五来源、快照、格式锚点、review 说明和主动练习属于未发布源码，版本仍为 1.3.8。源码构建、Windows PowerShell 与 provider 配置见中英用户指南。</div>
+          <p data-i18n="start.c1.desc">用 pipx 或 uv tool 安装。在准备保存课程的文件夹运行 ahadiff serve，再到设置添加本地或远程提供商。普通文件夹也可以。</p>
+          <div class="start-tip" data-i18n="start.c1.tip">已有安装？先停止服务、备份 .ahadiff/，再运行 pipx upgrade ahadiff 或 uv tool upgrade ahadiff。1.4.0 安装包包含 WebUI。</div>
         </div>
         <div class="start-step__body">
           <div class="code-block"><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span><br/><span class="prompt">$ </span><span class="cmd">cd your-folder</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff serve</span></div>
@@ -1187,7 +1127,7 @@ a.badge { text-decoration: none; }
         <div class="start-step__head">
           <div class="start-step__n">3</div>
           <h3 data-i18n="start.c3.title">读课、作答、复习</h3>
-          <p data-i18n="start.c3.desc">想要主动练习，先在“此来源的更多选项”勾选“主动迁移练习”，再预览并开始；默认是混合题。作答后才揭示参考并自评，到期复习会带回旧卡片。Score/Judge 不代表学习增益。</p>
+          <p data-i18n="start.c3.desc">先作答，再揭示参考答案。对照答案评估理解，卡片到期后回来复习。课程评分描述材料质量，不代表掌握程度。</p>
         </div>
         <div class="start-step__body">
           <p data-i18n="start.c3.flow">课程 → 差异 → 测验 → 复习</p>
@@ -1201,29 +1141,13 @@ a.badge { text-decoration: none; }
 <section class="section-pad" id="faq" style="background: var(--subtle);">
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="faq.eyebrow">FAQ</div>
-    <h2 class="section-title reveal" data-i18n="faq.title">你可能会问</h2>
+    <h2 class="section-title reveal" data-i18n="faq.title">常见问题</h2>
     <div class="faq-list reveal">
       <details class="faq-item"><summary data-i18n="faq.q1">我的代码会被上传吗？</summary><div class="faq-a" data-i18n="faq.a1">默认 strict_local，不向任何远端模型发送内容。要用远端模型时，必须显式切到 redacted_remote 或 explicit_remote；远端请求前会执行隐私与脱敏门禁。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q2">没有 Git 仓库或 AI 助手也能用吗？</summary><div class="faq-a" data-i18n="faq.a2">可以从两份文件、粘贴 diff、本地快照或单份 Markdown 开始。在普通文件夹运行 <code>ahadiff serve</code> 并配置 provider。<code>init</code> 和 <code>doctor</code> 仍要求 Git；无需为这些来源专门建仓库。</div></details>
-      <details class="faq-item"><summary data-i18n="faq.q3">支持哪些模型？</summary><div class="faq-a" data-i18n="faq.a3">BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q3">支持哪些模型？</summary><div class="faq-a" data-i18n="faq.a3">可以在本地使用 LM Studio 或 Ollama，也可以自备密钥接入 OpenAI、Anthropic、Gemini、Azure、NewAPI 或 OpenAI 兼容服务。选择与接口匹配的协议，开始学习前测试所选模型。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q4">要花钱吗？</summary><div class="faq-a" data-i18n="faq.a4">AhaDiff 本身免费。预览与显式保存快照不调用 LLM；provider 探测和课程生成可能向所选服务发请求，费用按该服务计。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q5">高分代表我已经学会了吗？</summary><div class="faq-a" data-i18n="faq.a5">分数用于检查课程材料质量。是否学会要看你能否独立解释、作答和完成类似修改。最终判定来自确定性评分和硬门禁；可选 LLM judge 的建议不覆盖它。</div></details>
-    </div>
-  </div>
-</section>
-
-<!-- ===== Tech Stack Badges ===== -->
-<section class="section-pad" id="tech">
-  <div class="container" style="text-align:center;">
-    <div class="section-eyebrow reveal" data-i18n="tech.eyebrow">TECH STACK</div>
-    <h2 class="section-title reveal" style="margin-bottom:36px;" data-i18n="tech.title">Built On</h2>
-    <div class="badges reveal">
-      <div class="badge"><span class="badge-dot python"></span>Python 3.11+</div>
-      <div class="badge"><span class="badge-dot react"></span>React 19</div>
-      <div class="badge"><span class="badge-dot sqlite"></span>SQLite WAL</div>
-      <div class="badge"><span class="badge-dot starlette"></span>Starlette</div>
-      <div class="badge"><span class="badge-dot fsrs"></span>FSRS-6</div>
-      <div class="badge"><span class="badge-dot vite"></span>Vite</div>
     </div>
   </div>
 </section>
@@ -1232,12 +1156,13 @@ a.badge { text-decoration: none; }
 <footer class="footer">
   <div class="footer-links">
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/releases/tag/v1.4.0" data-i18n="footer.release">v1.4.0 发布说明</a>
     <a href="./USER_GUIDE.en.html" data-i18n="footer.docsEn">English User Guide</a>
     <a href="./USER_GUIDE.zh.html" data-i18n="footer.docsZh">中文使用指南</a>
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
   </div>
   <p data-i18n="footer.credit">Made by the AhaDiff team.</p>
-  <div class="footer-version">v1.3.8</div>
+  <div class="footer-version">v1.4.0</div>
 </footer>
 
 <script>
@@ -1248,16 +1173,15 @@ const T = {
   "nav.problem": { zh: "学习来源", en: "Sources" },
   "nav.how": { zh: "原理", en: "How" },
   "nav.features": { zh: "特性", en: "Features" },
-  "nav.arch": { zh: "架构", en: "Architecture" },
   "nav.start": { zh: "开始", en: "Start" },
-  "hero.eyebrow": { zh: "Local-first · v1.3.8", en: "Local-first · v1.3.8" },
-  "hero.badge": { zh: "Local-first Diff 锚定学习", en: "Local-first Diff-Anchored Learning" },
+  "hero.eyebrow": { zh: "本地优先 · v1.4.0", en: "Local-first · v1.4.0" },
+  "hero.badge": { zh: "从改动与文档中学习", en: "Learn from changes and documents" },
   "hero.title.pre": { zh: "知返 Aha", en: "Aha" },
   "hero.tagline": { zh: "读懂<span class=\"b-mark\">这次改动</span>。", en: "Learn from <span class=\"b-mark\">what changed.</span>" },
-  "hero.tagline_en": { zh: "Git 改动 · 两份文件 · 粘贴改动", en: "Git changes · Two files · Paste a diff" },
-  "hero.desc": { zh: "自己的修复、同事和 AI 的修改，或一篇 Markdown，都可以拿来学。五种来源在本机预览，再读有证据的课程、先作答迁移练习并延后复习。文件、快照和文档无需 Git 仓库。", en: "Study your own fixes, peer or AI edits, or one Markdown document. Preview one of five sources locally, follow evidence-linked lessons, attempt transfer exercises, and review later. Files, snapshots, and documents need no Git repository." },
-  "quote.core": { zh: "把解释和修改前后的内容放在一起看。", en: "Read the explanation alongside the before and after versions." },
-  "hero.status": { zh: "v1.3.8 · 当前源码入口更新，尚未发布", en: "v1.3.8 · Source entry-point updates, pending publication" },
+  "hero.tagline_en": { zh: "Git · 文件 · Diff · 快照 · Markdown", en: "Git · Files · Diff · Snapshots · Markdown" },
+  "hero.desc": { zh: "自己的修复、同事的修改、AI 输出或一份 Markdown，都可以用来学习。先在本地预览来源，再对照证据阅读讲解，之后回来复习问题。文件与文档学习无需 Git。", en: "Study your own fixes, a colleague’s edits, AI output, or one Markdown document. Preview the source locally, read the explanation beside its evidence, and return to the questions later. File and document learning work without Git." },
+  "quote.core": { zh: "把解释和来源放在一起看。", en: "Read the explanation alongside its source." },
+  "hero.status": { zh: "v1.4.0 · 五种来源，同一套学习流程", en: "v1.4.0 · Five sources, one learning workflow" },
   "hero.cta1": { zh: "开始使用", en: "Get Started" },
   "hero.insight_title": { zh: "AhaDiff 证据链课程示例", en: "AhaDiff Evidence-Linked Lesson Example" },
   "hero.claim1": { zh: "解码调用显式传入 algorithms=[\"HS256\"]", en: "The decode call explicitly passes algorithms=[\"HS256\"]" },
@@ -1277,62 +1201,31 @@ const T = {
   "how.subtitle": { zh: "不同来源接入同一条学习流程，结论保留证据状态。", en: "Each source uses the same learning workflow, with evidence states attached to its claims." },
   "how.s1.title": { zh: "选择并预览来源", en: "Choose and preview a source" },
   "how.s1.desc": { zh: "Git、两份文件、patch、快照或单篇 Markdown。先本地预览，修改输入后重新预览；保存快照需要明确操作。", en: "Git, two files, patch, snapshot, or one Markdown document. Preview locally and preview again after edits; saving a snapshot requires an explicit action." },
-  "how.s2.title": { zh: "证据链路分析", en: "Evidence-Linked Analysis" },
-  "how.s2.desc": { zh: "Markdown 章节/段落、Notebook 单元、JSON/TOML/YAML 键路径带位置与哈希。解析不足时保留行级弱证据；4,096 锚点上限下，diff 可保留部分索引和 hunk，单文档超限则拒绝。", en: "Markdown sections/paragraphs, Notebook cells, and JSON/TOML/YAML paths carry locations and hashes. Unsupported parsing retains weak lines. At the 4,096-anchor cap, a diff can retain partial format indexes and hunks; oversized document indexes are rejected." },
+  "how.s2.title": { zh: "沿引用核对来源", en: "Follow the evidence" },
+  "how.s2.desc": { zh: "查看 Markdown 章节、Notebook 单元格或 JSON/TOML/YAML 键路径。每条声明保留证据状态；不支持的结构可能使用较弱的行级证据。", en: "Inspect Markdown sections, Notebook cells, or JSON/TOML/YAML key paths. Claims retain their evidence status; unsupported structures can use weaker line evidence." },
   "how.s3.title": { zh: "生成学习材料", en: "Generate Learning Materials" },
-  "how.s3.desc": { zh: "默认生成混合测验。需要主动练习时，在此来源的更多选项中勾选“主动迁移练习”，改为开放式 transfer 题；题数至少 3 时覆盖预测、补全和解释错误，不执行代码。", en: "Quizzes are mixed by default. Enable “Active transfer practice” under More options for this source to request open transfer questions. With at least 3 questions, they cover prediction, completion, and error explanation; no code is executed." },
-  "how.s4.title": { zh: "棘轮质量追踪", en: "Ratchet Quality Tracking" },
-  "how.s4.desc": { zh: "确定性评分与硬门禁衡量课程质量，可选 Judge 不覆盖判定。延迟回忆与未见变式另记样本，不能把高分写成学习增益。", en: "Deterministic scores and hard gates assess artifact quality; optional Judge never overrides the verdict. Delayed recall and unseen variants need separate samples, not a high score as a learning-gain claim." },
+  "how.s3.desc": { zh: "阅读课程，回答混合测验。需要预测、补全和解释错误的开放题时，在预览前启用“主动迁移练习”。知返不执行练习代码。", en: "Read the lesson and answer the mixed quiz. For open prediction, completion, and error-explanation questions, enable Active transfer practice before previewing. AhaDiff does not run exercise code." },
+  "how.s4.title": { zh: "查看课程质量", en: "Review lesson quality" },
+  "how.s4.desc": { zh: "查看评分和必需的证据检查，可选模型评判会补充反馈。通过自己的作答和后续回忆，评估学到了多少。", en: "Inspect scores and required evidence checks. The optional model judge adds feedback. Use your attempts and later recall to assess what you learned." },
   "feat.eyebrow": { zh: "核心特性", en: "FEATURES" },
-  "feat.title": { zh: "每个细节都为学习设计", en: "Every Detail Designed for Learning" },
+  "feat.title": { zh: "阅读、核对、练习、复习", en: "Read, check, practice, and review" },
   "feat.subtitle": { zh: "读解释、查证据、独立作答，再按计划复习。", en: "Read the explanation, inspect evidence, answer questions, and return for scheduled review." },
-  "feat.f1.title": { zh: "Verified Claims", en: "Verified Claims" },
+  "feat.f1.title": { zh: "带来源链接的声明", en: "Source-linked claims" },
   "feat.f1.desc": { zh: "断言附来源行、结构定位、前后侧、内容哈希和证据状态。源文本存在、语义解释和运行效果分别判断。", en: "Claims carry source lines, structural locators, sides, content hashes, and evidence states. Source-text presence, semantic interpretation, and runtime effects are judged separately." },
-  "feat.f2.title": { zh: "主动练习与间隔复习", en: "Active Practice and Spaced Review" },
+  "feat.f2.title": { zh: "练习与间隔复习", en: "Practice and spaced review" },
   "feat.f2.desc": { zh: "主动迁移练习需显式开启，默认仍为混合题。先尝试，再对照参考并自评，复用原有 SRS。Challenge 用于复现已看过的原解。", en: "Active transfer practice is explicit opt-in; the default quiz remains mixed. Attempt first, compare the reference, and self-assess using the existing SRS flow. Challenge rehearses an original solution already viewed." },
-  "feat.f3.title": { zh: "三阶段撤架", en: "Three-Stage Scaffolding" },
-  "feat.f3.desc": {
-    zh: "Full → Hint → Compact 三阶段学习撤架。由 FSRS 记忆稳定度自动驱动，越熟悉提示越少。",
-    en: "Full → Hint → Compact progressive scaffolding. FSRS memory stability drives how much help you see."
-  },
-  "feat.f4.title": { zh: "8 维评估量规", en: "8-Dimension Rubric" },
+  "feat.f3.title": { zh: "选择讲解深度", en: "Choose the explanation depth" },
+  "feat.f3.desc": { zh: "Full → Hint → Compact 三阶段学习撤架。由 FSRS 记忆稳定度自动驱动，越熟悉提示越少。", en: "Full → Hint → Compact progressive scaffolding. FSRS memory stability drives how much help you see." },
+  "feat.f4.title": { zh: "八个评分维度", en: "Eight scoring dimensions" },
   "feat.f4.desc": { zh: "Accuracy、Evidence 等维度与安全门禁衡量产物质量。Score/Judge 不代表实际掌握度，也不能替代真实学习样本。", en: "Accuracy, Evidence, and the other dimensions assess artifact quality with safety gates. Score/Judge do not establish mastery or replace real learning samples." },
   "feat.f5.title": { zh: "课程质量记录", en: "Lesson Quality History" },
   "feat.f5.desc": { zh: "improve-run 可在已有运行上重新生成课程，仅在确定性评分提高时保留新结果；原运行保留。", en: "improve-run regenerates a lesson from an existing run and keeps the new result only when its deterministic score improves. The original run remains available." },
-  "feat.f6.title": { zh: "隐私优先", en: "Privacy First" },
-  "feat.f6.desc": {
-    zh: "strict_local / redacted_remote / explicit_remote 三档隐私。远端请求前会执行隐私与脱敏门禁。",
-    en: "Three privacy modes: strict_local / redacted_remote / explicit_remote. Privacy and redaction gates run before remote provider requests."
-  },
-  "feat.f7.title": { zh: "9 种 LLM 供应商", en: "9 LLM Providers" },
-  "feat.f7.desc": {
-    zh: "OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama 等 9 种 API 格式。BYOK，自动探测上下文长度；DeepSeek 走 JSON object 兼容模式，全局 provider 可直接选择并保存。",
-    en: "9 API formats: OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama and more. BYOK, with context-length auto-probing; DeepSeek uses JSON object compatibility, and global providers can be selected and saved."
-  },
+  "feat.f6.title": { zh: "控制发送的内容", en: "Control what you send" },
+  "feat.f6.desc": { zh: "strict_local / redacted_remote / explicit_remote 三档隐私。远端请求前会执行隐私与脱敏门禁。", en: "Three privacy modes: strict_local / redacted_remote / explicit_remote. Privacy and redaction gates run before remote provider requests." },
+  "feat.f7.title": { zh: "选择你的模型", en: "Choose your model" },
+  "feat.f7.desc": { zh: "使用本地模型，或自备密钥接入远程服务。设置页展示模型限制和受支持的思考选项。模型出现在列表中，不代表账号能调用它。", en: "Use local models or bring a key for a remote service. Settings shows model limits and supported thinking controls. A model listing does not prove your account can call it." },
   "feat.f8.title": { zh: "可选的 AI 工具集成", en: "Optional AI Tool Integration" },
   "feat.f8.desc": { zh: "设置与指南共用 16 个当前工具目标的目录。无需安装集成也能使用文件、patch 和普通 Git 学习。", en: "Settings and Guide share a catalogue of 16 current tool targets. File, patch, and ordinary Git learning work without installing an integration." },
-  "arch.eyebrow": { zh: "系统架构", en: "ARCHITECTURE" },
-  "arch.title": { zh: "八层分层架构", en: "Eight-Layer Architecture" },
-  "arch.subtitle": {
-    zh: "从 diff 捕获到 UI 渲染，每一层各司其职。",
-    en: "From diff capture to UI rendering, each layer has a clear responsibility."
-  },
-  "arch.l0": { zh: "ClaimStatus / RunSource / EvalBundle / EventLog", en: "ClaimStatus / RunSource / EvalBundle / EventLog" },
-  "arch.l0.tip": { zh: "核心契约冻结：不可变类型定义", en: "Core contract freeze: immutable type definitions" },
-  "arch.l1": { zh: "worktree / range / since / patch / URL / compare", en: "worktree / range / since / patch / URL / compare" },
-  "arch.l1.tip": { zh: "统一捕获 Git、patch、文件和受支持的目录差异", en: "Normalize Git, patch, file, and supported directory differences" },
-  "arch.l2": { zh: "2a 上下文组装 + 2b 安全门 + 2c 预算", en: "2a Assembly + 2b Safety Gate + 2c Budget" },
-  "arch.l2.tip": { zh: "仓库文件、密钥扫描、token 预算", en: "Repo files, secret scan, token budget" },
-  "arch.l3": { zh: "prompts/*.md + claim 提取", en: "prompts/*.md + claim extraction" },
-  "arch.l3.tip": { zh: "Markdown prompt 生成结构化课文", en: "Markdown prompts generate structured lessons" },
-  "arch.l4": { zh: "claims.jsonl + 评分 + judge 产物", en: "claims.jsonl + score + judge artifacts" },
-  "arch.l4.tip": { zh: "5 态 claims: verified / weak / not_proven / contradicted / rejected", en: "5-state claims: verified / weak / not_proven / contradicted / rejected" },
-  "arch.l5": { zh: "evaluation bundle (不可变) + review.sqlite", en: "evaluation bundle (immutable) + review.sqlite" },
-  "arch.l5.tip": { zh: "质量历史：接受结果前检查确定性门禁", en: "Quality history: deterministic gates apply before a result is accepted" },
-  "arch.l6": { zh: "测验 + SRS 复习 + concepts.jsonl", en: "quiz + SRS review + concepts.jsonl" },
-  "arch.l6.tip": { zh: "FSRS-6 间隔重复 + 概念图谱", en: "FSRS-6 spaced repetition + concept graph" },
-  "arch.l7": { zh: "React SPA via ahadiff serve", en: "React SPA via ahadiff serve" },
-  "arch.l7.tip": { zh: "Starlette API + Vite + React 19", en: "Starlette API + Vite + React 19" },
   "demo.eyebrow": { zh: "实际演示", en: "SEE IT IN ACTION" },
   "demo.title": { zh: "习惯终端，也能直接学习", en: "Use the terminal if you prefer" },
   "demo.subtitle": { zh: "先配置 provider，再对比工作目录内的两份文件。Git 用户也可使用 --last 或提交范围。", en: "Configure a provider, then compare two files inside your working folder. Git users can also select --last or a commit range." },
@@ -1345,30 +1238,22 @@ const T = {
   "cmp.eyebrow": { zh: "适用场景", en: "SUPPORTED INPUTS" },
   "cmp.title": { zh: "这些改动，可以怎么学", en: "Choose a workflow for your change" },
   "cmp.subtitle": { zh: "选择来源后，共用同一套课程、测验、复习和质量历史。", en: "Each source connects to the same lessons, quizzes, review, and quality history." },
-  "cmp.footnote": { zh: "源引用可核对文本，不等于语义或执行效果已证实。新来源面向 Windows/macOS/Linux 与中英双语；实际平台验收需独立记录。目录对比和 Git hooks 仍仅限 macOS/Linux。", en: "Source citations check text, not semantic truth or runtime effects. New sources target Windows/macOS/Linux and both UI languages; platform execution requires separate results. Directory comparison and Git hooks remain macOS/Linux-only." },
+  "cmp.footnote": { zh: "来源引用确认文本与位置；运行时行为需要另行测试。目录对比与 Git hooks 需要 macOS/Linux。", en: "Source citations confirm text and location; runtime behavior needs separate tests. Directory comparisons and Git hooks require macOS/Linux." },
   "cmp.col0": { zh: "你要学什么", en: "What you want to study" },
   "cmp.col1": { zh: "怎么输入", en: "How to start" },
   "cmp.col2": { zh: "证据边界", en: "Evidence boundary" },
   "start.eyebrow": { zh: "开始使用", en: "GET STARTED" },
   "start.title": { zh: "三步开始", en: "Three Steps to Start" },
-  "start.subtitle": {
-    zh: "几步之内，从安装到第一节课。",
-    en: "From install to your first lesson in a few steps."
-  },
+  "start.subtitle": { zh: "几步之内，从安装到第一节课。", en: "From install to your first lesson in a few steps." },
   "start.c1.title": { zh: "打开本地界面", en: "Open the local WebUI" },
-  "start.c1.desc": { zh: "用 pipx 或 uv tool 安装已发布版本。在准备保存学习记录的文件夹运行 ahadiff serve，再到设置添加一个本地或远端 provider。普通目录也可以，Agent 集成是可选项。", en: "Install a published version with pipx or uv tool. Run ahadiff serve in the folder where you want to keep learning history, then add a local or remote provider in Settings. An ordinary folder works; agent integration is optional." },
+  "start.c1.desc": { zh: "用 pipx 或 uv tool 安装。在准备保存课程的文件夹运行 ahadiff serve，再到设置添加本地或远程提供商。普通文件夹也可以。", en: "Install with pipx or uv tool. Run ahadiff serve in the folder where you want to keep lessons, then add a local or remote provider in Settings. An ordinary folder works." },
   "start.c2.title": { zh: "选来源，预览变化", en: "Choose a source and preview" },
   "start.c2.desc": { zh: "选择五种来源之一。文件每份最多 256 KiB，粘贴 diff 最多 64 KiB。快照先显式保存，单份 Markdown 预览原文；预览不调用 LLM。开始学习使用你的 provider 与隐私设置。", en: "Choose one of five sources. Each file is at most 256 KiB; pasted diffs are at most 64 KiB. Save snapshots explicitly; preview a Markdown document as original text. Preview makes no LLM call. Generation uses your provider and privacy settings." },
   "start.c3.title": { zh: "读课、作答、复习", en: "Read, answer, and review" },
-  "start.c3.desc": { zh: "想要主动练习，先在“此来源的更多选项”勾选“主动迁移练习”，再预览并开始；默认是混合题。作答后才揭示参考并自评，到期复习会带回旧卡片。Score/Judge 不代表学习增益。", en: "For active exercises, enable “More options for this source → Active transfer practice”, then preview and start. The default stays mixed. Reveal the reference after attempting, self-assess, and return for due cards. Score/Judge do not establish learning gain." },
-  "tech.eyebrow": { zh: "技术栈", en: "TECH STACK" },
-  "tech.title": { zh: "技术选型", en: "Built On" },
+  "start.c3.desc": { zh: "先作答，再揭示参考答案。对照答案评估理解，卡片到期后回来复习。课程评分描述材料质量，不代表掌握程度。", en: "Attempt each question before revealing its reference. Compare your answer, rate your understanding, and return when review cards are due. Lesson scores describe material quality, not mastery." },
   "footer.docsEn": { zh: "英文使用指南", en: "English User Guide" },
   "footer.docsZh": { zh: "中文使用指南", en: "Chinese User Guide" },
-  "footer.credit": {
-    zh: "由 AhaDiff 团队开发。",
-    en: "Made by the AhaDiff team."
-  },
+  "footer.credit": { zh: "由 AhaDiff 团队开发。", en: "Made by the AhaDiff team." },
   "nav.screens": { zh: "预览", en: "Preview" },
   "integ.eyebrow": { zh: "带着走", en: "TAKE IT WITH YOU" },
   "integ.title": { zh: "学完之后，带着走", en: "Learn It, Then Take It With You" },
@@ -1382,7 +1267,7 @@ const T = {
   "video.subtitle": { zh: "从 learn 到复习，一个真实 run 的完整演示（带字幕）。", en: "From learn to review: a full walkthrough on a real run (subtitled)." },
   "video.open": { zh: "在新标签页打开视频 ↗", en: "Open the video in a new tab ↗" },
   "video.bilibili": { zh: "中文版在 B 站观看 ↗", en: "Watch the Chinese version on Bilibili ↗" },
-  "video.note": { zh: "视频展示较早界面。五来源、快照和主动练习请按当前源码指南操作；已发布安装仍推荐 pipx 或 uv tool。", en: "The video shows an earlier interface. Follow the current source guide for five sources, snapshots, and active practice; pipx or uv tool remain recommended for published installs." },
+  "video.note": { zh: "视频展示早期界面。快照、Markdown 学习与主动练习请按 1.4.0 使用指南操作。", en: "The video shows an earlier interface. Follow the version 1.4.0 User Guide for snapshots, Markdown learning, and active exercises." },
   "video.en": { zh: "英文视频（YouTube）", en: "English video (YouTube)" },
   "video.zh": { zh: "中文视频（B 站）", en: "Chinese video (Bilibili)" },
   "screens.eyebrow": { zh: "界面", en: "WEBUI" },
@@ -1397,35 +1282,34 @@ const T = {
   "shot.score": { zh: "运行详情：概览与分数", en: "Run detail: overview & score" },
   "shot.settings": { zh: "设置：供应商与偏好", en: "Settings: providers & preferences" },
   "cmds.eyebrow": { zh: "命令", en: "COMMANDS" },
-  "cmds.title": { zh: "一套命令覆盖学习闭环", en: "One Command Set for the Whole Loop" },
-  "cmds.subtitle": { zh: "从捕获到复习，常用命令一览。", en: "From capture to review: common commands at a glance." },
+  "cmds.title": { zh: "常用命令", en: "Common commands" },
+  "cmds.subtitle": { zh: "按任务选择命令，把 RUN_ID 替换为运行结束后输出的 ID。", en: "Choose the command for your task. Replace RUN_ID with the ID printed after a run." },
   "cmds.init": { zh: "在仓库里初始化 <code>.ahadiff/</code> 状态目录", en: "Initialize the <code>.ahadiff/</code> state dir in a repo" },
-  "cmds.provider": { zh: "注册并探测一个 LLM 供应商", en: "Register and probe an LLM provider" },
+  "cmds.provider": { zh: "查看提供商配置参数", en: "View provider setup arguments" },
   "cmds.learn": { zh: "把一段 diff 变成带证据的课程", en: "Turn a diff into a lesson with evidence" },
   "cmds.quiz": { zh: "对刚学的 run 做主动回忆测验", en: "Active-recall quiz on the run you just learned" },
   "cmds.review": { zh: "按 FSRS 复习到期卡片", en: "Review due cards with FSRS" },
   "cmds.verify": { zh: "重新校验 claims 与评分", en: "Re-verify claims and the score" },
-  "cmds.improve": { zh: "在 git worktree 里迭代优化生成 prompt（仅源码 checkout）", en: "Iterate generation prompts in a git worktree (source checkout only)" },
   "cmds.improverun": { zh: "重新生成课程，仅当确定性评分更高时保留；任何安装方式可用（含 pip）", en: "Regenerate a lesson; keep it only if the deterministic score improves. Works in any install (incl. pip)." },
   "cmds.serve": { zh: "在仓库或普通目录打开本地 WebUI", en: "Open the local WebUI in a repository or ordinary folder" },
   "cmds.export": { zh: "生成本地静态预览包", en: "Write a local static preview bundle" },
   "cmds.watch": { zh: "工作区变更自动 learn", en: "Auto-learn on working-tree changes" },
   "cmds.hooksauto": { zh: "每次 commit 后后台自动 learn", en: "Background auto-learn after each commit" },
   "cmds.mcp": { zh: "面向 AI 工具的只读 MCP server（7 个工具）", en: "Read-only MCP server for AI tools (7 tools)" },
-  "cmds.footnote": { zh: "完整 CLI 命令、输入限制和跨平台说明见中英文使用指南；历史验证记录与本次尚未发布的源码更新分开记录。", en: "See the bilingual User Guides for CLI commands, input limits, and platform notes. Historical validation records are separate from these unpublished source updates." },
+  "cmds.footnote": { zh: "中英使用指南介绍输入限制、模型配置、导出与平台要求。", en: "The English and Chinese User Guides cover input limits, model setup, export, and platform requirements." },
   "faq.eyebrow": { zh: "常见问题", en: "FAQ" },
-  "faq.title": { zh: "你可能会问", en: "You Might Be Wondering" },
+  "faq.title": { zh: "常见问题", en: "Common questions" },
   "faq.q1": { zh: "我的代码会被上传吗？", en: "Does my code get uploaded?" },
   "faq.a1": { zh: "默认 <code>strict_local</code>，不向任何远端模型发送内容。要用远端模型时，必须显式切到 <code>redacted_remote</code> 或 <code>explicit_remote</code>；远端请求前会执行隐私与脱敏门禁。", en: "The default is <code>strict_local</code>: nothing is sent to a remote model. Remote models require explicitly switching to <code>redacted_remote</code> or <code>explicit_remote</code>; privacy and redaction gates run before the request." },
   "faq.q2": { zh: "没有 Git 仓库或 AI 助手也能用吗？", en: "Can I use it without a Git repository or AI assistant?" },
   "faq.a2": { zh: "可以从两份文件、粘贴 diff、本地快照或单份 Markdown 开始。在普通文件夹运行 <code>ahadiff serve</code> 并配置 provider。<code>init</code> 和 <code>doctor</code> 仍要求 Git；无需为这些来源专门建仓库。", en: "Yes. Start with two files, a pasted diff, a saved snapshot, or one Markdown document. Run <code>ahadiff serve</code> in an ordinary folder and configure a provider. <code>init</code> and <code>doctor</code> still require Git; these sources do not." },
   "faq.q3": { zh: "支持哪些模型？", en: "Which models are supported?" },
-  "faq.a3": { zh: "BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。", en: "BYOK across 9 API formats (OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio, and more), with context-length auto-probing. DeepSeek BYOK uses OpenAI-compatible JSON object mode." },
+  "faq.a3": { zh: "可以在本地使用 LM Studio 或 Ollama，也可以自备密钥接入 OpenAI、Anthropic、Gemini、Azure、NewAPI 或 OpenAI 兼容服务。选择与接口匹配的协议，开始学习前测试所选模型。", en: "Use LM Studio or Ollama locally, or bring a key for OpenAI, Anthropic, Gemini, Azure, NewAPI, or an OpenAI-compatible service. Choose the API protocol that matches your endpoint. Test the selected model before starting a lesson." },
   "faq.q4": { zh: "要花钱吗？", en: "Does it cost anything?" },
   "faq.a4": { zh: "AhaDiff 本身免费。预览与显式保存快照不调用 LLM；provider 探测和课程生成可能向所选服务发请求，费用按该服务计。", en: "AhaDiff is free. Previews and explicit snapshot saves make no LLM calls. Provider probes and generation may send requests to your selected service, which sets its fees." },
   "faq.q5": { zh: "高分代表我已经学会了吗？", en: "Does a high score mean I have mastered the change?" },
   "faq.a5": { zh: "分数用于检查课程材料质量。是否学会要看你能否独立解释、作答和完成类似修改。最终判定来自确定性评分和硬门禁；可选 LLM judge 的建议不覆盖它。", en: "The score checks lesson-material quality. Assess your understanding by explaining the change, answering questions, and making a similar edit yourself. Deterministic scores and hard gates decide the verdict; an optional LLM judge does not override it." },
-  "start.c1.tip": { zh: "五来源、快照、格式锚点、review 说明和主动练习属于未发布源码，版本仍为 1.3.8。源码构建、Windows PowerShell 与 provider 配置见中英用户指南。", en: "Five sources, snapshots, format anchors, review notes, and active practice are unpublished source additions; the version remains 1.3.8. See the bilingual guides for source builds, Windows PowerShell, and provider setup." },
+  "start.c1.tip": { zh: "已有安装？先停止服务、备份 .ahadiff/，再运行 pipx upgrade ahadiff 或 uv tool upgrade ahadiff。1.4.0 安装包包含 WebUI。", en: "Already installed? Stop the server, back up .ahadiff/, then run pipx upgrade ahadiff or uv tool upgrade ahadiff. Version 1.4.0 includes the WebUI." },
   "page.title": { zh: "知返 AhaDiff：读懂这次改动", en: "AhaDiff: Learn from what changed" },
   "page.description": { zh: "从 Git 改动、两份文件、diff、本地快照或单份 Markdown 学习。先本地预览，再读课程、查格式证据、尝试迁移练习与间隔复习。", en: "Learn from Git changes, two files, diff, local snapshots, or one Markdown document. Preview locally, inspect format evidence, and practice with transfer exercises and spaced review." },
   "cmp.r1.material": { zh: "自己的修复、同事或 AI 的提交", en: "Your fixes, peer commits, or AI changes" },
@@ -1449,30 +1333,32 @@ const T = {
   "problem.p4.desc": { zh: "修改前选一个文件、命名并明确保存，下次选择修改后文件比较。仅保存过滤后的学习基准，不是完整备份，也不覆盖原文件。", en: "Select a file before editing, name it, and save explicitly. Compare a later file next time. The filtered learning baseline is not a full backup and never overwrites the original." },
   "problem.p5.title": { zh: "单份 Markdown", en: "One Markdown document" },
   "problem.p5.desc": { zh: "选择一份 .md 或 .markdown，预览原文并从章节、段落引用中学习。不伪造 diff，引用只支持这篇文档写了什么。", en: "Choose one .md or .markdown file, preview its text, and learn through section and paragraph citations. No fabricated diff; citations support what this document says." },
-  "problem.notes": { zh: "比较两版本时可补充人工 review 说明（最多 8 KiB）。说明按不可信辅助输入过滤，不生成伪来源行，也不能替代代码反证。", en: "Add optional review notes to a change comparison (up to 8 KiB). Notes are filtered as untrusted auxiliary input, never become source lines, and cannot replace counterevidence." },
+  "problem.notes": { zh: "需要交代背景时，可在对比中添加 Review 说明（最多 8 KiB）。说明只提供上下文，不计入来源证据。", en: "Add review notes to a comparison when you want to explain the background (up to 8 KiB). The notes provide context and do not count as source evidence." },
   "cmp.r6.material": { zh: "希望下次继续比较的文件", en: "A file to compare again later" },
   "cmp.r6.input": { zh: "显式保存本地快照，再选择修改后文件", en: "Save a local snapshot explicitly, then choose the later file" },
   "cmp.r6.evidence": { zh: "过滤后的学习基准，最多 100 份 / 16 MiB；不是原文件备份。", en: "Filtered learning baselines, up to 100 records / 16 MiB; not source-file backups." },
   "cmp.r7.material": { zh: "PDF、网页或任意目录自动快照", en: "PDF, a web page, or automatic directory snapshots" },
-  "cmp.r7.input": { zh: "不在本次试点范围", en: "Outside this pilot" },
-  "cmp.r7.evidence": { zh: "需要各自的采集、权限与证据契约。", en: "Require their own capture, access, and evidence contracts." },
+  "cmp.r7.input": { zh: "暂不支持", en: "Not available" },
+  "cmp.r7.evidence": { zh: "请使用单份本地 Markdown、统一 diff 或两份文本文件。", en: "Use one local Markdown file, a unified diff, or two text files." },
   "cmds.snapshot": { zh: "显式保存过滤后的本地学习基准", en: "Explicitly save a filtered local learning baseline" },
   "cmds.document": { zh: "从一篇 Markdown 原文生成课程", en: "Generate a lesson from one Markdown document" },
-  "cmds.context": { zh: "为两版本比较补充不可信辅助说明", en: "Add untrusted auxiliary notes to a two-version comparison" },
+  "cmds.context": { zh: "为文件对比添加 Review 说明，补充背景", en: "Add review notes as background for the comparison" },
   "cmds.active_practice": { zh: "显式生成主动迁移题；默认运行保留混合题", en: "Explicitly request active transfer questions; ordinary runs stay mixed" },
-  "cmds.practice_regenerate": { zh: "替换所选 run 的测验/卡片、重算分数并重新封存。旧 Judge 失效、不自动重跑；可用 --mixed-practice 切回混合题。", en: "Replace the selected run’s quiz/cards, recompute scores, and reseal. Old Judge results are invalidated without rerunning; --mixed-practice returns to a mixed quiz." },
+  "cmds.practice_regenerate": { zh: "将本次测验替换为主动练习，重新评分并清除旧评判结果。使用 --mixed-practice 可生成混合题。", en: "Replace this run’s quiz with active exercises, recompute its score, and clear the old judge result. Use --mixed-practice for mixed questions." },
+  "footer.release": { zh: "v1.4.0 发布说明", en: "v1.4.0 release notes" },
 };
 
 /* Language detection & toggle */
-let lang = localStorage.getItem("ahadiff_lang");
-if (!lang) {
+let lang;
+try { lang = localStorage.getItem("ahadiff_lang"); } catch (e) {}
+if (lang !== "zh" && lang !== "en") {
   const nav = navigator.language || navigator.languages?.[0] || "en";
   lang = nav.startsWith("zh") ? "zh" : "en";
 }
 
 function applyLang(l) {
   lang = l;
-  localStorage.setItem("ahadiff_lang", l);
+  try { localStorage.setItem("ahadiff_lang", l); } catch (e) {}
   document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
   document.title = T["page.title"][l];
   document.querySelector('meta[name="description"]').setAttribute("content", T["page.description"][l]);
@@ -1529,7 +1415,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var target = document.getElementById(id);
     if (target) {
       e.preventDefault();
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
     }
   });
 });

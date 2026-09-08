@@ -605,10 +605,20 @@ def _publish_consumer_result(run: Path) -> None:
 
 
 def _consumer_document_run(
-    root: Path, *, lang: Literal["en", "zh-CN"] = "en", document_content: str | None = None
+    root: Path,
+    *,
+    lang: Literal["en", "zh-CN"] = "en",
+    document_content: str | None = None,
+    exercise: bool = True,
+    multiple_choice: bool = False,
 ) -> tuple[Path, ReviewCard, SourceAnchor]:
     run, card, primary = _new_card_run(
-        root, lang=lang, auxiliary=True, document_content=document_content
+        root,
+        lang=lang,
+        auxiliary=True,
+        document_content=document_content,
+        exercise=exercise,
+        multiple_choice=multiple_choice,
     )
     assert primary is not None
     anchors = load_evidence_anchors(run)
@@ -928,6 +938,134 @@ def test_source_artifact_api_reads_a_real_scored_finalized_document_run(tmp_path
     assert auxiliary.status_code == 200
     assert json.loads(auxiliary.json()["content"])["kind"] == "auxiliary_untrusted"
     assert before == {str(path): path.read_bytes() for path in run.rglob("*") if path.is_file()}
+
+
+def test_review_queue_uses_immutable_source_question_when_database_text_drifts(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path.resolve()
+    _, card, anchor = _consumer_document_run(root, exercise=False, multiple_choice=True)
+    db_path = root / ".ahadiff" / "review.sqlite"
+    _make_card_due(db_path, card.card_id)
+    with sqlite3.connect(db_path) as database:
+        database.execute(
+            "UPDATE cards SET question = ?, answer = ?, answer_mode = ?, choices_json = ? "
+            "WHERE id = ?",
+            ("Stale question?", "Stale reference.", "open", None, card.card_id),
+        )
+    client = TestClient(
+        create_app(ServeState(state_dir=root / ".ahadiff", token="test-token", locale="en")),
+        base_url="http://localhost:8765",
+    )
+    response = client.get("/api/review/queue")
+    assert response.status_code == 200, response.text
+    projected = response.json()["cards"][0]
+    assert projected["question"] == card.question
+    assert projected["answer"] == card.answer
+    assert projected["answer_mode"] == card.answer_mode
+    assert projected["choices"] == [choice.model_dump(mode="json") for choice in card.choices or ()]
+    assert projected["source_anchors"] == [anchor.model_dump(mode="json")]
+    assert "Stale" not in response.text
+    rated = client.post(
+        "/api/review/rate",
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+        json={
+            "card_id": card.card_id,
+            "answer": "good",
+            "selected_choice_label": "C",
+            "idempotency_key": "immutable-choice-rating",
+        },
+    )
+    assert rated.status_code == 200, rated.text
+    with sqlite3.connect(db_path) as database:
+        raw = database.execute(
+            "SELECT payload_json FROM learning_signals WHERE idempotency_key = ?",
+            ("immutable-choice-rating",),
+        ).fetchone()[0]
+    assert json.loads(raw)["choice_correct"] is True
+    archived = client.post(
+        "/api/review/queue-state",
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+        json={"card_id": card.card_id, "state": "archived"},
+    )
+    assert archived.status_code == 200, archived.text
+    replay = client.post(
+        "/api/review/rate",
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+        json={
+            "card_id": card.card_id,
+            "answer": "good",
+            "selected_choice_label": "C",
+            "idempotency_key": "immutable-choice-rating",
+        },
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == {"inserted": False}
+
+
+@pytest.mark.parametrize("artifact", ["evidence_anchors.json", "finalized.json", "quiz/quiz.jsonl"])
+def test_review_queue_hides_source_cards_when_declared_artifacts_are_missing(
+    tmp_path: Path, artifact: str
+) -> None:
+    root = tmp_path.resolve()
+    run, card, _ = _consumer_document_run(root, exercise=False, multiple_choice=True)
+    _make_card_due(root / ".ahadiff" / "review.sqlite", card.card_id)
+    client = TestClient(
+        create_app(ServeState(state_dir=root / ".ahadiff", token="test-token", locale="en")),
+        base_url="http://localhost:8765",
+    )
+    assert client.get("/api/review/queue").json()["cards"][0]["card_id"] == card.card_id
+    (run / artifact).unlink()
+    if artifact != "finalized.json":
+        # A consistent outer digest must not permit a source-aware card to use
+        # the compatibility path when its declared source/quiz is unavailable.
+        _refresh_real_finalized_marker(run)
+    response = client.get("/api/review/queue")
+    assert response.status_code == 200, response.text
+    assert response.json() == {"cards": []}
+    rated = client.post(
+        "/api/review/rate",
+        headers={"X-AhaDiff-Token": "test-token", "origin": "http://localhost:8765"},
+        json={
+            "card_id": card.card_id,
+            "answer": "good",
+            "selected_choice_label": "C",
+            "idempotency_key": "missing-source-rating",
+        },
+    )
+    assert rated.status_code == 400, rated.text
+    with sqlite3.connect(root / ".ahadiff" / "review.sqlite") as database:
+        assert database.execute("SELECT COUNT(*) FROM learning_signals").fetchone()[0] == 0
+
+
+def test_review_queue_scans_past_missing_source_cards_for_valid_due_work(tmp_path: Path) -> None:
+    root = tmp_path.resolve()
+    invalid_run, invalid_card, _ = _consumer_document_run(root)
+    _, valid_card, _ = _consumer_document_run(root)
+    db_path = root / ".ahadiff" / "review.sqlite"
+    _make_card_due(db_path, valid_card.card_id)
+    # A run whose artifacts were removed must not fill the queue with rejected
+    # candidates and hide intact runs that are later in due order.
+    missing_cards = [
+        invalid_card.model_copy(update={"card_id": f"card_exercise_missing_{index}"})
+        for index in range(20)
+    ]
+    missing_path = invalid_run / "quiz" / "cards.jsonl"
+    write_review_cards_jsonl(missing_path, missing_cards, overwrite=True)
+    import_cards_from_jsonl(db_path, missing_path)
+    with sqlite3.connect(db_path) as database:
+        database.execute(
+            "UPDATE cards SET due_date = ? WHERE run_id = ?",
+            ("1999-01-01T00:00:00Z", invalid_run.name),
+        )
+    (invalid_run / "finalized.json").unlink()
+    client = TestClient(
+        create_app(ServeState(state_dir=root / ".ahadiff", token="test-token", locale="en")),
+        base_url="http://localhost:8765",
+    )
+    response = client.get("/api/review/queue")
+    assert response.status_code == 200, response.text
+    assert [card["card_id"] for card in response.json()["cards"]] == [valid_card.card_id]
 
 
 def _legacy_comparison_consumer_run(root: Path) -> Path:

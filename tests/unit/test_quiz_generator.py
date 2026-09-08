@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import sqlite3
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -744,6 +745,56 @@ def test_generate_quiz_from_run_writes_expected_artifact(
         "Generating misconception cards (2/2)",
     ]
     assert "Simplified Chinese (zh-CN)" in fake_provider.requests[0].payload_text
+
+
+def test_quiz_generation_retries_duplicate_question_ids_before_publishing_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    run_path = _write_quiz_run_artifacts(workspace_root, "run_duplicate_quiz_ids")
+
+    class DuplicateIdProvider(_FakeQuizProvider):
+        def generate(self, request: object) -> ProviderResponse:
+            response = cast("ProviderResponse", super().generate(request))
+            quiz_requests = [
+                entry for entry in self.requests if entry.prompt_name == "quiz.generate"
+            ]
+            if cast("ProviderRequest", request).prompt_name == "quiz.generate":
+                payload = json.loads(response.content)
+                for index, question in enumerate(payload["questions"]):
+                    question["question_id"] = (
+                        "duplicate-question" if len(quiz_requests) == 1 else f"question-{index}"
+                    )
+                response = replace(response, content=json.dumps(payload))
+            return response
+
+    provider = DuplicateIdProvider(run_id=run_path.name)
+
+    def factory(*_args: object, **_kwargs: object) -> DuplicateIdProvider:
+        return provider
+
+    monkeypatch.setattr("ahadiff.quiz.generator.make_provider", factory)
+    artifacts, questions = generate_quiz_from_run(
+        run_id=run_path.name,
+        run_path=run_path,
+        workspace_root=workspace_root,
+        provider_config=ProviderConfig(
+            provider_class="openai",
+            model_name="synthetic-model",
+            base_url="http://127.0.0.1:8318",
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+        ),
+        api_key=None,
+        security_config=SecurityConfig(),
+        structured_validation_retries=1,
+    )
+    quiz_requests = [
+        request for request in provider.requests if request.prompt_name == "quiz.generate"
+    ]
+    assert len(quiz_requests) == 2
+    assert len({question.question_id for question in questions}) == len(questions) == 3
+    assert load_quiz_questions(artifacts.quiz_path) == questions
 
 
 def test_quiz_generator_writes_distractor_gate_without_changing_quiz_jsonl(

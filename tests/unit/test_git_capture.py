@@ -1851,6 +1851,48 @@ def test_compare_dir_uses_validated_bytes_after_root_replacement(
     assert "+new" in capture.raw_patch_text
 
 
+@pytest.mark.parametrize("directory_input", [False, True])
+def test_compare_rejects_parent_swapped_after_path_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    directory_input: bool,
+) -> None:
+    if not hasattr(os, "symlink") or capture_module.sys.platform.startswith("win"):
+        pytest.skip("POSIX symlink replacement race coverage only")
+    workspace = tmp_path / "workspace"
+    parent = workspace / "inputs"
+    outside = tmp_path / "outside"
+    for directory in (parent / "before", parent / "after", outside / "before", outside / "after"):
+        directory.mkdir(parents=True)
+    (parent / "before" / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    (parent / "after" / "sample.py").write_text("value = 2\n", encoding="utf-8")
+    (outside / "before" / "sample.py").write_text("outside_before = 1\n", encoding="utf-8")
+    (outside / "after" / "sample.py").write_text("outside_after = 2\n", encoding="utf-8")
+    suffix = Path() if directory_input else Path("sample.py")
+    inputs = (Path("inputs/before") / suffix, Path("inputs/after") / suffix)
+    original_resolve = capture_module.resolve_safe_path_from_root
+    swapped = False
+
+    def replace_validated_parent(root: Path, candidate: str | Path) -> Path:
+        nonlocal swapped
+        resolved = original_resolve(root, candidate)
+        if Path(candidate) == inputs[1] and not swapped:
+            parent.rename(workspace / "original-inputs")
+            parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return resolved
+
+    monkeypatch.setattr(capture_module, "resolve_safe_path_from_root", replace_validated_parent)
+    with pytest.raises(InputError, match="link|changed|unreadable"):
+        capture_module.capture_patch(
+            workspace_root=workspace,
+            compare=None if directory_input else inputs,
+            compare_dir=inputs if directory_input else None,
+            use_graphify=False,
+        )
+    assert swapped
+
+
 def test_compare_dir_rejects_windows_without_secure_dir_fd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

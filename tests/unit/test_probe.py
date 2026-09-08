@@ -14,7 +14,7 @@ from ahadiff.contracts import ProviderCapabilities, ProviderConfig
 from ahadiff.core import config as config_module
 from ahadiff.core import paths as paths_module
 from ahadiff.core.config import load_config, read_config_data
-from ahadiff.core.errors import InputError
+from ahadiff.core.errors import InputError, ProviderError
 from ahadiff.llm import persist_probe_result, probe_provider, schemas
 from ahadiff.llm import provider as provider_module
 from ahadiff.llm.provider import reset_provider_runtime_state
@@ -98,6 +98,55 @@ def test_probe_provider_reads_headers_and_context_probe_and_persists_result(tmp_
     assert report.context_window_source == "live"
     assert snapshot.repo_unknown_keys == ()
     assert raw_config["providers"]["demo"]["probed_max_context"] == 123456
+
+
+@pytest.mark.parametrize("second_key_valid", [True, False])
+def test_repeated_provider_probe_checks_current_credentials(
+    tmp_path: Path, second_key_valid: bool
+) -> None:
+    requests: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        authorization = request.headers.get("authorization", "")
+        requests.append((request.method, authorization))
+        if authorization != "Bearer synthetic-valid-key":
+            return httpx.Response(401, json={"error": {"message": "Invalid API key"}})
+        if request.method == "GET":
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-5.6-luna",
+                "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 2},
+            },
+        )
+
+    def probe(api_key: str, client: httpx.Client) -> None:
+        report = probe_provider(
+            provider_name="demo",
+            provider_class="openai",
+            model_name="gpt-5.6-luna",
+            base_url="http://127.0.0.1:8000",
+            api_key=api_key,
+            api_key_env="AHADIFF_PROVIDER_API_KEY",
+            workspace_root=tmp_path,
+            security_config=None,
+            client=client,
+            retry_attempts=0,
+            persist_result=False,
+        )
+        assert report.connectivity_ok
+
+    with httpx.Client(transport=httpx.MockTransport(handler), trust_env=False) as client:
+        probe("synthetic-valid-key", client)
+        if second_key_valid:
+            probe("synthetic-valid-key", client)
+        else:
+            with pytest.raises(ProviderError, match="authentication failed"):
+                probe("synthetic-invalid-key", client)
+
+    assert [method for method, _ in requests].count("POST") == 2
 
 
 def test_probe_provider_falls_back_when_context_probe_missing(tmp_path: Path) -> None:

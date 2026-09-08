@@ -63,6 +63,7 @@ interface CommandEntry {
 
 const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
   { command: 'pipx install ahadiff', labelKey: 'Guide.commands_install' },
+  { command: 'pipx upgrade ahadiff', labelKey: 'Guide.commands_upgrade' },
   { command: 'ahadiff init', labelKey: 'Guide.commands_init' },
   {
     command: 'ahadiff learn HEAD~1..HEAD',
@@ -92,6 +93,23 @@ const CORE_COMMANDS: ReadonlyArray<CommandEntry> = [
   {
     command: 'ahadiff learn --compare old.py new.py',
     labelKey: 'Guide.commands_learn_compare',
+  },
+  {
+    command: 'ahadiff learn --document notes.md --force-learn',
+    labelKey: 'Guide.commands_learn_document',
+  },
+  {
+    command: 'ahadiff snapshot save before.py --name before-refactor',
+    labelKey: 'Guide.commands_snapshot_save',
+  },
+  { command: 'ahadiff snapshot list', labelKey: 'Guide.commands_snapshot_list' },
+  {
+    command: 'ahadiff learn --snapshot SNAPSHOT_ID --after after.py --force-learn',
+    labelKey: 'Guide.commands_learn_snapshot',
+  },
+  {
+    command: 'ahadiff learn --compare old.py new.py --force-learn --active-practice',
+    labelKey: 'Guide.commands_active_practice',
   },
   {
     command: 'ahadiff learn --compare-dir old/ new/',
@@ -161,6 +179,10 @@ const ADVANCED_COMMANDS: ReadonlyArray<CommandEntry> = [
   {
     command: 'ahadiff regenerate RUN_ID --only quiz',
     labelKey: 'Guide.advanced_regenerate',
+  },
+  {
+    command: 'ahadiff regenerate RUN_ID --only quiz --active-practice',
+    labelKey: 'Guide.advanced_regenerate_active',
   },
   {
     command: 'ahadiff improve-run RUN_ID --candidates 3',

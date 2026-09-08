@@ -18,17 +18,17 @@
   --ink: #1C1B18;
   --ink-2: #38362F;
   --muted: #6A6456;
-  --muted-2: #8F8878;
+  --muted-2: #6A6456;
   --hair: #E6E3D8;
   --accent: #D27050;
-  --accent-ink: #B04E28;
+  --accent-ink: #953E1F;
   --accent-soft: #F4E4D9;
   --add-bg: #E4EFE0;
   --add-fg: #2F6F4F;
   --del-bg: #F6DCD5;
   --del-fg: #A33D2B;
   --success: #2F6F4F;
-  --warning: #B4791F;
+  --warning: #855600;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-serif: "Newsreader", "Noto Serif SC", Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -50,7 +50,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 a { color: var(--accent-ink); text-decoration: none; transition: color .15s; }
-a:hover { color: var(--accent); }
+a:hover { color: var(--accent-ink); }
 img { max-width: 100%; display: block; }
 ::selection { background: var(--accent-soft); color: var(--accent-ink); }
 
@@ -111,7 +111,7 @@ img { max-width: 100%; display: block; }
   border: 1px solid var(--hair); background: var(--elevated);
   color: var(--muted); transition: all .15s; letter-spacing: .04em;
 }
-.lang-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.lang-toggle:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
 
 /* ===== Hero ===== */
 .hero {
@@ -157,7 +157,7 @@ img { max-width: 100%; display: block; }
 .btn-primary {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 28px; border-radius: 10px; font-size: 15px; font-weight: 600;
-  background: var(--accent); color: #fff; border: none; cursor: pointer;
+  background: var(--accent-ink); color: #fff; border: none; cursor: pointer;
   box-shadow: 0 2px 8px -2px rgba(176,78,40,.4);
   transition: all .2s;
 }
@@ -168,7 +168,7 @@ img { max-width: 100%; display: block; }
   background: transparent; color: var(--ink); cursor: pointer;
   border: 1.5px solid var(--hair); transition: all .2s;
 }
-.btn-secondary:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.btn-secondary:hover { border-color: var(--accent-ink); color: var(--accent-ink); transform: translateY(-1px); }
 
 /* Hero diff preview */
 .hero-diff {
@@ -194,12 +194,12 @@ img { max-width: 100%; display: block; }
 .hero-diff-code .line-del { background: var(--del-bg); color: var(--del-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
 .hero-diff-code .line-add { background: var(--add-bg); color: var(--add-fg); padding: 1px 8px; margin: 0 -16px; display: block; }
 .hero-diff-code .line-ctx { color: var(--muted); padding: 1px 8px; margin: 0 -16px; display: block; }
-.hero-diff-code .line-hdr { color: var(--accent); padding: 1px 8px; margin: 0 -16px; display: block; font-weight: 500; }
+.hero-diff-code .line-hdr { color: var(--accent-ink); padding: 1px 8px; margin: 0 -16px; display: block; font-weight: 500; }
 
 /* Arrow between diff and insight */
 .hero-arrow {
   display: flex; justify-content: center; padding: 20px 0;
-  color: var(--accent); font-size: 28px; animation: fadeIn .6s ease .8s both;
+  color: var(--accent-ink); font-size: 28px; animation: fadeIn .6s ease .8s both;
 }
 
 .hero-insight {
@@ -224,13 +224,13 @@ img { max-width: 100%; display: block; }
 }
 .claim-badge.weak { background: #FFF3CD; color: var(--warning); }
 .claim-text { color: var(--ink-2); }
-.claim-ref { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.claim-ref { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); }
 
 /* ===== Problem Section ===== */
 .problem { background: var(--subtle); }
 .section-eyebrow {
   font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 12px;
+  text-transform: uppercase; color: var(--accent-ink); margin-bottom: 12px;
 }
 .section-title {
   font-family: var(--font-serif); font-size: clamp(28px, 4vw, 40px);
@@ -262,7 +262,7 @@ img { max-width: 100%; display: block; }
 }
 .step-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: var(--accent); background: var(--accent-soft);
+  color: var(--accent-ink); background: var(--accent-soft);
   width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
   place-items: center; margin-bottom: 14px;
 }
@@ -275,7 +275,7 @@ img { max-width: 100%; display: block; }
 .step-card p { color: var(--muted); font-size: 13px; line-height: 1.6; }
 .step-arrow {
   position: absolute; top: 50%; right: -12px; transform: translateY(-50%);
-  color: var(--accent); font-size: 18px; z-index: 1;
+  color: var(--accent-ink); font-size: 18px; z-index: 1;
 }
 
 /* ===== Features ===== */
@@ -304,7 +304,7 @@ img { max-width: 100%; display: block; }
   border: 1px solid transparent; transition: all .25s;
   position: relative;
 }
-.arch-layer:hover { border-color: var(--accent); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
+.arch-layer:hover { border-color: var(--accent-ink); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
 .arch-layer:hover .arch-tooltip { opacity: 1; visibility: visible; transform: translateX(0); }
 .arch-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
@@ -403,7 +403,7 @@ img { max-width: 100%; display: block; }
 }
 .start-card .start-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  color: #fff; background: var(--accent);
+  color: #fff; background: var(--accent-ink);
   width: 28px; height: 28px; border-radius: 50%; display: inline-grid;
   place-items: center; margin-bottom: 14px;
 }
@@ -425,7 +425,7 @@ img { max-width: 100%; display: block; }
   background: var(--elevated); border: 1px solid var(--hair);
   color: var(--ink-2); transition: all .15s;
 }
-.badge:hover { border-color: var(--accent); color: var(--accent-ink); }
+.badge:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
 .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .badge-dot.python { background: #3776AB; }
 .badge-dot.react { background: #61DAFB; }
@@ -442,7 +442,7 @@ img { max-width: 100%; display: block; }
 }
 .footer-links { display: flex; justify-content: center; gap: 24px; margin-bottom: 16px; }
 .footer-links a { color: var(--muted); font-weight: 500; }
-.footer-links a:hover { color: var(--accent); }
+.footer-links a:hover { color: var(--accent-ink); }
 .footer-version {
   font-family: var(--font-mono); font-size: 11px;
   color: var(--muted-2); margin-top: 8px;
@@ -561,7 +561,7 @@ img { max-width: 100%; display: block; }
   position:absolute; left: 16px; top: -2px;
   font-family: var(--font-serif); font-style: italic; font-weight: 700;
   font-size: 88px; line-height: 1;
-  color: var(--accent); opacity: .32;
+  color: var(--accent-ink); opacity: .32;
   pointer-events:none;
 }
 .b-pullquote cite{
@@ -617,7 +617,7 @@ img { max-width: 100%; display: block; }
 .b-crown{
   position: absolute; z-index: 0; pointer-events: none;
   font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  color: var(--accent); opacity: .06;
+  color: var(--accent-ink); opacity: .06;
   font-size: clamp(240px, 36vw, 520px); line-height: .82;
   letter-spacing: -0.04em; user-select: none;
 }
@@ -691,7 +691,7 @@ img { max-width: 100%; display: block; }
 .faq-item { background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
 .faq-item summary { cursor: pointer; list-style: none; padding: 18px 22px; font-weight: 600; font-size: 15px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .faq-item summary::-webkit-details-marker { display: none; }
-.faq-item summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent); font-size: 20px; flex: none; }
+.faq-item summary::after { content: "+"; font-family: var(--font-mono); color: var(--accent-ink); font-size: 20px; flex: none; }
 .faq-item[open] summary::after { content: "\2212"; }
 .faq-item .faq-a { padding: 0 22px 20px; color: var(--muted); font-size: 14px; line-height: 1.7; }
 .faq-item .faq-a code { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
@@ -704,6 +704,9 @@ img { max-width: 100%; display: block; }
 @media (forced-colors: active) { .shot, .video-frame, .faq-item, .cmd-table, .start-step { border: 1px solid CanvasText; } }
 @media print { .video-frame { display: none; } .shot, .faq-item, .start-step { box-shadow: none; break-inside: avoid; } }
 
+p a, .g-note a, .start-tip a { text-decoration: underline; text-underline-offset: .15em; }
+.cmp-wrap:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
+
 /* === End theme extensions === */
 
 /* ===== Guide layout ===== */
@@ -712,7 +715,7 @@ img { max-width: 100%; display: block; }
 .guide-toc-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 12px; }
 .guide-toc a { display: block; padding: 7px 12px; border-radius: 8px; font-size: 13.5px; color: var(--muted); border-left: 2px solid transparent; transition: all .15s; }
 .guide-toc a:hover { color: var(--ink); background: var(--subtle); }
-.guide-toc a.is-active { color: var(--accent-ink); border-left-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.guide-toc a.is-active { color: var(--accent-ink); border-left-color: var(--accent-ink); background: var(--accent-soft); font-weight: 600; }
 .guide-main { min-width: 0; }
 .guide-hero { border-bottom: 1px solid var(--hair); padding-bottom: 28px; margin-bottom: 8px; }
 .guide-hero h1 { font-family: var(--font-serif); font-size: clamp(36px, 5vw, 56px); font-weight: 600; letter-spacing: -.02em; line-height: 1.08; margin: 10px 0 14px; }
@@ -738,7 +741,7 @@ img { max-width: 100%; display: block; }
   .guide-toc { position: static; max-height: none; overflow-y: visible; overflow-x: hidden; min-width: 0; max-width: 100%; margin-bottom: 28px; border-bottom: 1px solid var(--hair); padding-bottom: 14px; }
   .guide-toc-list { display: flex; gap: 8px; min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
   .guide-toc a { white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; }
-  .guide-toc a.is-active { border-left: none; border-bottom-color: var(--accent); }
+  .guide-toc a.is-active { border-left: none; border-bottom-color: var(--accent-ink); }
 }
 @media print { .topnav, .guide-toc, .b-grain { display: none; } .guide-layout { display: block; padding-top: 0; } }
 @media (forced-colors: active) { .guide-toc a.is-active { border-left-color: CanvasText; } }
@@ -797,7 +800,7 @@ img { max-width: 100%; display: block; }
 .claim-badge.verified{ background: var(--add-bg); color: var(--add-fg); border: 2px solid var(--add-fg); border-radius: 4px; transform: rotate(-3deg); }
 .claim-badge.not_proven{ background: var(--subtle); color: var(--muted); border: 1px dotted var(--muted); }
 .claim-badge.contradicted{ background: var(--del-bg); color: var(--del-fg); border: 1px solid var(--del-fg); }
-.claim-badge.rejected{ background: var(--del-bg); color: var(--del-fg); border: 1px dashed var(--del-fg); text-decoration: line-through; opacity: .78; }
+.claim-badge.rejected{ background: var(--del-bg); color: var(--del-fg); border: 1px dashed var(--del-fg); text-decoration: line-through; opacity: 1; }
 .claim-legend .claim-badge.weak{ background: #FBF1DD; color: var(--warning); border: 1px dashed var(--warning); }
 @media (max-width: 760px){ .claim-legend{ grid-template-columns: repeat(2, 1fr); } }
 
@@ -838,7 +841,7 @@ img { max-width: 100%; display: block; }
 .mini-step{ position: relative; flex: 1 1 160px; min-width: 150px; background: var(--accent-softer); border: 1px solid var(--hair-strong); border-radius: 10px; padding: 14px 14px 14px 42px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
 .mini-step::before{ counter-increment: mf; content: counter(mf); position: absolute; left: 12px; top: 12px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-ink); color: #fff; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
 .mini-step code{ font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
-.mini-arrow{ display: grid; place-items: center; color: var(--accent); font-size: 18px; flex: 0 0 auto; max-width: 100%; }
+.mini-arrow{ display: grid; place-items: center; color: var(--accent-ink); font-size: 18px; flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 600px){ .mini-arrow{ transform: rotate(90deg); } }
 
 /* ---- Folder tree ---- */
@@ -853,7 +856,7 @@ img { max-width: 100%; display: block; }
 .tab-btns{ display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--hair); margin-bottom: 14px; }
 .tab-btn{ font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--muted); background: transparent; border: none; border-bottom: 2px solid transparent; padding: 8px 14px; cursor: pointer; transition: color .15s, border-color .15s; }
 .tab-btn:hover{ color: var(--ink); }
-.tab-btn.is-active{ color: var(--accent-ink); border-bottom-color: var(--accent); }
+.tab-btn.is-active{ color: var(--accent-ink); border-bottom-color: var(--accent-ink); }
 .tab-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .tab-panel[hidden]{ display: none; }
 
@@ -912,7 +915,7 @@ img { max-width: 100%; display: block; }
       <a href="#export" data-nav>Export</a>
       <a href="#features" data-nav>Capabilities</a>
       <a href="#faq" data-nav>FAQ</a>
-      <a href="#about" data-nav>About</a>
+      <a href="#about" data-nav>Platforms</a>
       <a href="./index.html">Home</a>
       <a class="lang-toggle" href="./USER_GUIDE.zh.html" hreflang="zh-CN">中 / EN</a>
     </div>
@@ -932,40 +935,41 @@ img { max-width: 100%; display: block; }
       <a href="#export">Export &amp; Share</a>
       <a href="#features">Capabilities</a>
       <a href="#faq">FAQ</a>
-      <a href="#about">About</a>
+      <a href="#about">Platforms and releases</a>
     </nav>
   </aside>
 
   <main class="guide-main">
     <!-- ===== Hero ===== -->
     <div class="guide-hero">
-      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.3.8</span></div>
+      <div class="b-eyebrow"><span>AhaDiff User Guide &middot; v1.4.0</span></div>
       <h1>AhaDiff User Guide</h1>
-      <p class="guide-lead">Learn from your own fixes, a colleague's edits, or AI-generated changes. Choose <strong>Git changes</strong>, <strong>Two files</strong>, <strong>Paste a diff</strong>, <strong>Saved snapshot</strong>, or <strong>One Markdown document</strong>, then read a lesson, inspect its evidence, and practice with quizzes and review. Your workspace keeps learning history under <code>.ahadiff/</code>; file, patch, snapshot, and document learning also work without a Git repository.</p>
-      <div class="g-note">Source update, 2026-09-08: the five-source entry points, durable snapshots, format anchors, review notes, and active transfer practice are current source changes, pending publication. The version remains 1.3.8. Published installs can use the existing CLI <code>--compare</code> and <code>--patch</code> paths; build a checkout containing these changes for the new UI.</div>
-      <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> English walkthrough (YouTube)</a>; <a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> Chinese walkthrough (Bilibili)</a>. Each video uses the matching UI language with burned-in subtitles; intermediate subtitle source files are not shipped in the public docs tree. The videos show an earlier interface. Use the steps below for the current source workflow. We recommend the isolated <code>pipx install ahadiff</code> for a published install.</div>
+      <p class="guide-lead">Learn from your own fixes, a colleague's edits, AI-generated changes, or one Markdown document. Choose a source, preview it, then read the lesson beside its evidence and practice with quizzes and review. Your working folder keeps the learning history under <code>.ahadiff/</code>. File, patch, snapshot, and document learning work without Git.</p>
+      <div class="g-note">New in 1.4.0: <a href="#snapshots">saved snapshots</a>, <a href="#document-learning">Markdown document learning</a>, <a href="#format-evidence">format citations</a>, <a href="#review-context">review notes</a>, <a href="#transfer-practice">active transfer practice</a>, and clearer <a href="#model-controls">model controls</a>.</div>
+      <div class="start-tip">Video tutorials: <a href="https://youtu.be/lvL7GMvDPvI">English walkthrough (YouTube)</a> · <a href="https://www.bilibili.com/video/BV1b57k6yEWm">Chinese walkthrough (Bilibili)</a>. The videos and screenshots show an earlier interface. Follow this guide for the current steps.</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
     <section id="quickstart">
       <div class="section-eyebrow">Getting started</div>
       <h2>1. Quick Start</h2>
-      <p>Install the CLI, open its local WebUI in your working folder, and configure one provider. You can start from two file versions, a saved baseline, or one Markdown document without creating a repository or installing an AI agent integration.</p>
+      <p>Install AhaDiff, open the local WebUI in your working folder, and add a provider. Start with two file versions, a saved baseline, or one Markdown document; none needs a Git repository or AI tool integration.</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>Install</h3>
-          <p>Install the CLI and bundled WebUI in an isolated environment with <code>pipx</code> (recommended). <code>uv tool install ahadiff</code> works the same way; neither needs a git clone. <code>pip install ahadiff</code> is fine inside a venv or conda env. On a Homebrew or system Python a bare <code>pip install</code> trips externally-managed-environment, so use <code>pipx</code> or <code>uv tool</code> instead.</p>
+          <p>Install the CLI and bundled WebUI with pipx or uv tool. Neither needs a source checkout. Inside a virtual environment or conda environment, <code>python -m pip install ahadiff</code> also works. If pip reports <code>externally-managed-environment</code>, choose an isolated installer.</p>
           <div class="code-block"><span class="cmd">pipx install ahadiff
-ahadiff --version</span></div>
+# or: uv tool install ahadiff
+ahadiff --version
+# ahadiff 1.4.0</span></div>
         </div>
         <div class="g-card">
-          <h3>Build the current source</h3>
-          <p>In a checkout containing these source changes, install the locked dependencies and build the WebUI.</p>
-          <div class="code-block"><span class="cmd">uv sync --locked --dev
-pnpm --dir viewer install --frozen-lockfile
-pnpm --dir viewer build
-uv tool install --editable .
+          <h3>Update an existing installation</h3>
+          <p>Stop the AhaDiff server, back up the working folder's <code>.ahadiff/</code>, and update with the same installer. Restart <code>ahadiff serve</code> afterward. Keep the backup private: it can contain source excerpts and keys.</p>
+          <div class="code-block"><span class="cmd">pipx upgrade ahadiff
+# or: uv tool upgrade ahadiff
 ahadiff --version</span></div>
+          <p>For pip inside a virtual environment: <code>python -m pip install --upgrade ahadiff</code>.</p>
         </div>
       </div>
       <h3>Open your working folder</h3>
@@ -990,7 +994,7 @@ ahadiff --version</span></div>
         <div class="mini-arrow" aria-hidden="true">&rarr;</div>
         <div class="mini-step">Read <strong>Lesson</strong>, inspect <strong>Diff</strong>, and answer <strong>Quiz</strong>. Return to <strong>Review</strong> for due cards.</div>
       </div>
-      <p class="g-lead">The same run links these pages together. Save a snapshot explicitly before editing, or choose one Markdown document for a document lesson. No automatic snapshots, PDF ingestion, or web-page capture are part of this pilot. Agent installation is optional.</p>
+      <p class="g-lead">The same run links these pages together. Save a snapshot explicitly before editing, or choose one Markdown document for a document lesson. Snapshots require an explicit save. PDF ingestion and web-page capture are not available. AI tool integration is optional.</p>
       <details class="faq-item"><summary>Optional CLI setup inside an existing Git repository</summary><div class="faq-a">
         <p>Only use these commands inside a Git repository. Ordinary folders start with <code>ahadiff serve</code>; the CLI <code>init</code> and <code>doctor</code> commands still require Git repository metadata.</p>
         <div class="code-block"><span class="cmd">ahadiff init
@@ -1032,85 +1036,56 @@ ahadiff config show --resolved</span></div>
     <section id="provider">
       <div class="section-eyebrow">Setup</div>
       <h2>2. Configure a Provider</h2>
-      <p>After the environment is ready, configure one LLM provider before generating a lesson. An AI coding agent is optional. There are two setup paths. From the CLI, the key goes in an environment variable and you hand AhaDiff only the variable name. From the WebUI Settings, you paste the plaintext key and AhaDiff stores it for you (see "How the WebUI stores your key" below). Either way, no key ever lands in Git, the README, manifests, or checked-in scripts.</p>
-
-      <h3>What <code>provider test</code> does</h3>
-      <div class="mini-flow">
-        <div class="mini-step">Probe the model with a small request.</div>
-        <div class="mini-arrow" aria-hidden="true">&rarr;</div>
-        <div class="mini-step">On success, save the provider to <code>.ahadiff/config.toml</code>.</div>
-        <div class="mini-arrow" aria-hidden="true">&rarr;</div>
-        <div class="mini-step">Fail closed if the key env-var is unset.</div>
-      </div>
-
-      <p class="g-lead">Accepted key env-var <strong>names</strong> in repo config:</p>
-      <div class="badges" style="justify-content:flex-start">
-        <span class="badge mono">AHADIFF_PROVIDER_API_KEY</span>
-        <span class="badge mono">OPENAI_API_KEY</span>
-        <span class="badge mono">ANTHROPIC_API_KEY</span>
-        <span class="badge mono">GEMINI_API_KEY</span>
-        <span class="badge mono">AZURE_OPENAI_API_KEY</span>
-      </div>
-
-      <div class="g-cards">
-        <div class="g-card">
-          <h3>Name</h3>
-          <p><code>--api-key-env</code> is the variable NAME. An identifier-shaped value fails closed when the variable is unset, so a name is never sent as a bearer token by accident.</p>
-        </div>
-        <div class="g-card">
-          <h3>Secret</h3>
-          <p>On this CLI path the real key stays in your shell environment and never goes in a flag. The WebUI path is different: it writes the plaintext key to <code>.ahadiff/.env</code> (see below). Both ways keep the key out of Git.</p>
-        </div>
-      </div>
-
-      <h3>Provider setup</h3>
-      <p>Run <code>ahadiff serve</code> and add a provider in Settings (the card previews model limits before you save, with no remote call and no key read), or run one <code>provider test</code> from the matching tab below.</p>
-      <div class="tabset" aria-label="Provider setup variants">
+      <p>Open <strong>Settings</strong> and add a local or remote provider. Choose the API protocol, base URL, and a model your account or local server can use. Select the generation provider and model; the optional judge can use a different pair. A saved configuration is not proof of a working connection, so check the test result before starting a lesson.</p>
+      <p>A model-limit preview reads local configuration and registry data without contacting the provider. Testing a provider sends a small real request and may incur a charge. Remote generation requires <code>redacted_remote</code> or <code>explicit_remote</code>; the default is <code>strict_local</code>.</p>
+      <h3>Configure from the terminal</h3>
+      <p>The examples below test a provider and save its configuration after a successful probe. Replace the base URL and model placeholders with values from your service. <code>--api-key-env</code> takes an environment-variable name. Keep the key in that variable for later CLI calls, or save it through Settings.</p>
+      <div class="tabset" role="group" aria-label="Provider setup variants">
         <div class="tab-btns" role="tablist" aria-label="Provider setup">
-          <button class="tab-btn" role="tab" id="ptab-openai" aria-controls="ppanel-openai" data-tab="openai">OpenAI (default)</button>
-          <button class="tab-btn" role="tab" id="ptab-gpt55" aria-controls="ppanel-gpt55" data-tab="gpt55">Responses/API example</button>
-          <button class="tab-btn" role="tab" id="ptab-deepseek" aria-controls="ppanel-deepseek" data-tab="deepseek">DeepSeek BYOK</button>
-          <button class="tab-btn" role="tab" id="ptab-local" aria-controls="ppanel-local" data-tab="local">Local (Ollama / LM Studio)</button>
+          <button class="tab-btn" role="tab" id="ptab-openai" aria-controls="ppanel-openai" data-tab="openai">OpenAI Chat</button>
+          <button class="tab-btn" role="tab" id="ptab-gpt55" aria-controls="ppanel-gpt55" data-tab="gpt55">OpenAI Responses</button>
+          <button class="tab-btn" role="tab" id="ptab-deepseek" aria-controls="ppanel-deepseek" data-tab="deepseek">DeepSeek</button>
+          <button class="tab-btn" role="tab" id="ptab-local" aria-controls="ppanel-local" data-tab="local">Local</button>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-openai" aria-labelledby="ptab-openai" data-tab="openai">
-          <p>Export your key and provider base URL, then run one probe.</p>
-          <div class="code-block"><span class="cmd">export OPENAI_API_KEY="&lt;your-provider-api-key&gt;"
+          <p>For OpenAI Chat Completions. macOS/Linux shell example:</p>
+          <div class="code-block"><span class="cmd">export AHADIFF_PROVIDER_API_KEY="&lt;your-provider-api-key&gt;"
 export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
 ahadiff provider test \
-  --name default \
+  --name remote \
   --provider-class openai \
   --base-url "$AHADIFF_PROVIDER_BASE_URL" \
-  --api-key-env OPENAI_API_KEY</span></div>
-        </div>
-        <div class="tab-panel" role="tabpanel" id="ppanel-gpt55" aria-labelledby="ptab-gpt55" data-tab="gpt55">
-          <p>Read the key without echoing it, then probe a Responses/API provider example. On macOS / Linux:</p>
-          <div class="code-block"><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
-read -rsp "Provider API key: " AHADIFF_PROVIDER_API_KEY; export AHADIFF_PROVIDER_API_KEY; printf '\n'
-
-ahadiff provider test \
-  --name gpt55 \
-  --provider-class openai_responses \
-  --base-url "$AHADIFF_PROVIDER_BASE_URL" \
-  --model gpt-5.5 \
+  --model "&lt;model-id&gt;" \
   --api-key-env AHADIFF_PROVIDER_API_KEY \
   --privacy-mode explicit_remote</span></div>
-          <p>On Windows PowerShell, read it with <code>Read-Host -AsSecureString</code>:</p>
+          <p>For an OpenAI-compatible gateway, use <code>--provider-class openai_compat</code> unless the service documents a more specific supported protocol.</p>
+        </div>
+        <div class="tab-panel" role="tabpanel" id="ppanel-gpt55" aria-labelledby="ptab-gpt55" data-tab="gpt55">
+          <p>For a Responses endpoint. This macOS/Linux command reads the key without echoing it:</p>
+          <div class="code-block"><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
+export AHADIFF_PROVIDER_API_KEY="$(python3 -c 'import getpass; print(getpass.getpass("Provider API key: "))')"
+ahadiff provider test \
+  --name remote \
+  --provider-class openai_responses \
+  --base-url "$AHADIFF_PROVIDER_BASE_URL" \
+  --model "&lt;model-id&gt;" \
+  --api-key-env AHADIFF_PROVIDER_API_KEY \
+  --privacy-mode explicit_remote</span></div>
+          <p>Windows PowerShell:</p>
           <div class="code-block"><span class="cmd">$env:AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"
 $secure = Read-Host "Provider API key" -AsSecureString
 $env:AHADIFF_PROVIDER_API_KEY = [System.Net.NetworkCredential]::new("", $secure).Password
-
 ahadiff provider test `
-  --name gpt55 `
+  --name remote `
   --provider-class openai_responses `
   --base-url $env:AHADIFF_PROVIDER_BASE_URL `
-  --model gpt-5.5 `
+  --model "&lt;model-id&gt;" `
   --api-key-env AHADIFF_PROVIDER_API_KEY `
   --privacy-mode explicit_remote</span></div>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-deepseek" aria-labelledby="ptab-deepseek" data-tab="deepseek">
-          <p>Use <code>openai_compat</code> for the official DeepSeek API so structured output uses JSON object mode. DeepSeek v4 flash/pro also expose the Thinking Level control after Settings preview confirms support; <code>none</code> disables thinking, while <code>low</code>, <code>medium</code>, and <code>high</code> all map to the API's high effort. A global-scope DeepSeek provider is valid in Settings Save, learn, and improve preflight without copying it into each repo.</p>
+          <p>Use <code>openai_compat</code> for the official DeepSeek API. The example uses JSON object output mode.</p>
           <div class="code-block"><span class="cmd">export DEEPSEEK_API_KEY="&lt;your-deepseek-api-key&gt;"
-
 ahadiff provider test \
   --name deepseek \
   --provider-class openai_compat \
@@ -1120,80 +1095,40 @@ ahadiff provider test \
   --privacy-mode explicit_remote</span></div>
         </div>
         <div class="tab-panel" role="tabpanel" id="ppanel-local" aria-labelledby="ptab-local" data-tab="local">
-          <p>Point at a local OpenAI-compatible server. Ollama and LM Studio expose their own base URLs.</p>
+          <p>Start LM Studio's local server and load a model first. Replace the model ID below; change the URL if you use a different port. A local server without authentication does not need a key.</p>
           <div class="code-block"><span class="cmd">ahadiff provider test \
   --name local \
   --provider-class lmstudio \
-  --base-url "$LOCAL_PROVIDER_BASE_URL" \
-  --api-key-env AHADIFF_PROVIDER_API_KEY</span></div>
+  --base-url http://127.0.0.1:1234/v1 \
+  --model "&lt;loaded-model-id&gt;"</span></div>
+          <p>For Ollama, use <code>--provider-class ollama --base-url http://127.0.0.1:11434</code> and a model you have pulled.</p>
         </div>
       </div>
-
-      <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/en/en-settings.png" alt="Settings: providers, privacy, audit, preferences, and project-level AI tool guidance." width="3840" height="1892" />
-        <figcaption class="shot-cap">Settings: configuration and diagnostics.</figcaption>
-        <ol class="shot-legend">
-          <li>Left settings rail: Account, Provider, Capture, Privacy, Audit.</li>
-          <li>Privacy Controls: privacy mode, local-only, redaction gate, audit log.</li>
-          <li>Server section with the serve port field and a Save button.</li>
-        </ol>
-      </figure>
-
-      <h3>How the WebUI stores your key</h3>
-      <p>In Settings you paste the plaintext key directly into the API Key field; you do not type a variable name there. AhaDiff then:</p>
+      <h3 id="model-controls">Model limits and thinking</h3>
       <ul>
-        <li>Generates a unique reference name shaped like <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>. Uniqueness avoids names already in your system environment and names already in <code>.ahadiff/.env</code>, adding a numeric suffix on a clash (for example <code>AHADIFF_DEMO_2_KEY</code>).</li>
-        <li>Writes the plaintext key only into the repo-local <code>.ahadiff/.env</code> file. On POSIX the file is <code>chmod 0600</code>; on Windows <code>chmod</code> is not equivalent to a POSIX owner-only ACL, so it is best-effort and not strong isolation.</li>
-        <li>Makes sure the secret patterns (<code>.env</code>, <code>.env.*</code>, <code>audit.private.jsonl</code>, <code>*.lock</code>, and <code>*.log</code>) stay git-ignored: it creates <code>.ahadiff/.gitignore</code> if it is missing, and if you already have one it appends only the missing secret lines (your existing lines are preserved). If that <code>.gitignore</code> is a symlink, hardlink, reparse point, or cannot be opened safely, saving is rejected instead of writing the key. Either way the key file is ignored by a normal <code>git add</code> (a forced <code>git add -f</code> could still override it).</li>
-        <li>Stores only the reference name in <code>config.toml</code> (<code>api_key_env</code> equals <code>AHADIFF_&lt;ALIAS&gt;_KEY</code>); the plaintext is never written to <code>config.toml</code>.</li>
-        <li>When you save with an API key in the field, probes the provider to validate connectivity. This is best-effort: a failed probe does not block the save, and the UI shows the validation result. Updating an existing provider with the key field left blank keeps the current key and skips the probe (verification is empty).</li>
+        <li><strong>Model default</strong> leaves thinking behavior to the provider. <strong>Off</strong> requests disabled thinking only on supported models and endpoints. Other models may offer effort levels, an on/off toggle, or no thinking control.</li>
+        <li>Leave the output limit empty for Auto. AhaDiff warns when it reduces a value to a known maximum. Unknown or deployment-specific limits stay estimates; a cloud limit does not establish your local server's capacity.</li>
+        <li>Generation and judge limits resolve separately. Select a limits profile only when it matches the endpoint you use. If you change models, review any explicit thinking setting before saving.</li>
+        <li>Keep shared providers in global configuration if you use several workspaces. A workspace provider with the same alias takes precedence. A model listing confirms its name, not your account's inference access.</li>
       </ul>
-      <p>On startup, both <code>serve</code> and the CLI load <code>.ahadiff/.env</code> into the process environment. If a variable with the same name already exists in the system environment, the system value takes precedence and is not overwritten.</p>
-      <p>Deleting a provider cleans up its entry in <code>.ahadiff/.env</code>, but only unreferenced entries that use the AhaDiff-reserved <code>AHADIFF_</code> prefix. System or shared env names (such as <code>OPENAI_API_KEY</code>), and names still referenced by another provider, are left untouched. Cleanup keys off the <code>AHADIFF_</code> prefix and the reference count, not a record of which line AhaDiff authored, so keep that prefix reserved for AhaDiff and avoid hand-authoring your own <code>AHADIFF_*</code> variables in <code>.ahadiff/.env</code>.</p>
-      <p>The CLI path is unchanged: <code>ahadiff provider test --api-key-env NAME</code> still uses an environment-variable name, and it can now also resolve a reference name from <code>.ahadiff/.env</code>. An identifier-shaped value that is not a set environment variable fails closed (it is not sent as a literal key); a value containing dashes is used as a literal key.</p>
-      <p><strong>Windows note:</strong> the local <code>.ahadiff/.env</code> is protected by NTFS folder permissions rather than POSIX <code>0600</code>. For stricter handling, point <code>api_key_env</code> at a real OS environment variable (it takes precedence and is never written to <code>.ahadiff/.env</code>). For at-rest protection, use full-disk encryption such as BitLocker (or FileVault on macOS).</p>
-
-      <h3>Registry context example</h3>
-      <div class="cmp2">
-        <div class="cmp2-col">
-          <h4>openai</h4>
-          <div class="cmp2-big">&asymp;400k</div>
-          <div class="cmp2-sub">context budget for ordinary <code>openai</code> access</div>
-        </div>
-        <div class="cmp2-vs">vs</div>
-        <div class="cmp2-col">
-          <h4>openai_responses / API</h4>
-          <div class="cmp2-big">&asymp;1.05M</div>
-          <div class="cmp2-sub">context budget on Responses / API access</div>
-        </div>
-      </div>
-      <p class="cmp2-foot">For <code>gpt-5.5</code>, the bundled registry keeps these two context profiles. A trustworthy live probe can override either profile when the endpoint reports a real total context.</p>
-
-      <p>Once configured, your single repo or global provider (or the generate provider/model you pick in Settings) is used by <code>ahadiff learn</code> automatically. A repo provider with the same alias overrides the global alias. Pass <code>--provider</code> / <code>--model</code> only to override one run.</p>
-      <div class="code-block"><span class="cmd">ahadiff learn --last</span></div>
-
-      <h3>How a saved <code>max_output_tokens</code> is treated</h3>
-      <div class="g-cards">
-        <div class="g-card">
-          <h3>Empty &rarr; Auto</h3>
-          <p>No value means AhaDiff sizes the output limit for you.</p>
-        </div>
-        <div class="g-card">
-          <h3>Trusted hard max</h3>
-          <p>A known, trusted ceiling is clamped on save and returns a warning.</p>
-        </div>
-        <div class="g-card">
-          <h3>Unknown / low-confidence / route-specific / local-runtime</h3>
-          <p>These stay warnings only. They are not treated as a hard guarantee.</p>
-        </div>
-      </div>
-
+      <h3>Where the key is stored</h3>
+      <p>Paste the key itself into the API Key field in Settings. AhaDiff writes it to the selected scope’s <code>.env</code> and stores only a reference in <code>config.toml</code>. Workspace providers use <code>.ahadiff/.env</code>; global providers use the directory below. Back up global configuration separately from your learning history. Workspace ignore rules keep the key file out of an ordinary <code>git add</code>. Keep key files out of shared archives. A system environment variable with the same name takes precedence.</p>
+      <div class="cmp-wrap" tabindex="0"><table class="cmp-table">
+        <thead><tr><th>Platform</th><th>Global key file</th></tr></thead>
+        <tbody>
+          <tr><td>macOS</td><td><code>~/Library/Application Support/ahadiff/.env</code></td></tr>
+          <tr><td>Linux</td><td><code>${XDG_CONFIG_HOME:-~/.config}/ahadiff/.env</code></td></tr>
+          <tr><td>Windows</td><td><code>%APPDATA%/ahadiff/.env</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>Leave an existing provider's key field blank to retain its key. Saving a new key can test the connection, but a failed test does not undo the saved configuration; inspect the result. Removing a provider cleans up unreferenced keys using the reserved <code>AHADIFF_</code> prefix. Do not use that prefix for unrelated entries in the local key file.</p>
+      <p>On macOS/Linux the key file uses owner-only permissions. On Windows, protect the folder with NTFS permissions. For OS-managed credentials, set <code>api_key_env</code> to an environment variable instead of pasting a key.</p>
       <details class="faq-item">
-        <summary>Local server reports the wrong JSON capability?</summary>
+        <summary>Advanced: a gateway's JSON capability differs from the default</summary>
         <div class="faq-a">
-          <p>Set only known boolean overrides in <code>.ahadiff/config.toml</code>. NewAPI defaults to <code>supports_native_json_schema=false</code>; if your gateway supports native JSON schema, add the override.</p>
-          <div class="code-block"><span class="cmd">[providers.local.capability_overrides]
-supports_native_json_schema = false</span></div>
+          <p>Use boolean capability overrides only after confirming what your endpoint accepts. For example, NewAPI defaults to JSON object mode. If your gateway supports native JSON schema, enable it under that provider alias:</p>
+          <div class="code-block"><span class="cmd">[providers.my_gateway.capability_overrides]
+supports_native_json_schema = true</span></div>
         </div>
       </details>
     </section>
@@ -1216,7 +1151,7 @@ supports_native_json_schema = false</span></div>
           <p>Read the Lesson for the explanation, jump to Diff for the evidence, take the Quiz to check understanding, and use Review for spaced repetition.</p>
         </div>
       </div>
-      <p class="g-lead">Prefer the terminal? These existing CLI modes use the same learning pipeline. File and patch paths must stay inside your workspace; Git modes require a repository. Use <code>--force-learn</code> when you want to study a small exercise.</p>
+      <p class="g-lead">Prefer the terminal? These CLI modes use the same learning pipeline. File and patch paths must stay inside your workspace; Git modes require a repository. Use <code>--force-learn</code> when you want to study a small exercise.</p>
       <div class="cap-grid">
         <div class="cap-group">
           <span class="cap-group-label">Quick (working tree)</span>
@@ -1250,7 +1185,7 @@ supports_native_json_schema = false</span></div>
         </div>
       </div>
       <div class="badges" style="justify-content:flex-start">
-        <span class="badge">10 existing diff capture modes</span>
+        <span class="badge">Git, patch, and file capture modes</span>
         <span class="badge">Files and pasted patches can start without a repository</span>
         <span class="badge">Path scope: working-tree modes only &middot; repo-relative paths</span>
       </div>
@@ -1287,7 +1222,7 @@ supports_native_json_schema = false</span></div>
         <li>On a later visit, select <strong>Use baseline</strong> and choose the file after editing. Preview the comparison, then start learning.</li>
         <li>To remove a baseline, select <strong>Delete snapshot</strong> and confirm the named item. Existing runs and source files remain intact.</li>
       </ol>
-      <div class="code-block"><span class="cmd">ahadiff snapshot save before.md --name "Before editing" --repo-root .
+      <div class="code-block"><span class="cmd">ahadiff snapshot save before.md --name before-edit --repo-root .
 ahadiff snapshot list --repo-root .
 ahadiff snapshot show SNAPSHOT_ID --expected-hash CONTENT_HASH --repo-root .
 ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.md --force-learn</span></div>
@@ -1299,7 +1234,7 @@ ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.
       <h3 id="document-learning">Learn from one Markdown document</h3>
       <p>Choose <strong>One Markdown document</strong>, select a single UTF-8 <code>.md</code> or <code>.markdown</code> file of at most 256 KiB, preview its original text after filtering, and start learning.</p>
       <div class="code-block"><span class="cmd">ahadiff learn --document reading.md</span></div>
-      <p>The independent <code>document</code> source stores <code>document.md</code> and section/paragraph anchors. The evidence page displays original lines without add/delete markers; Lesson, Quiz, and Review keep their normal run links. This mode has no diff-spec alignment. Diff Coverage and change-novelty Learnability are N/A / <code>0/0</code> and excluded from its overall score; validated document-anchor coverage has its own hard gate. PDFs, URLs, and multiple-document collections need separate input contracts and are not accepted here.</p>
+      <p>The independent <code>document</code> source stores <code>document.md</code> and section/paragraph anchors. The evidence page displays original lines without add/delete markers; Lesson, Quiz, and Review keep their normal run links. This mode has no diff-spec alignment. Diff Coverage and change-novelty Learnability are N/A / <code>0/0</code> and excluded from its overall score; A required coverage check looks for evidence in the document’s body text. If the document contains only headings, the check uses those headings instead. Quoting headings alone does not cover a document that has body text. This mode accepts one local Markdown file; it does not accept PDFs, URLs, or document collections.</p>
       <div class="g-note">A verified quotation means the document contains that text at that location. An explanation of its meaning is a semantic judgment. A claim about an external fact or runtime effect needs evidence beyond the document.</div>
 
       <h3 id="review-context">Add human review notes</h3>
@@ -1308,7 +1243,7 @@ ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.
       <p>Notes are limited to 8 KiB of UTF-8 text, filtered as untrusted input, and labeled as auxiliary context. They do not produce evidence locations or replace counterevidence. The run records their use and content hash. Draft text stays out of task retry summaries; editing it invalidates the earlier preview. Do not include credentials.</p>
 
       <h3 id="format-evidence">Read format-specific evidence</h3>
-      <div class="cmp-wrap"><table class="cmp-table">
+      <div class="cmp-wrap" tabindex="0"><table class="cmp-table">
         <thead><tr><th>Input</th><th>Locator</th><th>What to inspect</th></tr></thead>
         <tbody>
           <tr><td>Markdown</td><td>Heading path and paragraph</td><td>Quoted text, line range, and content hash</td></tr>
@@ -1319,7 +1254,7 @@ ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.
       </table></div>
       <p>The dedicated format index is limited to 4,096 anchors. A large diff can show a partial-index warning while its existing hunk evidence remains usable. A standalone document above this structural limit is rejected, so a partial document is not presented as a complete evidence basis.</p>
       <p>Open a claim's source anchor to see its side, location, quote, and hash. Moving or renaming different content does not preserve its evidence identity. Existing runs with only hunk evidence remain readable. A declared new source artifact that is missing, corrupted, or inconsistent is rejected rather than treated as verified text.</p>
-      <p>Long-running CLI commands show Rich status while they run. Treat that as terminal feedback, not a machine-readable output contract.</p>
+      <p>Long-running commands show progress in the terminal. Wait for the final run ID before opening the result.</p>
     </section>
 
     <!-- ===== 4. Use the WebUI ===== -->
@@ -1329,7 +1264,7 @@ ahadiff learn --snapshot SNAPSHOT_ID --snapshot-hash CONTENT_HASH --after after.
       <p>Run one of these to open the local React SPA. <code>serve</code> opens a browser by default; add <code>--no-browser</code> to keep it headless, or <code>--watch</code> to auto-learn when files change in a Git working tree.</p>
       <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # file watcher, included by default</span></div>
+ahadiff serve --watch</span></div>
 
       <h3>Workflow at a glance</h3>
       <div class="g-rail">
@@ -1341,11 +1276,11 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
       </div>
 
       <h3>Page map</h3>
-      <div class="cmp-wrap">
+      <div class="cmp-wrap" tabindex="0">
         <table class="cmp-table">
           <thead><tr><th>Page</th><th>What it's for</th></tr></thead>
           <tbody>
-            <tr><td><code>/welcome</code></td><td>Choose Git changes, Two files, or Paste a diff; open your latest lesson.</td></tr>
+            <tr><td><code>/welcome</code></td><td>Choose Git changes, Two files, Paste a diff, Saved snapshot, or One Markdown document; open your latest lesson.</td></tr>
             <tr><td><code>/onboarding</code></td><td>Open a working folder, configure a provider, check diagnostics, and start your first lesson. Agent setup is optional.</td></tr>
             <tr><td><code>/</code></td><td>Dashboard: latest runs, KPIs, ratchet trends, and review activity.</td></tr>
             <tr><td><code>/run/:runId</code></td><td>Run detail: Overview, Score, Judge, Artifacts. If the optional LLM judge fails, the Judge tab shows a redacted failure panel instead of raw provider output.</td></tr>
@@ -1374,7 +1309,7 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
           <li><code>.continue/rules/ahadiff.md</code></li>
           <li><code>.cursor/rules/ahadiff.mdc</code></li>
         </ul>
-        Repo guidance sections still live in user-managed files such as <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code>, and <code>.github/copilot-instructions.md</code>. This repository ignores generated <code>.agents/</code> installs so local Codex / Antigravity skill output is not committed by default. Common Commands covers the hooks target and MCP registration.</div>
+        Repo guidance sections still live in user-managed files such as <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>GEMINI.md</code>, and <code>.github/copilot-instructions.md</code>. Common Commands covers the hooks target and MCP registration.</div>
 
       <figure class="shot-fig">
         <img loading="lazy" src="./video/public/screenshots/en/en-dashboard.png" alt="Dashboard: recent runs, scores, pass rate, ratchet trends, and review activity." width="3840" height="1892" />
@@ -1388,7 +1323,7 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
       </figure>
 
       <h3>Claims and the diff</h3>
-      <p class="g-lead">Every claim links to <strong>file:line</strong> evidence and carries one of five badges. Glyphs and semantics are the product's real ones; the hues are mapped to this page's palette.</p>
+      <p class="g-lead">Open a claim to inspect its source location and evidence status. The five states below describe what AhaDiff could establish from the captured material.</p>
       <div class="claim-legend">
         <div class="cl-item">
           <span class="claim-badge verified"><span class="cb-glyph">&#10003;</span> verified</span>
@@ -1444,12 +1379,12 @@ ahadiff serve --watch   # file watcher, included by default</span></div>
       <div class="code-block"><span class="cmd">ahadiff learn --document reading.md --active-practice
 ahadiff learn --compare before.py after.py --active-practice --force-learn
 ahadiff regenerate RUN_ID --only quiz --active-practice</span></div>
-      <p><code>regenerate</code> replaces the selected run's quiz/cards, recomputes its deterministic score, and reseals the artifact checksums. Without either practice flag it preserves that run's mode; <code>--mixed-practice</code> explicitly selects a mixed quiz. It invalidates old Judge results without automatically rerunning the judge. Select the run whose quiz you intend to replace. Learning and regeneration use your configured provider/privacy policy; preview itself makes no model call.</p>
+      <p><code>regenerate</code> replaces this run’s quiz and cards, recomputes the score, and clears the old Judge result. It does not rerun the judge. Without a practice flag it keeps the existing mode; <code>--mixed-practice</code> requests a mixed quiz. Select the run you intend to change. Generation uses your configured provider and privacy mode.</p>
       <p>Transfer reuses the existing Quiz and SRS flow: <strong>Predict the next step</strong>, <strong>Complete a similar example</strong>, or <strong>Explain an error</strong>. Write your attempt before revealing the reference. Reference answers, explanations, and evidence stay hidden before that attempt; code is never executed.</p>
       <p>Compare meaning with the reference, then choose <strong>Completed independently</strong>, <strong>Needed help</strong>, or <strong>Not yet</strong>. When needed, identify the difficulty: recall, application, reasoning, or evidence boundaries. Equivalent wording can be valid. Choice checking is mechanical; open-exercise feedback is semantic self-assessment.</p>
       <p>Written WebUI attempts remain in page memory. Only bounded assessment, error-category, and timing metadata are saved. Review brings back the same cards. Delayed recall requires at least 24 hours since the prior recorded attempt; an unseen-variant first attempt requires a question explicitly marked as a new scenario.</p>
       <p>Dashboard shows initial practice, delayed recall, and unseen-variant self-assessments with their own sample counts and error categories. A missing denominator is unmeasured, not a zero-success claim. The older SRS rating-improvement ratio remains separate from these practice measures.</p>
-      <div class="g-note">Challenge first exposes the original solution, then asks you to rehearse it. Its patch match and evidence coverage do not establish unseen-variant independence or runtime correctness. Score/Judge assess learning-material quality. Without real participant samples and denominators, this update makes no claim of measured learning gains.</div>
+      <div class="g-note">Challenge first exposes the original solution, then asks you to rehearse it. Its patch match and evidence coverage do not establish unseen-variant independence or runtime correctness. Score/Judge assess learning-material quality. Use your own attempts and later recall to assess what you learned.</div>
 
       <h3>Quiz and review</h3>
       <p class="g-lead">Review grades each card; the grade drives the next due date.</p>
@@ -1530,7 +1465,7 @@ ahadiff improve-run RUN_ID</span></div>
           <p>Open the local WebUI. <code>--watch</code> adds auto-learn on working-tree changes.</p>
           <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
-ahadiff serve --watch   # file watcher, included by default</span></div>
+ahadiff serve --watch</span></div>
         </div>
         <div class="g-card">
           <h3>Watch</h3>
@@ -1568,7 +1503,7 @@ ahadiff concepts lint</span></div>
           <h3><span class="cap-group-label">Export</span></h3>
           <p>Write results to disk for sharing (see Export &amp; Share).</p>
           <div class="code-block"><span class="cmd">ahadiff export-results
-ahadiff export preview RUN_ID</span></div>
+ahadiff export preview RUN_ID --out ./preview</span></div>
         </div>
         <div class="g-card">
           <h3><span class="cap-group-label">Challenge</span></h3>
@@ -1586,7 +1521,7 @@ codex mcp add ahadiff -- ahadiff mcp-server --repo-root &lt;path&gt;</span></div
         </div>
         <div class="g-card">
           <h3><span class="cap-group-label">Git hooks</span></h3>
-          <p><code>ahadiff install hooks</code> writes reminder-only git hooks. After each commit the post-commit hook prints one line: run <code>ahadiff learn HEAD~1..HEAD</code> to learn back this commit. Before each push the pre-push hook prints a verify reminder. The hooks never run learn, never block a commit, and swallow their own failures. Add <code>--auto-learn</code> for hands-free mode: the post-commit hook runs <code>ahadiff learn --last</code> in the background and appends output to <code>.ahadiff/hooks.log</code>. Commits from GUI clients work too: the hook falls back to the <code>ahadiff</code> path recorded at install time, and appends a skip line to the log instead of blocking the commit if it still cannot find <code>ahadiff</code>. The learnability gate still applies, so trivial commits skip before any LLM call. When two commits land in quick succession, the per-repo write lock stops the second learn; check the log or re-run <code>ahadiff learn --last</code> yourself. Re-run <code>ahadiff install hooks</code> with or without the flag to switch modes in place. macOS/Linux only.</p>
+          <p><code>ahadiff install hooks</code> adds reminders after a commit and before a push. Add <code>--auto-learn</code> to run <code>ahadiff learn --last</code> in the background after each commit. Check <code>.ahadiff/hooks.log</code> if a run is skipped or fails. Hooks do not block your commit; automatic runs still use the normal privacy, budget, and learnability checks. Rerun the install command with or without the flag to switch modes. Git hooks require macOS/Linux.</p>
           <div class="code-block"><span class="cmd">ahadiff install hooks
 ahadiff install hooks --auto-learn</span></div>
         </div>
@@ -1613,7 +1548,7 @@ ahadiff install hooks --auto-learn</span></div>
     <section id="export">
       <div class="section-eyebrow">Output</div>
       <h2>6. Export &amp; Share</h2>
-      <p>The Ratchet / Export entry points in the WebUI offer four formats. The CLI covers the same ground.</p>
+      <p>The WebUI provides static previews, TSV/JSON results, and Anki cards. From the CLI, use <code>export-results</code> for TSV or <code>export preview</code> for a local preview:</p>
       <div class="code-block"><span class="cmd">ahadiff export-results
 ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
 
@@ -1645,166 +1580,52 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
 
     <!-- ===== 7. Capabilities ===== -->
     <section id="features">
-      <div class="section-eyebrow">Capabilities</div>
-      <h2>7. Capabilities: Defaults, Opt-ins, and Dependencies</h2>
-      <p>Capability pills distinguish default behavior from opt-in flows and dependency-backed exports. Open Details on any card for the exact behavior.</p>
-
-      <h3><span class="status-pill ok">Default</span> Works after install</h3>
-      <div class="feat-grid">
-        <div class="feat-card">
-          <h3>Lesson / Claims / Quiz / Score</h3>
-          <p>The default pipeline, produced after <code>ahadiff learn</code>.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Which artifacts get created depends on the diff and its learnability. Patch-only captures can use weak diff-anchored claims when symbol-level proof is missing. S1 semantic entailment remains private shadow-only measurement, not semantic proof. In Quiz, source evidence stays locked until you answer.</p></div></details>
+      <div class="section-eyebrow">Options</div>
+      <h2>7. Optional Features and Scoring</h2>
+      <h3>Choose what each run generates</h3>
+      <div class="g-cards">
+        <div class="g-card">
+          <h3>Quiz count and practice mode</h3>
+          <p>The default quiz has 3 questions. Set a fixed count from 1 to 30 in Settings, or use adaptive mode (default range: 3–12). Active transfer practice requests open questions. With at least 3 questions, it includes prediction, completion, and error-explanation forms.</p>
         </div>
-        <div class="feat-card">
-          <h3>Optional LLM judge</h3>
-          <p>Advisory only; the deterministic score stays primary.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Successful judge runs write <code>judge.json</code>. Failures write a bounded, redacted <code>judge_failure.json</code> with provider, model, error type, and a safe message. Missing judge artifacts return 404 rather than crashing the API.</p></div></details>
+        <div class="g-card">
+          <h3>Capture limits</h3>
+          <p>Auto sizing uses provider information, model limits, and space reserved for the output. Manual mode keeps the limits you set. Inspect any incomplete-capture warning before generating a lesson. Preview display limits and capture limits are separate.</p>
         </div>
-        <div class="feat-card">
-          <h3>Quiz question count</h3>
-          <p>Fixed at 3 by default; adaptive is opt-in.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Fixed mode accepts 1-30 questions. In Settings, or with <code>--quiz-mode auto</code>, AhaDiff uses diff stats to choose a bounded count; the default adaptive range is 3-12.</p></div></details>
+        <div class="g-card">
+          <h3>Specification alignment</h3>
+          <p>For a diff run, add <code>--against-spec SPEC.md</code> to compare the change with a local specification. Add <code>--spec-semantic-review</code> for optional model feedback. A standalone document does not use diff-spec alignment.</p>
         </div>
-        <div class="feat-card">
-          <h3>Structured JSON output</h3>
-          <p>JSON object mode with one validation retry.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Public artifacts stay the same. Native schema is used only when the provider capability reports support. Unsupported modes downgrade; truncated or malformed fallback JSON is retried, not accepted.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Adaptive capture limits</h3>
-          <p>Auto for fresh configs; manual once you customize a limit.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a">
-            <p>Auto mode sizes capture limits from five inputs:</p>
-            <div class="badges" style="justify-content:flex-start">
-              <span class="badge">provider probe</span>
-              <span class="badge">model registry</span>
-              <span class="badge">output reserve</span>
-              <span class="badge">safety reserve</span>
-              <span class="badge">CJK density</span>
-            </div>
-            <p style="margin-top:10px">Editing any of these migrates the repo to manual mode:</p>
-            <div class="badges" style="justify-content:flex-start">
-              <span class="badge"><code style="background:none;padding:0;color:inherit">capture.max_files</code></span>
-              <span class="badge"><code style="background:none;padding:0;color:inherit">capture.hard_limit</code></span>
-              <span class="badge"><code style="background:none;padding:0;color:inherit">capture.max_patch_bytes</code></span>
-            </div>
-            <div class="badges" style="justify-content:flex-start;margin-top:10px">
-              <span class="badge">50 MiB patch cap</span>
-            </div>
-          </div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Provider smart config</h3>
-          <p>Draft model-limit preview in Settings before you save.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The provider card previews limits from the draft provider class, model, base URL, and optional limits profile, with no remote probe on every edit. It shows thinking support, low-confidence warnings, a recommended max-output, and any clamp the save API returns. Official DeepSeek v4 flash/pro expose Thinking Level only when the official API route is detected; <code>none</code> disables thinking, while <code>low</code>, <code>medium</code>, and <code>high</code> map to the API's high effort. Generic OpenAI-compatible routes stay gated by backend metadata. Generate and judge limits are shown separately.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>WebUI</h3>
-          <p>Welcome, Dashboard, Diff, and Review open with <code>ahadiff serve</code>.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The Welcome Before/After demo collapses long raw diffs to the lesson height and shows visible / total line counts. Short or empty diffs have no collapse control.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>AI Tool Guidance</h3>
-          <p>Settings writes the files; Guide is read-only.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a">
-            <p>Settings shows the following for the 16 current tool targets:</p>
-            <ul>
-              <li>CLI / IDE / CI grouping</li>
-              <li>Localized quick-start steps</li>
-              <li>Example prompts and expected behavior</li>
-              <li>Platform notes</li>
-              <li>A provider-free local demo</li>
-            </ul>
-            <div class="g-cards">
-              <div class="g-card"><h3>Settings</h3><p>Writes files with guarded atomic replacement.</p></div>
-              <div class="g-card"><h3>Guide</h3><p>Read-only preview of the same hints and file writes; no write / remove buttons.</p></div>
-            </div>
-            <div class="badges" style="justify-content:flex-start">
-              <span class="badge">Rollback restores content and mode where the platform supports it</span>
-            </div>
-          </div></details>
-        </div>
-      </div>
-
-      <h3><span class="status-pill warn">Opt-in</span> Off until you turn it on</h3>
-      <div class="feat-grid feat-grid--3">
-        <div class="feat-card">
+        <div class="g-card">
           <h3>Challenge</h3>
-          <p>Off by default; enable via config.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The CLI exposes <code>build</code> / <code>status</code>; full progression happens through the WebUI / API.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Spec alignment</h3>
-          <p>Runs only with <code>--against-spec</code>.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Add <code>--spec-semantic-review</code> for the semantic pass. A run with no spec renders this dimension as N/A.</p></div></details>
+          <p>Challenge is off by default. Set <code>enabled = true</code> under <code>[challenge]</code> in the config to enable it. Build an exercise with <code>ahadiff challenge build RUN_ID</code>, then continue in the WebUI. You can study the original solution first, so this is rehearsal of a known example.</p>
         </div>
       </div>
-
-      <h3><span class="status-pill warn">Dependency</span> Needs an extra or external artifact</h3>
-      <div class="feat-grid feat-grid--3">
-        <div class="feat-card">
-          <h3>LLM provider (BYOK)</h3>
-          <p>AhaDiff runs on the LLM provider you configure: any of the 9 supported formats, your choice of model. No specific model is required. Set it up in Configure a Provider.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>Set the provider, base URL, model, and the API-key environment variable before use. For DeepSeek BYOK, use <code>openai_compat</code> with <code>https://api.deepseek.com</code>; AhaDiff uses JSON object mode on that route rather than native JSON schema.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>APKG export</h3>
-          <p>Works by default; <code>genanki</code> is bundled.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>APKG export works by default with a standard AhaDiff install because <code>genanki</code> is bundled. Active review cards export without any extra install.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Serve --watch (serve + auto-learn)</h3>
-          <p>Works by default; the file watcher is bundled.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>The file watcher is included by default, so <code>ahadiff serve --watch</code> works out of the box: it serves the WebUI and auto-learns on working-tree changes — the same watcher as <code>ahadiff watch</code>. You can also run <code>ahadiff learn</code> manually.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Watch (auto-learn)</h3>
-          <p>Filesystem-driven auto-learn for working-tree changes.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p><code>ahadiff watch</code> watches the working tree (unstaged and untracked files) and runs learn on change. Defaults: 2.0s debounce, 30.0s cooldown. <code>--dry-run</code> captures the diff without generating a lesson; <code>--force-learn</code> bypasses the learnability gate. Run it from any directory. Keep its log file outside the repo: a log inside the watched tree re-triggers the watcher.</p></div></details>
-        </div>
-        <div class="feat-card">
-          <h3>Graphify refresh</h3>
-          <p>Imports an existing artifact; capped at 50000 nodes.</p>
-          <details class="faq-item"><summary>Details</summary><div class="faq-a"><p>It re-imports <code>graphify-out/graph.json</code> into AhaDiff's cache and does not run <code>graphify update</code>. The cap is <code>graph.max_nodes_import</code> (default <code>50000</code>); over-limit refreshes return <code>GRAPH_NODE_LIMIT</code>.</p></div></details>
-        </div>
-      </div>
-
-      <h3>How a run is scored</h3>
-      <p class="g-lead">Eight dimensions, 100 points. A run can fail on score gates, contradicted claims, evidence coverage, or safety gates.</p>
-      <div class="score-bars">
-        <div class="score-row"><span class="score-name">accuracy</span><span class="score-track"><span class="score-fill" style="width:100%"></span></span><span class="score-pts">20 pts<span class="gate">gate &ge;14</span></span></div>
-        <div class="score-row"><span class="score-name">evidence</span><span class="score-track"><span class="score-fill" style="width:90%"></span></span><span class="score-pts">18 pts<span class="gate">gate &ge;12</span></span></div>
-        <div class="score-row"><span class="score-name">diff_coverage</span><span class="score-track"><span class="score-fill" style="width:70%"></span></span><span class="score-pts">14 pts</span></div>
-        <div class="score-row"><span class="score-name">learnability</span><span class="score-track"><span class="score-fill" style="width:70%"></span></span><span class="score-pts">14 pts</span></div>
-        <div class="score-row"><span class="score-name">quiz_transfer</span><span class="score-track"><span class="score-fill" style="width:50%"></span></span><span class="score-pts">10 pts</span></div>
-        <div class="score-row"><span class="score-name">spec_alignment</span><span class="score-track"><span class="score-fill" style="width:50%"></span></span><span class="score-pts">10 pts</span></div>
-        <div class="score-row"><span class="score-name">conciseness</span><span class="score-track"><span class="score-fill" style="width:40%"></span></span><span class="score-pts">8 pts</span></div>
-        <div class="score-row"><span class="score-name">safety_privacy</span><span class="score-track"><span class="score-fill" style="width:30%"></span></span><span class="score-pts">6 pts</span></div>
-      </div>
-      <div class="g-note">A run can score high yet still FAIL when a hard gate trips or when <code>critical_safety_findings</code> fire.</div>
-
-      <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/en/en-rundetail-overview.png" alt="Run Detail overview: a single learn run's outcome and metadata." width="1920" height="1080" />
-        <figcaption class="shot-cap">Run Detail overview: a single learn run's outcome and metadata.</figcaption>
-        <ol class="shot-legend">
-          <li>Overview / Score / Judge / Artifacts tab bar.</li>
-          <li>FAIL banner with score and failed-gate reason.</li>
-          <li>Metadata rows: base ref, language, source kind, prompt version.</li>
-          <li>Graphify Signoff cards: passed, freshness, node and edge counts.</li>
-        </ol>
-      </figure>
-
-      <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/en/en-rundetail-score.png" alt="Run Detail score: the 8-dimension evaluation breakdown." width="1920" height="1080" />
-        <figcaption class="shot-cap">Run Detail score: the 8-dimension evaluation breakdown.</figcaption>
-        <ol class="shot-legend">
-          <li>FAIL badge, overall score, and the count of failed gates.</li>
-          <li>Eight scored dimension cards with progress bars.</li>
-          <li>Hard Gates row; critical safety findings fail in red.</li>
-          <li>Spec Alignment section noting no artifact for this run.</li>
-        </ol>
-      </figure>
+      <h3>Optional tools and automation</h3>
+      <ul>
+        <li>Anki export and file watching are included in the standard package. Automatic learning can make repeated provider requests; review privacy and budget settings before enabling <code>ahadiff watch</code> or <code>ahadiff serve --watch</code> in a Git workspace.</li>
+        <li>FSRS parameter optimization needs the optional <code>optimizer</code> extra, which installs torch. Base card review and scheduling work without it.</li>
+        <li>The repository graph overlay needs a Graphify graph. <code>ahadiff graph refresh</code> imports an existing graph; it does not run Graphify.</li>
+        <li>AI tool guidance is optional. Settings previews the exact project files before writing, updating, or removing them. Guide lists the same tools and explains their usage.</li>
+      </ul>
+      <h3 id="score-policy">Read a run’s score</h3>
+      <p>The deterministic score checks the lesson and its evidence. These are the maximum points for each dimension before excluding dimensions that do not apply:</p>
+      <div class="cmp-wrap" tabindex="0"><table class="cmp-table">
+        <thead><tr><th>Dimension</th><th>Maximum</th><th>What to check</th></tr></thead>
+        <tbody>
+          <tr><td>Accuracy</td><td>20</td><td>Supported and contradicted claims</td></tr>
+          <tr><td>Evidence</td><td>18</td><td>References to the captured source</td></tr>
+          <tr><td>Diff Coverage</td><td>14</td><td>How much of the visible change has evidence-linked claims</td></tr>
+          <tr><td>Learnability</td><td>14</td><td>The change’s learning content</td></tr>
+          <tr><td>Quiz Transfer</td><td>10</td><td>Questions that apply the lesson</td></tr>
+          <tr><td>Spec Alignment</td><td>10</td><td>The supplied specification</td></tr>
+          <tr><td>Conciseness</td><td>8</td><td>Lesson length and density</td></tr>
+          <tr><td>Safety and Privacy</td><td>6</td><td>Unresolved safety findings</td></tr>
+        </tbody>
+      </table></div>
+      <p>A run without a specification shows Spec Alignment as N/A. Document runs also show Diff Coverage and change-novelty Learnability as N/A. These dimensions do not lower the overall score; document evidence has its own coverage check.</p>
+      <p>PASS starts at 80, CAUTION covers 60 to below 80, and FAIL covers scores below 60. A failed required check can still make a high-scoring run FAIL. Open <strong>Run Detail → Score</strong> to inspect the failed checks and their reasons.</p>
+      <p>The optional LLM judge adds feedback and cannot override that verdict. If the judge fails, Run Detail shows the failure while retaining the deterministic score. Neither score measures whether you can make a similar change yourself; use your attempts and later recall to assess that.</p>
     </section>
 
     <!-- ===== 8. FAQ ===== -->
@@ -1895,60 +1716,33 @@ ahadiff config show --resolved</span></div>
 
     <!-- ===== 9. About ===== -->
     <section id="about">
-      <div class="section-eyebrow">Notes</div>
-      <h2>9. About</h2>
-      <p>Screenshots in this guide are examples only. They carry no real provider credentials, repository contents, or user data.</p>
-
-      <h3>Platform support</h3>
-      <p class="g-lead">The 2026-09-08 source update was validated locally on macOS and Linux arm64. Native Windows was not run; targeted Windows branches and a prepared validation package do not establish a native pass. Antigravity stays Unknown/blocked until a real Antigravity check is run. Two features stay POSIX-only.</p>
-      <div class="cmp-wrap">
+      <div class="section-eyebrow">Reference</div>
+      <h2>9. Platforms and Release Information</h2>
+      <p>Core CLI and WebUI target macOS, Linux, and Windows. Python's SQLite runtime must meet the requirement listed in Quick Start. The following features have explicit platform limits.</p>
+      <div class="cmp-wrap" tabindex="0">
         <table class="cmp-table">
-          <thead><tr><th>Feature</th><th>macOS &middot; Linux</th><th>Windows</th></tr></thead>
+          <thead><tr><th>Feature</th><th>macOS / Linux</th><th>Windows</th></tr></thead>
           <tbody>
-            <tr><td>Core CLI</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-check">&#10003;</span></td></tr>
-            <tr><td><code>serve</code> + WebUI</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-check">&#10003;</span></td></tr>
-            <tr><td><code>--compare-dir</code></td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-cross">&#10007;</span></td></tr>
-            <tr><td><code>hooks</code> install target</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-cross">&#10007;</span></td></tr>
-            <tr><td>Install rollback</td><td><span class="cmp-check">&#10003;</span></td><td><span class="cmp-partial">partial</span></td></tr>
+            <tr><td><code>--compare-dir</code></td><td>Available</td><td>Unavailable; compare files instead</td></tr>
+            <tr><td><code>hooks</code></td><td>POSIX shell hooks</td><td>Unavailable; run learn manually</td></tr>
+            <tr><td>Local key-file protection</td><td>Owner-only file permissions</td><td>NTFS folder permissions</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="g-note"><code>--compare-dir</code> needs the secure directory file descriptor available on macOS / Linux only, and fails closed elsewhere. The <code>hooks</code> target uses POSIX shell hooks. Hooks are reminder-only by default; see the Git hooks card for the --auto-learn variant. Rollback restores mode before atomic replace on POSIX, and uses a best-effort mode restore after replace where <code>fchmod</code> is missing.</div>
-
-      <p>The table describes intended platform support and explicit exceptions. Browser checks and simulated Windows branches are not a native Windows run; use current platform-specific results to establish execution.</p>
-
-      <h3>Current source acceptance</h3>
-      <p>The five-function update remains unpublished source code at version 1.3.8. The current local checks below are complete, with an explicit native Windows gap. Detailed logs, generated courses, and local acceptance reports remain gitignored.</p>
-      <div class="cmp-wrap"><table class="cmp-table">
-        <thead><tr><th>Area</th><th>Checked scope</th><th>Current status</th></tr></thead>
-        <tbody>
-          <tr><td>macOS</td><td>Backend, source integrity, CLI/API, snapshots, and real serve</td><td>Completed</td></tr>
-          <tr><td>Linux arm64</td><td>Native file guards, locking, backend/frontend tests, builds, and real serve</td><td>Completed in an isolated container</td></tr>
-          <tr><td>Windows</td><td>Native NTFS/Unicode/reparse/locking and CLI/WebUI</td><td>Not run; validation package prepared</td></tr>
-          <tr><td>English / Chinese WebUI</td><td>Type/unit/build, desktop/mobile interaction, empty/error states and accessibility</td><td>Completed; final copy changes checked separately</td></tr>
-          <tr><td>Real model / wheel</td><td>Budgeted synthetic-only generation, installed-wheel assets and source metadata</td><td>Completed; failures, retries, and reused responses recorded</td></tr>
-        </tbody>
-      </table></div>
-
-      <p>Browser coverage includes the macOS three-engine, multiple-viewport matrix and Linux Chromium desktop/mobile. The final title and copy changes had targeted checks, without repeating every macOS combination. Real-user learning gains were not measured; practice metrics remain self-reported. This work was committed locally without a remote CI run, push, or publication.</p>
-
-      <h3>Historical validation snapshot</h3>
-      <p class="g-lead">These records predate the 2026-09-08 source changes and do not validate the five sources, active exercises, or new integrity contracts. For v1.3.8, the recorded local gate covers backend unit/integration/eval, ruff/format/pyright, viewer typecheck/Vitest/build, i18n parity, real serve save reproduction, and a live DeepSeek learn run. Release and CI status belong in GitHub Actions.</p>
-      <div class="g-cards">
-        <div class="g-card">
-          <h3>Validated</h3>
-          <div class="badges" style="justify-content:flex-start">
-            <span class="badge"><span class="badge-dot python"></span>backend unit</span>
-            <span class="badge">ruff / format / pyright</span>
-            <span class="badge"><span class="badge-dot react"></span>viewer Vitest + build</span>
-            <span class="badge">i18n parity</span>
-            <span class="badge">macOS local v1.3.8 gate recorded</span>
-            <span class="badge">live DeepSeek global-provider run</span>
-            <span class="badge">Antigravity Unknown/blocked</span>
-          </div>
+      <p>See the <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/releases/tag/v1.4.0">v1.4.0 release notes</a> for tested platforms, known issues, and downloads. The <a href="https://pypi.org/project/ahadiff/1.4.0/">PyPI package</a> includes the WebUI.</p>
+      <details class="faq-item">
+        <summary>Install from source</summary>
+        <div class="faq-a">
+          <p>A source installation also needs uv and pnpm. Run these commands in a terminal:</p>
+          <div class="code-block"><span class="cmd">git clone https://github.com/AGI-is-going-to-arrive/ahadiff.git
+cd ahadiff
+uv sync --locked --dev
+pnpm --dir viewer install --frozen-lockfile
+pnpm --dir viewer build
+uv tool install --editable .</span></div>
         </div>
-      </div>
-      <div class="g-note">The 10-mode learn claim in this guide is capture coverage unless the validation audit lists each command, run_id, exit code, and lesson/claims/quiz/card artifacts. The v1.3.8 audit records the DeepSeek global-provider regression separately from the older 10-mode matrix; GitHub Release and PyPI publish are tracked by the release workflow and release notes.</div>
+      </details>
+      <p>Screenshots and videos illustrate the workflow and may show earlier UI details. Use the written steps and labels in this guide for version 1.4.0.</p>
     </section>
 
     <!-- ===== Footer ===== -->
@@ -1959,8 +1753,8 @@ ahadiff config show --resolved</span></div>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener">GitHub</a>
         <a href="https://github.com/AGI-is-going-to-arrive/ahadiff/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       </div>
-      <p>Screenshots are committed PNGs served from the docs tree; the workflow animation is CSS. For release status, see GitHub Actions.</p>
-      <div class="footer-version">v1.3.8</div>
+      <p>AhaDiff 1.4.0 · Local lessons, evidence, and review.</p>
+      <div class="footer-version">v1.4.0</div>
     </footer>
   </main>
 </div>
@@ -1985,7 +1779,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var target = document.getElementById(id);
     if (target) {
       e.preventDefault();
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
     }
   });
 });
@@ -2050,10 +1844,11 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
       var b = clone.querySelector('.copy-btn');
       if (b) b.remove();
       var text = (clone.textContent || '').replace(/\s+$/, '');
-      function done(){
-        btn.textContent = 'Copied';
-        btn.setAttribute('aria-label', copiedLabel);
-        btn.classList.add('is-copied');
+      function done(success){
+        var copied = success !== false;
+        btn.textContent = copied ? 'Copied' : 'Copy failed';
+        btn.setAttribute('aria-label', copied ? copiedLabel : 'Copy failed');
+        btn.classList.toggle('is-copied', copied);
         setTimeout(function(){
           btn.textContent = 'Copy';
           btn.setAttribute('aria-label', copyLabel);
@@ -2070,8 +1865,10 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     ta.value = text; ta.setAttribute('readonly', '');
     ta.style.position = 'absolute'; ta.style.left = '-9999px';
     document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); cb(); } catch (e) {}
+    var copied = false;
+    try { copied = document.execCommand('copy'); } catch (e) {}
     document.body.removeChild(ta);
+    cb(copied);
   }
 })();
 </script>

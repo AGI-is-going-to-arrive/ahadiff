@@ -345,7 +345,7 @@ test.describe('learn task flow', () => {
 
     const banner = page.locator('.hero-learn-status .learn-banner');
     await expect(banner).toHaveClass(/learn-banner--completed/);
-    await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
+    await expect(page.locator('.hero-demo__source')).toContainText(/Latest completed run|最新完成运行/);
     await expect(page.locator('#demo-panel')).toContainText('Real completed lesson');
     await expect(page.locator('.ba-grid')).toContainText('real completed diff');
     await expect(page.locator('.ba-grid')).toContainText('Real completed lesson');
@@ -396,7 +396,7 @@ test.describe('learn task flow', () => {
 
     const banner = page.locator('.hero-learn-status .learn-banner');
     await expect(banner).toHaveClass(/learn-banner--completed/);
-    await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
+    await expect(page.locator('.hero-demo__source')).toContainText(/Latest completed run|最新完成运行/);
     await expect(page.locator('#demo-panel')).toContainText(
       /No lesson was generated for this run|这次运行没有生成课程/,
     );
@@ -452,7 +452,7 @@ test.describe('learn task flow', () => {
 
     await triggerLearnViaWelcome(page);
 
-    await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
+    await expect(page.locator('.hero-demo__source')).toContainText(/Latest completed run|最新完成运行/);
     await expect(page.locator('#demo-panel')).toContainText(
       /No lesson was generated for this run|这次运行没有生成课程/,
     );
