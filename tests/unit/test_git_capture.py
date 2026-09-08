@@ -2934,7 +2934,11 @@ def test_compare_files_rejects_unsafe_display_names(name: str) -> None:
         CompareFileInput(name=name, content="safe text")
 
 
-@pytest.mark.parametrize("content", ["binary\x00text", "bad\ud800text", "中" * 90_000])
+@pytest.mark.parametrize(
+    "content",
+    ["binary\x00text", "bad\ud800text", "中" * 90_000],
+    ids=["binary", "invalid-unicode", "utf8-byte-overflow"],
+)
 def test_compare_files_rejects_binary_invalid_unicode_and_utf8_byte_overflow(content: str) -> None:
     with pytest.raises(ValidationError) as error:
         CompareFileInput(name="notes.txt", content=content)
