@@ -73,8 +73,6 @@ def safe_sqlite_connect(
 
     special_database = _is_special_sqlite_database(path) and not read_only
     p = _canonicalize_system_sqlite_path(Path(path))
-    if not special_database:
-        _reject_symlink_ancestors(p)
     database_target = str(path) if special_database else str(p)
 
     uri = None
@@ -82,6 +80,8 @@ def safe_sqlite_connect(
         uri = _read_only_sqlite_uri(p, immutable=immutable_read_only)
 
     for attempt in range(_OPEN_VERIFICATION_RETRIES):
+        if not special_database:
+            _reject_symlink_ancestors(p)
         attempt_state = (
             _OpenVerificationState(expected_identity=None, existing_path=False)
             if special_database
@@ -500,10 +500,10 @@ def _verify_parent_directory_unchanged(
     if _sqlite_sidecar_state(requested_path) != verification_state.sidecar_state:
         raise _RetryOpenVerification
     if verification_state.windows_path_name_connect_without_fd_bound:
-        # Windows has no fd-bound sqlite3 connect path here. After sidecar churn is
-        # ruled out, parent metadata changes fail closed rather than pretending
-        # the pathname open fully preserves the verified nofollow fd identity.
-        raise PermissionError(f"database path changed during open: {requested_path}")
+        # A journal can be created and removed between snapshots, leaving only
+        # a parent metadata change. Discard this ambiguous pathname connection
+        # and rebuild all path guards; never accept the already-open connection.
+        raise _RetryOpenVerification
     if _stat_change_token(current_stat) == verification_state.path_change_token:
         return
     # A concurrent commit can change both timestamps while its journal/WAL is

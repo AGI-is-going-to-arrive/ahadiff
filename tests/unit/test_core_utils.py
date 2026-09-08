@@ -122,6 +122,133 @@ class TestSafeJsonLoads:
 
 
 class TestSafeSqliteConnect:
+    @pytest.mark.parametrize("persistent_churn", [False, True])
+    def test_windows_parent_metadata_churn_closes_before_full_revalidation(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        persistent_churn: bool,
+    ) -> None:
+        db = tmp_path / "windows-parent-churn.db"
+        original_connect = sqlite_util_module.sqlite3.connect
+        initial = original_connect(db)
+        try:
+            initial.execute("CREATE TABLE marker(value TEXT)")
+            initial.execute("INSERT INTO marker VALUES('original')")
+            initial.commit()
+        finally:
+            initial.close()
+        original_prepare = sqlite_util_module._prepare_open_verification  # pyright: ignore[reportPrivateUsage]
+        original_parent_state = sqlite_util_module._parent_directory_state  # pyright: ignore[reportPrivateUsage]
+        attempts: list[sqlite3.Connection] = []
+        preparations = 0
+        directory_revision = 0
+
+        def prepare_after_close(path: Path, *, create_missing: bool = False) -> Any:
+            nonlocal preparations
+            for previous in attempts:
+                with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                    previous.execute("SELECT 1")
+            preparations += 1
+            return original_prepare(path, create_missing=create_missing)
+
+        def parent_state(path: Path) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+            identity, token = original_parent_state(path)
+            assert token is not None
+            return identity, (token[0] + directory_revision, token[1] + directory_revision)
+
+        def interleaved_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal directory_revision
+            connection = original_connect(database, *args, **kwargs)
+            attempts.append(connection)
+            if persistent_churn or len(attempts) == 1:
+                # A journal can be created and removed between the two snapshots:
+                # the parent token changes, while file/sidecar identities match.
+                directory_revision += 1
+            return connection
+
+        def no_fd_path(_fd: int | None) -> Path | None:
+            return None
+
+        monkeypatch.setattr(sqlite_util_module.sys, "platform", "win32")
+        monkeypatch.setattr(sqlite_util_module, "_sqlite_proc_fd_path", no_fd_path)
+        monkeypatch.setattr(sqlite_util_module, "_prepare_open_verification", prepare_after_close)
+        monkeypatch.setattr(sqlite_util_module, "_parent_directory_state", parent_state)
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", interleaved_connect)
+
+        if persistent_churn:
+            with pytest.raises(PermissionError, match="database path changed during open"):
+                safe_sqlite_connect(db)
+            expected_attempts = sqlite_util_module._OPEN_VERIFICATION_RETRIES  # pyright: ignore[reportPrivateUsage]
+        else:
+            connection = safe_sqlite_connect(db)
+            try:
+                assert connection.execute("SELECT value FROM marker").fetchone() == ("original",)
+            finally:
+                connection.close()
+            expected_attempts = 2
+
+        assert len(attempts) == preparations == expected_attempts
+        for previous in attempts:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                previous.execute("SELECT 1")
+
+    def test_windows_retry_rechecks_ancestors_before_reopening(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        ancestor = tmp_path / "ancestor"
+        parent = ancestor / "child"
+        parent.mkdir(parents=True)
+        db = parent / "review.sqlite"
+        db.write_bytes(b"")
+        original_connect = sqlite_util_module.sqlite3.connect
+        original_lstat = sqlite_util_module.os.lstat
+        original_parent_state = sqlite_util_module._parent_directory_state  # pyright: ignore[reportPrivateUsage]
+        attempts: list[sqlite3.Connection] = []
+        ancestor_checks = 0
+        unsafe_ancestor = False
+
+        def reparse_after_connect(path: Any, *args: Any, **kwargs: Any) -> Any:
+            nonlocal ancestor_checks
+            result = original_lstat(path, *args, **kwargs)
+            if Path(path) == ancestor:
+                ancestor_checks += 1
+                if unsafe_ancestor:
+                    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                        attempts[0].execute("SELECT 1")
+                    return SimpleNamespace(st_mode=result.st_mode, st_file_attributes=0x400)
+            return result
+
+        def parent_state(path: Path) -> tuple[tuple[int, int] | None, tuple[int, int] | None]:
+            identity, token = original_parent_state(path)
+            assert token is not None
+            offset = int(unsafe_ancestor)
+            return identity, (token[0] + offset, token[1] + offset)
+
+        def interleaved_connect(database: Any, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            nonlocal unsafe_ancestor
+            connection = original_connect(database, *args, **kwargs)
+            attempts.append(connection)
+            unsafe_ancestor = True
+            return connection
+
+        def no_fd_path(_fd: int | None) -> Path | None:
+            return None
+
+        monkeypatch.setattr(sqlite_util_module.sys, "platform", "win32")
+        monkeypatch.setattr(sqlite_util_module, "_sqlite_proc_fd_path", no_fd_path)
+        monkeypatch.setattr(sqlite_util_module.os, "lstat", reparse_after_connect)
+        monkeypatch.setattr(sqlite_util_module, "_parent_directory_state", parent_state)
+        monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", interleaved_connect)
+
+        with pytest.raises(PermissionError, match="NTFS reparse point"):
+            safe_sqlite_connect(db)
+
+        assert ancestor_checks == 2
+        assert len(attempts) == 1
+
     @pytest.mark.skipif(sys.platform == "win32", reason="Windows path opens remain fail-closed")
     def test_concurrent_commit_during_open_discards_ambiguous_connection(
         self,
@@ -549,10 +676,6 @@ class TestSafeSqliteConnect:
 
         monkeypatch.setattr(sqlite_util_module.sqlite3, "connect", churning_connect)
 
-        if sys.platform == "win32":
-            with pytest.raises(PermissionError, match="database path changed during open"):
-                safe_sqlite_connect(db)
-            return
         conn = safe_sqlite_connect(db)
         try:
             value = conn.execute("SELECT value FROM marker").fetchone()[0]

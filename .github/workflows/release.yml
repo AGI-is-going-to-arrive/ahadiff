@@ -163,6 +163,10 @@ jobs:
             tests/unit/test_cross_platform_static.py \
             tests/unit/test_core_utils.py::TestSafeSqliteConnect::test_windows_read_only_uri_preserves_drive_letter \
             tests/unit/test_core_utils.py::TestSafeSqliteConnect::test_rejects_ntfs_reparse_point_on_windows \
+            tests/unit/test_core_utils.py::TestSafeSqliteConnect::test_windows_parent_metadata_churn_closes_before_full_revalidation \
+            tests/unit/test_core_utils.py::TestSafeSqliteConnect::test_windows_retry_rechecks_ancestors_before_reopening \
+            tests/unit/test_core_utils.py::TestSafeSqliteConnect::test_allows_unrelated_parent_directory_churn_when_target_file_is_unchanged \
+            tests/unit/test_windows_reparse_guards.py::test_safe_sqlite_connect_windows_path_connect_rejects_parent_aba_without_sidecar_churn \
             tests/unit/test_provider.py::test_usage_db_rejects_unsupported_sqlite_runtime \
             tests/unit/test_serve_app.py::test_bounded_finalized_artifact_digest_rejects_reparse_directory \
             tests/unit/test_stage1_task1.py::test_repo_write_lock_rejects_windows_reparse_point \

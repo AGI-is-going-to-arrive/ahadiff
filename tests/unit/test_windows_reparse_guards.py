@@ -403,9 +403,10 @@ def test_safe_sqlite_connect_windows_path_connect_rejects_parent_aba_without_sid
         identity, token = original_parent_state(path)
         if Path(path) == db_path and token is not None:
             parent_state_calls += 1
-            if parent_state_calls == 1:
-                return identity, token
-            return identity, (token[0] + 1, token[1] + 1)
+            # Each pathname open is followed by another rename-and-restore:
+            # a fresh capture cannot make a continually ambiguous open safe.
+            revision = parent_state_calls // 2
+            return identity, (token[0] + revision, token[1] + revision)
         return identity, token
 
     monkeypatch.setattr(
@@ -425,6 +426,8 @@ def test_safe_sqlite_connect_windows_path_connect_rejects_parent_aba_without_sid
 
     with pytest.raises(PermissionError, match="database path changed during open"):
         sqlite_util.safe_sqlite_connect(db_path)
+
+    assert parent_state_calls == 2 * sqlite_util._OPEN_VERIFICATION_RETRIES  # pyright: ignore[reportPrivateUsage]
 
 
 def test_windows_path_connect_parent_change_keeps_sidecar_retry(
