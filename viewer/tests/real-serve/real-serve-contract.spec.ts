@@ -1,10 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installTargetsResponseSchema } from '../../src/api/schemas';
+import {
+  doctorResponseSchema,
+  installTargetsResponseSchema,
+  learnEstimateResponseSchema,
+  taskInfoResponseSchema,
+  taskSubmitResponseSchema,
+} from '../../src/api/schemas';
 
 const SERVE_PORT = 18765;
 const HEALTHZ = `http://127.0.0.1:${SERVE_PORT}/healthz`;
@@ -41,6 +47,7 @@ function createTempGitRepo(): string {
 }
 
 function startServe(repo: string): ChildProcess {
+  serveOutput = '';
   const child = spawn(
     'uv',
     [
@@ -237,4 +244,102 @@ test('browser renders core pages against real serve APIs without mocks', async (
   await page.goto('/#/concepts?tab=graph');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
+});
+
+test('selected files preview and complete a dry run in a workspace without Git', async ({ page }) => {
+  await stopServe();
+  const workspace = mkdtempSync(path.join(tmpdir(), 'ahadiff-files-no-git-'));
+  const beforeText = '# Practice notes\n\nGroup rows by category.\n';
+  const afterText = '# Practice notes\n\nGroup rows by category, then count each group.\n';
+  let submissions = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith('/api/learn')) submissions += 1;
+  });
+
+  try {
+    serveProcess = startServe(workspace);
+    await waitForServe();
+    expect(existsSync(path.join(workspace, '.git'))).toBe(false);
+    await page.goto('/#/welcome');
+
+    const doctorResponse = await page.request.get('/api/doctor');
+    expect(doctorResponse.ok()).toBe(true);
+    const doctor = doctorResponseSchema.parse(await doctorResponse.json());
+    expect(doctor.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'config_valid', status: 'pass' }),
+    ]));
+
+    await page.locator('[data-learn-source="files"]').first().click();
+    const dialog = page.getByRole('dialog');
+    const startButton = dialog.locator('.learn-dialog__btn--primary');
+    const previewButton = dialog.locator('.learn-dialog__preview-button');
+    await expect(startButton).toBeDisabled();
+    await dialog.locator('#learn-file-before').setInputFiles({
+      name: '练习.md', mimeType: 'text/markdown', buffer: Buffer.from(beforeText),
+    });
+    await dialog.locator('#learn-file-after').setInputFiles({
+      name: '练习.md', mimeType: 'text/markdown', buffer: Buffer.from(afterText),
+    });
+    await expect(previewButton).toBeEnabled();
+    const firstPreviewResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/learn/estimate') && response.request().method() === 'POST',
+    );
+    await previewButton.click();
+    const firstPreview = learnEstimateResponseSchema.parse(await (await firstPreviewResponse).json());
+    expect(firstPreview).toMatchObject({ source_kind: 'file_compare', file_count: 1 });
+    expect(firstPreview.preview_patch).toContain('+Group rows by category, then count each group.');
+    await expect(dialog.locator('.learn-dialog__preview-diff')).toContainText(
+      '+Group rows by category, then count each group.',
+    );
+    await expect(startButton).toBeEnabled();
+    const runsDir = path.join(workspace, '.ahadiff', 'runs');
+    expect(existsSync(runsDir) ? readdirSync(runsDir) : []).toHaveLength(0);
+    expect(submissions).toBe(0);
+
+    // Replacing a same-named file invalidates the old preview. Identical content
+    // must not become a learn run just because the previous selection changed.
+    await dialog.locator('#learn-file-after').setInputFiles({
+      name: '练习.md', mimeType: 'text/markdown', buffer: Buffer.from(beforeText),
+    });
+    await expect(startButton).toBeDisabled();
+    const unchangedResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/learn/estimate') && response.request().method() === 'POST',
+    );
+    await previewButton.click();
+    const unchanged = learnEstimateResponseSchema.parse(await (await unchangedResponse).json());
+    expect(unchanged).toMatchObject({ file_count: 0, patch_bytes: 0, preview_patch: '' });
+    await expect(dialog.getByText(
+      'No text changes to learn from. Choose different versions or another source.',
+      { exact: true },
+    )).toBeVisible();
+    await expect(startButton).toBeDisabled();
+    expect(submissions).toBe(0);
+
+    await dialog.locator('#learn-file-after').setInputFiles({
+      name: '练习.md', mimeType: 'text/markdown', buffer: Buffer.from(afterText),
+    });
+    await dialog.locator('.learn-dialog__advanced-toggle').click();
+    await dialog.getByRole('checkbox', { name: /^Dry run/ }).check();
+    await previewButton.click();
+    await expect(startButton).toBeEnabled();
+
+    // Exercise the actual UI submission and task stream without calling an LLM.
+    const submittedResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/learn') && response.request().method() === 'POST'
+      && response.status() === 202,
+    );
+    await startButton.click();
+    const submitted = taskSubmitResponseSchema.parse(await (await submittedResponse).json());
+    await expect.poll(async () => {
+      const response = await page.request.get(`/api/tasks/${encodeURIComponent(submitted.task_id)}`);
+      const task = taskInfoResponseSchema.parse(await response.json());
+      return { status: task.status, result: task.result_summary?.status };
+    }).toEqual({ status: 'completed', result: 'dry_run' });
+    await expect(page.locator('.learn-banner--completed')).toBeVisible();
+    expect(existsSync(path.join(workspace, '.git'))).toBe(false);
+  } finally {
+    await stopServe();
+    serveProcess = null;
+    rmSync(workspace, { recursive: true, force: true });
+  }
 });

@@ -161,6 +161,9 @@
 
 .graphify-card--compact {
   padding: 10px var(--sp-4);
+  /* Inline summaries size from their contents inside flex toolbars. */
+  container-type: normal;
+  max-width: 100%;
 }
 
 .graphify-card__compact-inner {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -15,10 +15,13 @@ import { DiagnosticRow } from '../components/DiagnosticRow';
 import type { DiagnosticStatus } from '../components/DiagnosticRow';
 import { useTranslation } from '../i18n/useTranslation';
 import type { MessageKey, TranslateFn } from '../i18n/useTranslation';
-import { fetchDbCheck, getDoctor } from '../api/config';
+import { fetchDbCheck, getConfig, getDoctor, getProviders } from '../api/config';
 import { useRunsStore } from '../state/runs-store';
-import type { DbCheckResult, DoctorCheck } from '../api/config';
+import { useLearnStore } from '../state/learn-store';
+import type { ConfigResponse, DbCheckResult, DoctorCheck, ProviderSummary } from '../api/config';
 import type { RunSummary } from '../api/types';
+import LearnSourcePicker, { type LearnSource } from '../components/LearnSourcePicker';
+import { safeVerdict } from '../utils/verdict';
 import { isProviderOnlySensitiveCheck, mapDoctorMessage } from '../utils/doctor';
 import {
   detectPlatform,
@@ -29,6 +32,8 @@ import {
   type Platform,
 } from '../utils/platform';
 import '../components/Onboarding.css';
+
+const LearnModeDialog = lazy(() => import('../components/LearnModeDialog'));
 
 interface StepDef {
   id: string;
@@ -70,49 +75,76 @@ const NAV_TARGETS: ReadonlyArray<NavTarget> = [
 ];
 
 /**
- * Compute the active onboarding step from doctor checks.
+ * Compute the active onboarding step from local diagnostics and provider configuration.
  *
- * - repo_root fail -> step 1 needs repo selection/init
- * - config_valid fail -> step 2 needs provider/config
- * - both pass -> step 4 (or "complete" if all checks pass)
+ * - workspace state missing -> step 1 needs folder setup
+ * - valid TOML alone does not establish a selected generation provider
+ * - provider selection plus valid diagnostics -> step 4
  *
  * Step 3 is the optional agent guidance install. It links to the real
  * Settings write flow rather than pretending doctor can validate it.
  */
-function computeCurrentStep(checks: DoctorCheck[]): StepNumber {
+export type ProviderSetupStatus = 'loading' | 'error' | 'missing' | 'select' | 'missing_key' | 'configured';
+
+const PROVIDER_SETUP_MESSAGES: Record<ProviderSetupStatus, MessageKey> = {
+  loading: 'Onboarding.provider_loading',
+  error: 'Onboarding.provider_load_failed',
+  missing: 'Onboarding.provider_missing',
+  select: 'Onboarding.provider_select',
+  missing_key: 'Onboarding.provider_key_missing',
+  configured: 'Onboarding.provider_configured',
+};
+
+export function resolveProviderSetupStatus(
+  config: Pick<ConfigResponse, 'generate_provider'>,
+  providers: ReadonlyArray<ProviderSummary>,
+): Exclude<ProviderSetupStatus, 'loading' | 'error'> {
+  if (providers.length === 0) return 'missing';
+  const alias = config.generate_provider?.trim() ?? '';
+  const selected = alias
+    ? providers.find(provider => provider.alias === alias)
+    : providers.length === 1 ? providers[0] : undefined;
+  if (!selected) return 'select';
+  if (!selected.provider_class.trim() || !selected.model_name.trim() || !selected.base_url.trim()) {
+    return 'missing';
+  }
+  if (selected.key_status === 'missing') return 'missing_key';
+  // A saved selection is not evidence of authentication or a successful model call.
+  return 'configured';
+}
+
+function computeCurrentStep(checks: DoctorCheck[], providerSetup: ProviderSetupStatus): StepNumber {
   const repoOk = checks.find((c) => c.name === 'repo_root')?.status === 'pass';
   const configOk = checks.find((c) => c.name === 'config_valid')?.status === 'pass';
   if (!repoOk) return 1;
-  if (!configOk) return 2;
+  if (!configOk || providerSetup !== 'configured') return 2;
   return 4;
 }
 
-interface OnboardingPageProps {
-  /**
-   * Verdict score for the Step 4 preview card. Sourced from a real first
-   * learn run when available; otherwise the page falls back to "--" via the
-   * `Onboarding.preview_default_score` i18n key.
-   */
-  previewScore?: number;
-}
-
-export default function OnboardingPage({ previewScore }: OnboardingPageProps = {}) {
+export default function OnboardingPage() {
   const { t } = useTranslation();
   const runs = useRunsStore((s) => s.runs);
   const loadRuns = useRunsStore((s) => s.loadRuns);
+  const runsLoading = useRunsStore((s) => s.loading);
+  const runsError = useRunsStore((s) => s.error);
+  const runsLoadedAt = useRunsStore((s) => s.lastLoadedAt);
+  const completedRunId = useLearnStore((s) =>
+    s.phase === 'completed' ? s.task?.result_summary?.run_id ?? null : null,
+  );
   const [doctor, setDoctor] = useState<DoctorState>({ checks: [], loading: true });
   const [dbCheck, setDbCheck] = useState<DbCheckState>({ result: null, loading: true });
   const [activeStep, setActiveStep] = useState<StepNumber>(1);
   const [activeStepTouched, setActiveStepTouched] = useState(false);
+  const [learnSource, setLearnSource] = useState<LearnSource | null>(null);
+  const [providerSetup, setProviderSetup] = useState<ProviderSetupStatus>('loading');
   const abortRef = useRef<AbortController | null>(null);
 
   const platform = useMemo<Platform>(() => detectPlatform(), []);
 
   const installCmd = getInstallCommand(platform);
   const initCmd = platform === 'windows'
-    ? 'Set-Location .\\your-repo\nahadiff init'
-    : 'cd your-repo\nahadiff init';
-  const learnCmd = 'ahadiff learn HEAD~1..HEAD';
+    ? 'Set-Location .\\your-folder\nahadiff serve'
+    : 'cd your-folder\nahadiff serve';
   const envCmd = getEnvVarCommand(platform, 'OPENAI_API_KEY', '<your-key>');
   const shellHint = getShellHint(platform);
   const platformLabel = getPlatformLabel(platform);
@@ -123,6 +155,17 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
     abortRef.current = controller;
     setDoctor((prev) => ({ ...prev, loading: true }));
     setDbCheck((prev) => ({ ...prev, loading: true }));
+    setProviderSetup('loading');
+
+    void Promise.all([
+      getConfig({ signal: controller.signal }),
+      getProviders({ signal: controller.signal }),
+    ]).then(([config, providers]) => {
+      if (controller.signal.aborted) return;
+      setProviderSetup(resolveProviderSetupStatus(config, providers.providers));
+    }).catch(() => {
+      if (!controller.signal.aborted) setProviderSetup('error');
+    });
 
     void getDoctor({ signal: controller.signal })
       .then((res) => {
@@ -152,7 +195,24 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
 
   useEffect(() => {
     void loadRuns().catch(() => {
-      // The preview remains an example when serve has no finalized runs.
+      // The store retains the failure; PreviewSection renders a generic error.
+    });
+  }, [loadRuns]);
+
+  useEffect(() => {
+    if (!completedRunId) return undefined;
+    const controller = new AbortController();
+    void loadRuns(undefined, { signal: controller.signal }).catch(() => {
+      // The task banner still links to the finished run if refreshing fails.
+    });
+    return () => controller.abort();
+  }, [completedRunId, loadRuns]);
+
+  const refreshPreview = useCallback(() => {
+    // A manual retry must reach the server even if an earlier list is still cached.
+    useRunsStore.setState({ lastLoadedAt: null });
+    void loadRuns().catch(() => {
+      // Preserve the previous run with an explicit refresh-failed state.
     });
   }, [loadRuns]);
 
@@ -162,12 +222,7 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     )[0];
   }, [runs]);
-  const resolvedPreviewScore = previewScore ?? latestPreviewRun?.overall;
-  const previewRunLabel = latestPreviewRun
-    ? latestPreviewRun.source_ref || latestPreviewRun.run_id.slice(0, 8)
-    : undefined;
-
-  const computedStep = computeCurrentStep(doctor.checks);
+  const computedStep = computeCurrentStep(doctor.checks, providerSetup);
   const isComplete =
     computedStep === 4 &&
     doctor.checks.length > 0 &&
@@ -204,13 +259,17 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
   const canGoBack = activeStep > 1;
 
   const stepStateFor = (stepNum: StepNumber): StepState => {
+    // Doctor proves setup readiness, not an agent install or a completed lesson.
+    if (stepNum === 3 || (stepNum === 4 && latestPreviewRun === null)) {
+      return stepNum === activeStep ? 'current' : 'pending';
+    }
     if (stepNum < computedStep || isComplete) return 'done';
     if (stepNum === activeStep) return 'current';
     return 'pending';
   };
 
   return (
-    <AppShell>
+    <AppShell globalShortcutsDisabled={learnSource !== null}>
       <div className="page active onboarding" data-page="onboarding" data-testid="onboarding-page">
         <header className="onboarding__head">
           <p className="onboarding__eyebrow review__eyebrow">{t('Onboarding.eyebrow')}</p>
@@ -291,6 +350,14 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
             })}
           </ol>
 
+          <p
+            className="onboarding__step-desc"
+            role={providerSetup === 'error' ? 'alert' : 'status'}
+            data-testid="onboarding-provider-status"
+          >
+            {t(PROVIDER_SETUP_MESSAGES[providerSetup])}
+          </p>
+
           <div
             className="onboarding-active surface-card"
             data-testid="onboarding-active-card"
@@ -321,7 +388,7 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
               {activeStep === 3 && <Step3InstallAgent t={t} />}
               {activeStep === 4 && (
                 <Step4Learn
-                  learnCmd={learnCmd}
+                  onSelectSource={setLearnSource}
                   t={t}
                   loading={doctor.loading}
                   isComplete={isComplete}
@@ -380,8 +447,10 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
 
         <PreviewSection
           t={t}
-          previewScore={resolvedPreviewScore}
-          previewRunLabel={previewRunLabel}
+          run={latestPreviewRun}
+          loading={runsLoading || (runsLoadedAt === null && runsError === null)}
+          failed={runsError !== null}
+          onRetry={refreshPreview}
         />
 
         {isComplete && (
@@ -416,6 +485,11 @@ export default function OnboardingPage({ previewScore }: OnboardingPageProps = {
           </section>
         )}
       </div>
+      {learnSource && (
+        <Suspense fallback={null}>
+          <LearnModeDialog open initialSource={learnSource} onClose={() => setLearnSource(null)} />
+        </Suspense>
+      )}
     </AppShell>
   );
 }
@@ -602,7 +676,7 @@ function DiagnosticsSection({
                 />
               </>
             ) : (
-              <p className="onboarding-diag__empty">{t('Doctor.db_unhealthy')}</p>
+              <p className="onboarding-diag__empty">{t('Onboarding.db_check_unavailable')}</p>
             )}
           </div>
         </article>
@@ -611,102 +685,90 @@ function DiagnosticsSection({
   );
 }
 
-function PreviewSection({
-  t,
-  previewScore,
-  previewRunLabel,
-}: {
+function PreviewSection({ t, run, loading, failed, onRetry }: {
   t: TranslateFn;
-  previewScore?: number;
-  previewRunLabel?: string;
+  run: RunSummary | null;
+  loading: boolean;
+  failed: boolean;
+  onRetry: () => void;
 }) {
-  const hasRealScore = previewScore !== undefined && Number.isFinite(previewScore);
-  const scoreLabel =
-    hasRealScore
-      ? t('Onboarding.preview_caution_score', {
-          score: String(previewScore),
-        })
-      : t('Onboarding.preview_caution_score', {
-          score: t('Onboarding.preview_default_score'),
-        });
-
+  const { locale } = useTranslation();
+  const verdict = run ? safeVerdict(run.verdict) : null;
+  const runPath = run ? `#/run/${encodeURIComponent(run.run_id)}` : null;
+  const sourceKey: MessageKey = run?.source_kind === 'file_compare'
+    ? 'LearnDialog.source_files'
+    : run?.source_kind.startsWith('git_')
+      ? 'LearnDialog.source_git'
+      : 'LearnDialog.source_patch';
+  const score = run && Number.isFinite(run.overall)
+    ? new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(run.overall)
+    : '—';
+  const metaKey: MessageKey = loading
+    ? 'Onboarding.preview_loading_meta'
+    : failed
+      ? run ? 'Onboarding.preview_stale_meta' : 'Onboarding.preview_error_meta'
+      : run ? 'Onboarding.step4_preview_meta_live' : 'Onboarding.preview_empty_meta';
   return (
     <section
       id="preview"
       className="onboarding-preview onboarding-section"
       aria-labelledby="onboarding-preview-title"
       data-testid="onboarding-preview"
+      aria-busy={loading}
     >
       <header className="onboarding-preview__head">
         <h2 id="onboarding-preview-title" className="onboarding-preview__title">
-          <BookOpen
-            className="onboarding-preview__title-icon"
-            aria-hidden="true"
-            size={18}
-          />
-          {t('Onboarding.step4_preview_title')}
+          <BookOpen className="onboarding-preview__title-icon" aria-hidden="true" size={18} />
+          {t(loading || failed ? 'Onboarding.preview_unconfirmed_title' : 'Onboarding.step4_preview_title')}
         </h2>
         <span className="onboarding-preview__meta">
-          {hasRealScore
-            ? t('Onboarding.step4_preview_meta_live')
-            : t('Onboarding.step4_preview_meta')}
+          {t(metaKey)}
         </span>
+        <button
+          type="button"
+          className="onboarding__btn onboarding__btn--ghost"
+          onClick={onRetry}
+          disabled={loading}
+          aria-busy={loading}
+          data-testid="onboarding-preview-refresh"
+        >
+          <RefreshCw size={12} aria-hidden="true" />
+          {t(failed ? 'Onboarding.preview_retry' : 'Onboarding.preview_refresh')}
+        </button>
       </header>
-      <div className="onboarding-preview__grid">
-        <article
-          className="surface-card onboarding-preview__card"
-          data-testid="onboarding-preview-spec"
-        >
-          <header className="surface-card__header">
-            <h3 className="onboarding-preview__card-title">
-              {t('Onboarding.preview_spec_label')}
-            </h3>
-          </header>
-          <div className="surface-card__body">
-            <p className="onboarding__preview-text mono">
-              {t('Onboarding.preview_spec_body')}
-            </p>
-          </div>
-        </article>
-        <article
-          className="surface-card onboarding-preview__card"
-          data-testid="onboarding-preview-diff"
-        >
-          <header className="surface-card__header">
-            <h3 className="onboarding-preview__card-title">
-              {t('Onboarding.preview_diff_label')}
-            </h3>
-          </header>
-          <div className="surface-card__body">
-            <p className="onboarding__preview-text mono">
-              {t('Onboarding.preview_diff_body')}
-            </p>
-          </div>
-        </article>
-        <article
-          className="surface-card onboarding-preview__card"
-          data-testid="onboarding-preview-verdict"
-        >
-          <header className="surface-card__header">
-            <h3 className="onboarding-preview__card-title">
-              {t('Onboarding.preview_verdict_label')}
-            </h3>
-          </header>
-          <div className="surface-card__body">
-            <span
-              className="verdict-badge verdict-badge--CAUTION"
-              data-testid="onboarding-preview-verdict-badge"
-            >
-              {scoreLabel}
-            </span>
-            <p className="onboarding__preview-text">
-              {hasRealScore && previewRunLabel
-                ? t('Onboarding.preview_verdict_body_live', { run: previewRunLabel })
-                : t('Onboarding.preview_verdict_body')}
-            </p>
-          </div>
-        </article>
-      </div>
+      {loading && <p className="onboarding__step-desc" role="status">{t('Onboarding.preview_loading')}</p>}
+      {failed && !loading && (
+        <p className="onboarding__step-desc" role="alert">
+          {t(run ? 'Onboarding.preview_refresh_failed' : 'Onboarding.preview_load_failed')}
+        </p>
+      )}
+      {run && verdict && runPath ? (
+        <div className="onboarding-preview__grid">
+          <article className="surface-card onboarding-preview__card" data-testid="onboarding-preview-source">
+            <header className="surface-card__header"><h3 className="onboarding-preview__card-title">{t('Onboarding.preview_source')}</h3></header>
+            <div className="surface-card__body">
+              <p className="onboarding__preview-text">{t(sourceKey)}</p>
+              <p className="onboarding__preview-text mono">{run.run_id}</p>
+            </div>
+          </article>
+          <article className="surface-card onboarding-preview__card" data-testid="onboarding-preview-diff">
+            <header className="surface-card__header"><h3 className="onboarding-preview__card-title">{t('Onboarding.preview_learning')}</h3></header>
+            <div className="surface-card__body">
+              <p className="onboarding__preview-text">{t('Onboarding.preview_open_hint')}</p>
+              <a className="onboarding__btn onboarding__btn--ghost" href={runPath}>{t('Onboarding.preview_open_run')}</a>
+            </div>
+          </article>
+          <article className="surface-card onboarding-preview__card" data-testid="onboarding-preview-verdict">
+            <header className="surface-card__header"><h3 className="onboarding-preview__card-title">{t('Onboarding.preview_verdict_label')}</h3></header>
+            <div className="surface-card__body">
+              <span className={`verdict-badge verdict-badge--${verdict}`} data-testid="onboarding-preview-verdict-badge">
+                {t(`Verdict.${verdict}`)} · {score}
+              </span>
+              <p className="onboarding__preview-text">{t('Onboarding.preview_quality_hint')}</p>
+            </div>
+          </article>
+        </div>
+      ) : !loading && !failed && <p className="onboarding__step-desc">{t('Onboarding.preview_empty')}</p>}
     </section>
   );
 }
@@ -771,7 +833,7 @@ function Step3InstallAgent({ t }: { t: TranslateFn }) {
     <>
       <p className="onboarding__step-desc">{t('Onboarding.agent_install_hint')}</p>
       <div className="onboarding-agent-grid">
-        {['claude', 'cursor', 'codex', 'gemini'].map((name) => (
+        {['claude', 'cursor', 'codex'].map((name) => (
           <div className="onboarding-agent-card" key={name}>
             <span className="onboarding-agent-card__mark">{name.slice(0, 2).toUpperCase()}</span>
             <span className="onboarding-agent-card__name">{name}</span>
@@ -794,13 +856,13 @@ function Step3InstallAgent({ t }: { t: TranslateFn }) {
 }
 
 function Step4Learn({
-  learnCmd,
+  onSelectSource,
   t,
   loading,
   isComplete,
   hasChecks,
 }: {
-  learnCmd: string;
+  onSelectSource: (source: LearnSource) => void;
   t: TranslateFn;
   loading: boolean;
   isComplete: boolean;
@@ -809,11 +871,8 @@ function Step4Learn({
   return (
     <>
       <p className="onboarding__step-desc">{t('Onboarding.learn_desc')}</p>
-      <CommandBlock
-        command={learnCmd}
-        copyLabel={t('Onboarding.copy')}
-        copiedLabel={t('Onboarding.copied')}
-      />
+      <LearnSourcePicker onSelect={onSelectSource} />
+      <p className="onboarding__step-desc">{t('Onboarding.learn_steps')}</p>
       {loading && <Skeleton variant="card" height="60px" />}
       {!loading && isComplete && hasChecks && (
         <div className="onboarding__step-ready" role="status" aria-live="polite">

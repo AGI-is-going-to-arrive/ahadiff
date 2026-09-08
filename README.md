@@ -1,44 +1,54 @@
 # AhaDiff (知返)
 
-> **Ship with AI. Learn it back.**
+> **Understand the change.**
 >
-> Every AI-written git diff becomes a diff-anchored Aha lesson, with code-linked claim states, active-recall quizzes, spaced review, and a self-improving quality ratchet.
+> Start with Git changes, two file versions, or a pasted diff. Study your own fixes, a colleague's edits, or AI-generated changes through evidence-linked lessons, quizzes, and spaced review.
 
 [中文](./README.zh.md) · [Landing page](https://agi-is-going-to-arrive.github.io/ahadiff/) · [User Guide](./docs/USER_GUIDE.en.html) · [<img src="./docs/assets/youtube.svg" width="16" height="16" alt="YouTube"> English tutorial video (YouTube)](https://youtu.be/lvL7GMvDPvI) · [<img src="./docs/assets/bilibili.svg" width="16" height="16" alt="Bilibili"> Chinese tutorial video (Bilibili)](https://www.bilibili.com/video/BV1b57k6yEWm)
 
 > Recommended: `pipx install ahadiff` (or `uv tool install ahadiff`) — an isolated CLI install. A plain `pip install ahadiff` also works inside a venv/conda; on a system or Homebrew Python, see [Install](#install) for the `externally-managed-environment` fix.
 
+> Source update, 2026-09-08: the three-source WebUI and file preview described here are current source changes, pending publication. The version remains 1.3.8. Use a [source build](#from-source-contributors) for these UI updates; published installs already offer the CLI `--compare` and `--patch` paths.
+
 ---
 
 ## What it is
 
-**AhaDiff** is a **local-first learning layer for AI coding**.
+**AhaDiff** is a **local-first learning tool for understanding changes**.
 
-It is not a PR summary or a repo wiki. It reads a single git diff and turns that change into:
+Bring a bounded before/after change and generate:
 
 - A **lesson** that teaches what changed and why
-- A **claims ledger** where conclusions trace back to `file:line` evidence
+- A **claims ledger** with source anchors and explicit evidence strength
 - A **quiz and review loop** so the knowledge comes back later
 - A **quality history** that makes runs comparable over time
 
-All repo-local state lives in `.ahadiff/`: run artifacts under `runs/`, and SRS / result history in `review.sqlite`.
+Your workspace keeps its state in `.ahadiff/`: run artifacts under `runs/`, and SRS / result history in `review.sqlite`. File comparisons and patches also work in an ordinary folder without a Git repository.
 
-> Code Wiki explains a repo. AhaDiff teaches you what changed, and keeps lesson claims tied back to diff evidence.
+| What you have | Where to start | Examples |
+| --- | --- | --- |
+| Changes in a Git repository | **Git changes** | A bug fix, a peer's commit, or AI-assisted coding |
+| A before file and an after file | **Two files** | Coding exercises, SQL, configuration, Markdown, or two Notebook versions |
+| A unified diff copied from a tool | **Paste a diff** | A review patch or edits shared by a colleague |
+
+These sources use the same Lesson, Diff, Quiz, Review, and quality-history workflow. Claims based only on changed text may be marked weak; a source anchor does not prove execution behavior or learning effectiveness. A single document without a previous version is outside the current workflow.
 
 ## Why
 
-AI writes code faster, but developers can understand less of what actually changed. AhaDiff exists to close that loop:
+After fixing a bug, reading a review, or accepting an AI edit, you may still struggle to make a similar change yourself. AhaDiff gives you a way to study the change and return to it later:
 
-1. **AI ships, understanding returns to humans**: a commit message is not enough.
-2. **Every claim needs evidence**: no hallucinated functions, no fabricated causality.
+1. **Understand the edit**: connect the explanation to the before and after versions.
+2. **Inspect the evidence**: distinguish supported statements, weak evidence, and unproven conclusions.
 3. **Knowledge should compound**: repeated concepts should build history and backlinks.
-4. **Quality should be comparable**: replace "looks fine" with a stable score and ratchet.
+4. **Track lesson quality**: compare deterministic scores and hard gates across runs.
+
+The original slogan, *Ship with AI. Learn it back.*, still describes one of these workflows.
 
 ## Prerequisites
 
-- Python 3.11+ with Python's `sqlite3` runtime at SQLite 3.51.3+; patched backport branches 3.50.4+ and 3.44.6+ are also accepted. Run `ahadiff doctor` to check the runtime Python actually uses.
+- Python 3.11+ with Python's `sqlite3` runtime at SQLite 3.51.3+; patched backport branches 3.50.4+ and 3.44.6+ are also accepted. Check the Quick Start diagnostics, or run `ahadiff doctor` inside a Git repository, to inspect the runtime AhaDiff actually uses.
   - **A higher version number alone does not pass:** 3.51.0–3.51.2 are rejected (inside the 3.51 line but below 3.51.3, with no backport). **Windows users:** CPython's bundled `sqlite3.dll` is often below this gate even on recent Python builds — fix with conda/miniforge, replace `DLLs/sqlite3.dll` with a compatible SQLite build, or run under WSL. Inspect yours with `python -c "import sqlite3; print(sqlite3.sqlite_version)"`.
-- git (on PATH)
+- Git on PATH for repository workflows. File and patch capture/preview do not require a Git repository or executable.
 - An LLM provider: remote (OpenAI / Anthropic / Gemini / Azure / any OpenAI-compatible) with API key, or local (LM Studio / Ollama, no key needed)
 
 ## Install
@@ -81,12 +91,47 @@ Contributors building from source also need [uv](https://docs.astral.sh/uv/) (`c
 git clone https://github.com/AGI-is-going-to-arrive/ahadiff.git
 cd ahadiff
 uv tool install --editable .
-cd viewer && pnpm install && pnpm build   # builds the dev WebUI
+cd viewer && pnpm install --frozen-lockfile && pnpm build   # builds the dev WebUI
 ```
+
+## Your first lesson
+
+Open a terminal in the folder where you want to keep your learning history. It can be an ordinary folder or a Git repository:
+
+```bash
+ahadiff serve
+```
+`ahadiff serve` creates local `.ahadiff/` state as needed and opens http://127.0.0.1:8765. Pass `--no-browser` to keep it headless. Ordinary folders do not need `ahadiff init`; the CLI `init` and `doctor` commands require a Git repository.
+
+1. Add a provider in **Settings**, then open **Welcome**.
+2. Choose **Git changes**, **Two files**, or **Paste a diff**. For two files, select or drop the before and after versions into their respective fields; the filenames may match.
+3. Select **Preview changes** to inspect the sanitized diff. Preview uses the local service without calling an LLM. Then select **Start learning**.
+4. Open **Lesson** for the explanation, **Diff** for the evidence, **Quiz** to answer questions, and **Review** when cards are due.
+
+For the browser file picker, use UTF-8 text files up to 256 KiB each (512 KiB together). Two `.ipynb` files use cell-aware comparison; AhaDiff does not execute the notebook. The preview shows up to 64 KiB and labels truncation. Larger files can use the CLI. Small file or patch exercises enable **Generate a lesson even for small changes** by default; you can clear it. This bypasses only the learnability skip, not evidence or safety checks.
+
+Prefer the terminal? Configure a provider, keep both files or the patch inside your workspace, then choose one command:
+
+```bash
+ahadiff learn --compare before.py after.py --force-learn
+ahadiff learn --patch change.diff --force-learn
+ahadiff learn --last   # requires a Git repository with a commit
+```
+
+For optional automation after Git commits on macOS/Linux, see `ahadiff install hooks --auto-learn`.
+
+Two more things to try:
+```bash
+ahadiff quiz <run_id>    # test yourself on what you just learned
+ahadiff review           # spaced-repetition review of past cards
+```
+See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture modes, export options, concept graphs, and advanced commands. Release validation records dry-run capture coverage separately from live LLM lesson generation; the v1.3.8 audit records the global-provider save regression and a live DeepSeek learn run.
 
 ## Configure a provider
 
-AhaDiff needs an LLM to generate lessons. Set up once per repo:
+AhaDiff needs an LLM to generate lessons. The simplest setup is to run `ahadiff serve` in your working folder and add a provider in **Settings**. Choose a local model for `strict_local`, or explicitly select a remote privacy mode before using a remote provider. Installing an AI agent integration is optional.
+
+For CLI setup inside an existing Git repository:
 ```bash
 ahadiff init
 
@@ -122,29 +167,9 @@ For GPT-5.5 specifically, the bundled registry keeps two profiles: ordinary `ope
 
 > AhaDiff defaults to strict_local privacy: nothing leaves your machine unless you explicitly configure a remote provider.
 
-## Your first lesson
-
-```bash
-# Learn from your latest commit
-ahadiff learn --last
-
-# Open the local web UI to read your lesson
-ahadiff serve
-```
-`ahadiff serve` opens http://127.0.0.1:8765 automatically. Pass `--no-browser` to stay in the terminal. You'll see the Dashboard with your first run, then click through to Lesson, Diff, and Quiz.
-
-To run this after every commit, see `ahadiff install hooks --auto-learn`.
-
-Two more things to try:
-```bash
-ahadiff quiz <run_id>    # test yourself on what you just learned
-ahadiff review           # spaced-repetition review of past cards
-```
-See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture modes, export options, concept graphs, and advanced commands. Release validation records dry-run capture coverage separately from live LLM lesson generation; the v1.3.8 audit records the global-provider save regression and a live DeepSeek learn run.
-
 ## Features
 
-- **Learn**: `ahadiff learn` supports 10 diff capture modes: working tree (`--staged --unstaged --include-untracked`), unstaged (`--unstaged`), staged (`--staged`), last commit (`--last`, or omit a capture-source flag), revision/range (`REVISION`), time-window (`--since`; optional `--author` focuses on one author and expects a single matching commit, otherwise it stops with a clear error), patch file/stdin (`--patch FILE|-`), patch URL (`--patch-url`), file compare (`--compare`), and directory compare (`--compare-dir`, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux. Patch files are resolved inside the repo root; use stdin for external generated patches. Patch file/stdin and patch URL runs do not have a repository symbol index; when only hunk evidence is available, AhaDiff can still generate a lesson from weak diff-anchored claims instead of claiming symbol-level proof. In release validation, the 10-mode claim refers to capture coverage unless each live LLM lesson run is listed with its run ID and artifacts; v1.3.8 records the global-provider DeepSeek learn run separately from the older 10-mode matrix.
+- **Learn**: `ahadiff learn` supports 10 diff capture modes: working tree (`--staged --unstaged --include-untracked`), unstaged (`--unstaged`), staged (`--staged`), last commit (`--last`, or omit a capture-source flag), revision/range (`REVISION`), time-window (`--since`; optional `--author` focuses on one author and expects a single matching commit, otherwise it stops with a clear error), patch file/stdin (`--patch FILE|-`), patch URL (`--patch-url`), file compare (`--compare`), and directory compare (`--compare-dir`, macOS/Linux only). Recursive directory compare requires the secure directory file descriptor available on macOS/Linux. Patch files are resolved inside the workspace root; use stdin for external generated patches. Patch file/stdin and patch URL runs do not have a repository symbol index; when only hunk evidence is available, AhaDiff can still generate a lesson from weak diff-anchored claims instead of claiming symbol-level proof. In release validation, the 10-mode claim refers to capture coverage unless each live LLM lesson run is listed with its run ID and artifacts; v1.3.8 records the global-provider DeepSeek learn run separately from the older 10-mode matrix.
 - **Evidence-linked claims**: lesson conclusions are represented as claims tied to `file:line` evidence when available, with explicit states such as verified, weak, not proven, contradicted, and rejected.
 - **Structured LLM output**: generation uses schema-aware JSON contracts where supported, defaults to JSON object mode with one bounded validation retry, and keeps the existing parser, repair, and degraded fallback paths. Truncated or malformed fallback JSON is retried instead of being accepted.
 - **Adaptive capture limits**: fresh configs default to auto capture sizing; existing customized capture settings stay manual. Auto mode uses provider probes, the bundled model registry, output reserves, safety reserves, and CJK diff density, while runtime patch intake remains capped at 50 MiB. Settings previews provider limits from the current draft provider class, model, base URL, and optional limits profile before saving, without remote probing on every edit.
@@ -152,7 +177,7 @@ See the [User Guide](./docs/USER_GUIDE.en.html) for all 10 diff capture modes, e
 - **Scoring**: each run gets an 8-dimension deterministic score, with an optional advisory LLM judge when configured. No-spec `spec_alignment` is shown as N/A / `0/0` and excluded from the overall score; judge results never override `score.json.verdict`. Diff Coverage is based on visible `line_map.json` files and line-weighted hunks, and hard-gate details show the adaptive claim-anchor threshold used for that run. If the optional judge fails, the deterministic score is still kept and the failure is saved as a redacted `judge_failure.json`.
 - **S1 / A3 diagnostics**: S1 semantic entailment is private shadow-only / measurement-only. Current S1 sample metrics are `route_hit=76` and `fp_rate=53.95%`, so both enforce and advisory use are blocked. A3 quiz distractor analysis is diagnostic/advisory-only and is not a blocking gate.
 - **WebUI**: `ahadiff serve` opens Welcome, Dashboard, Lesson, Diff, Quiz, Review, Concepts, Run Detail, Settings, and Guide. The viewer uses a light, editorial paper-style theme, with fonts bundled locally so nothing loads from a CDN. Run Detail shows Score, Judge, Artifacts, and a sanitized judge-failure panel when the optional LLM judge could not complete. The Welcome Before/After demo keeps long raw diffs collapsed with a line count and a Show all / Collapse control; short or empty diffs stay simple.
-- **New Run dialog**: Dashboard can start quick learn runs for working tree, unstaged, staged, or last commit changes, with advanced cards for `--since`, revision/range, patch URL, pasted patch text, file compare, and directory compare.
+- **Learning entry points**: Welcome, Quick Start, and Guide share **Git changes / Two files / Paste a diff**. They open the same New Run dialog used by Dashboard. File selection and drop support feed the file-comparison pipeline, including Notebook cell sources; preview and generation use the same safety checks. Advanced options retain time windows, revision ranges, patch URLs, local file paths, and supported directory comparisons.
 - **Export**: from the CLI, `ahadiff export-results` writes `results.tsv` and `ahadiff export preview` writes a local static preview bundle. The WebUI (and the `serve` API) also export TSV / JSON and Anki `.apkg`; `.apkg` export uses the bundled `genanki`, available by default.
 - **Concept graph**: AhaDiff extracts cross-diff concepts and shows them in a Canvas graph with health checks.
 - **AI tool integration**: one shared catalogue for 16 current CLI / IDE / CI targets, including Pi, DeepSeek Harness (developer preview), Grok Build, and Devin. Settings supports protected preview, write, update, and removal; Guide reads the same catalogue and reports loading/errors without inventing available targets. Gemini CLI remains an explicit install for API-key/Enterprise users; personal-account users should use Antigravity. Roo and old Windsurf guidance have cleanup-only entries.

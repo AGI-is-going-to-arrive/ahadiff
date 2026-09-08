@@ -1436,7 +1436,7 @@ def _run_replay_command_with_interrupt(
 def _terminate_replay_process(process: subprocess.Popen[str], *, force: bool) -> None:
     if process.poll() is not None:
         return
-    if sys.platform.startswith("win"):
+    if sys.platform == "win32":
         with suppress(OSError):
             if force:
                 process.kill()
@@ -1458,7 +1458,7 @@ def _terminate_replay_process(process: subprocess.Popen[str], *, force: bool) ->
 
 
 def _detached_subprocess_kwargs() -> dict[str, Any]:
-    if sys.platform.startswith("win"):
+    if sys.platform == "win32":
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         return {"creationflags": creationflags}
     return {"start_new_session": True}

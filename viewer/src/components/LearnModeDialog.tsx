@@ -10,7 +10,13 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/useTranslation';
 import { useLearnStore } from '../state/learn-store';
 import { useLocaleStore } from '../state/locale-store';
-import type { LearnSubmitPayload, Locale } from '../api/types';
+import { estimateLearn } from '../api/tasks';
+import { ApiError } from '../api/client';
+import type { LearnEstimateResponse, LearnFileInput, LearnSubmitPayload, Locale } from '../api/types';
+import { getErrorMessage } from '../utils/error-codes';
+import { buildFormatTexts, formatBytes } from '../utils/format';
+import LearnSourcePicker, { type LearnSource } from './LearnSourcePicker';
+import LearnFilePicker from './LearnFilePicker';
 import './LearnModeDialog.css';
 
 type CaptureMode =
@@ -22,6 +28,7 @@ type CaptureMode =
   | 'revision'
   | 'patch_url'
   | 'compare'
+  | 'compare_files'
   | 'compare_dir'
   | 'patch';
 
@@ -31,12 +38,14 @@ type PrivacyOption = '' | 'strict_local' | 'redacted_remote' | 'explicit_remote'
 interface LearnModeDialogProps {
   open: boolean;
   onClose: () => void;
+  initialSource?: LearnSource;
 }
 
 const QUICK_MODES: CaptureMode[] = ['working', 'unstaged', 'staged', 'last'];
 const MAX_TEXT_INPUT_LENGTH = 4096;
 const MAX_REVISION_LENGTH = 255;
 const MAX_PATCH_TEXT_BYTES = 64 * 1024;
+const MAX_REQUEST_BYTES = 1024 * 1024;
 const MAX_CHANGED_PATHS = 500;
 const MAX_PATH_SCOPE_TEXT_LENGTH = 64 * 1024;
 const UTF8_ENCODER = new TextEncoder();
@@ -62,6 +71,7 @@ interface BuildPayloadArgs {
   patchText: string;
   compareA: string;
   compareB: string;
+  compareFiles: [LearnFileInput, LearnFileInput] | null;
   compareDirA: string;
   compareDirB: string;
   changedPaths: string[];
@@ -82,6 +92,7 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
     patchText,
     compareA,
     compareB,
+    compareFiles,
     compareDirA,
     compareDirB,
     changedPaths,
@@ -124,6 +135,9 @@ function buildPayload(args: BuildPayloadArgs): LearnSubmitPayload {
     case 'compare':
       base.compare = [compareA.trim(), compareB.trim()];
       break;
+    case 'compare_files':
+      if (compareFiles) base.compare_files = compareFiles;
+      break;
     case 'compare_dir':
       base.compare_dir = [compareDirA.trim(), compareDirB.trim()];
       break;
@@ -147,8 +161,7 @@ function isAdvancedMode(mode: CaptureMode): boolean {
     mode === 'revision' ||
     mode === 'patch_url' ||
     mode === 'compare' ||
-    mode === 'compare_dir' ||
-    mode === 'patch'
+    mode === 'compare_dir'
   );
 }
 
@@ -212,8 +225,18 @@ function gitFilterIsValid(value: string): boolean {
   return !CONTROL_CHAR_RE.test(value);
 }
 
-export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps) {
-  const { t } = useTranslation();
+function sourceForMode(mode: CaptureMode): LearnSource {
+  if (mode === 'compare' || mode === 'compare_dir' || mode === 'compare_files') return 'files';
+  if (mode === 'patch' || mode === 'patch_url') return 'patch';
+  return 'git';
+}
+
+function defaultMode(source: LearnSource): CaptureMode {
+  return source === 'files' ? 'compare_files' : source === 'patch' ? 'patch' : 'working';
+}
+
+export default function LearnModeDialog({ open, onClose, initialSource = 'git' }: LearnModeDialogProps) {
+  const { t, locale } = useTranslation();
   const requestLearn = useLearnStore((s) => s.requestLearn);
   const learnPhase = useLearnStore((s) => s.phase);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -221,6 +244,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const firstFocusRef = useRef<HTMLInputElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const estimateAbortRef = useRef<AbortController | null>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
 
   const [mode, setMode] = useState<CaptureMode>('working');
   const [since, setSince] = useState('');
@@ -230,6 +254,10 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const [patchText, setPatchText] = useState('');
   const [compareA, setCompareA] = useState('');
   const [compareB, setCompareB] = useState('');
+  const [beforeFile, setBeforeFile] = useState<LearnFileInput | null>(null);
+  const [afterFile, setAfterFile] = useState<LearnFileInput | null>(null);
+  const [readingBefore, setReadingBefore] = useState(false);
+  const [readingAfter, setReadingAfter] = useState(false);
   const [compareDirA, setCompareDirA] = useState('');
   const [compareDirB, setCompareDirB] = useState('');
   const [pathScope, setPathScope] = useState('');
@@ -237,11 +265,20 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const [useGraphify, setUseGraphify] = useState(false);
   const [dryRun, setDryRun] = useState(false);
   const viewerLocale = useLocaleStore((s) => s.locale);
+  const viewerLocaleRef = useRef(viewerLocale);
+  viewerLocaleRef.current = viewerLocale;
   const [lang, setLang] = useState<LangOption>(viewerLocale);
   const [privacyMode, setPrivacyMode] = useState<PrivacyOption>('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [preview, setPreview] = useState<LearnEstimateResponse | null>(null);
+  const [previewKey, setPreviewKey] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewErrorCode, setPreviewErrorCode] = useState<string | null>(null);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const source = sourceForMode(mode);
 
-  const isBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling' || learnPhase === 'estimating' || learnPhase === 'confirming';
+  const isTaskBusy = learnPhase === 'submitting' || learnPhase === 'running' || learnPhase === 'cancelling' || learnPhase === 'estimating' || learnPhase === 'confirming';
+  const isBusy = isTaskBusy || previewLoading || readingBefore || readingAfter;
   const patchTextBytes = useMemo(() => utf8ByteLength(patchText), [patchText]);
   const patchTooLarge = patchTextBytes > MAX_PATCH_TEXT_BYTES;
   const patchUsesStdinSentinel = patchText.trim() === '-';
@@ -287,11 +324,15 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   const abortEstimate = useCallback(() => {
     estimateAbortRef.current?.abort();
     estimateAbortRef.current = null;
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
   }, []);
 
   const clearSensitiveFields = useCallback(() => {
     setPatchText('');
     setPatchUrl('');
+    setBeforeFile(null);
+    setAfterFile(null);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -317,6 +358,9 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
     case 'compare':
       needsValidInput = compareA.trim().length > 0 && compareB.trim().length > 0;
       break;
+    case 'compare_files':
+      needsValidInput = beforeFile !== null && afterFile !== null;
+      break;
     case 'compare_dir':
       needsValidInput = compareDirA.trim().length > 0 && compareDirB.trim().length > 0;
       break;
@@ -324,7 +368,29 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       needsValidInput = true;
       break;
   }
-  const canSubmit = !isBusy && needsValidInput && !pathScopeInvalid;
+  const payload = useMemo(() => buildPayload({
+    mode, since, author, revision, patchUrl, patchText, compareA, compareB,
+    compareFiles: beforeFile && afterFile ? [beforeFile, afterFile] : null,
+    compareDirA, compareDirB, changedPaths: pathScopeResult.paths,
+    forceLearn, useGraphify, dryRun, lang, privacyMode,
+  }), [mode, since, author, revision, patchUrl, patchText, compareA, compareB,
+    beforeFile, afterFile, compareDirA, compareDirB, pathScopeResult.paths,
+    forceLearn, useGraphify, dryRun, lang, privacyMode]);
+  const payloadKey = JSON.stringify(payload);
+  const requestTooLarge = utf8ByteLength(payloadKey) > MAX_REQUEST_BYTES;
+  const canPreview = !isBusy && needsValidInput && !pathScopeInvalid && !requestTooLarge;
+  const hasCurrentPreview = preview !== null && previewKey === payloadKey;
+  const canSubmit = canPreview && hasCurrentPreview && preview.file_count > 0 && Boolean(preview.preview_patch?.trim());
+
+  useEffect(() => {
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    setPreview(null);
+    setPreviewKey('');
+    setPreviewLoading(false);
+    setPreviewFailed(false);
+    setPreviewErrorCode(null);
+  }, [payloadKey]);
 
   useSafeLayoutEffect(() => {
     if (!open || typeof document === 'undefined') return undefined;
@@ -363,6 +429,11 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
     if (!open) {
       abortEstimate();
       clearSensitiveFields();
+      setPreview(null);
+      setPreviewKey('');
+      setPreviewLoading(false);
+      setPreviewFailed(false);
+      setPreviewErrorCode(null);
     }
     return undefined;
   }, [abortEstimate, clearSensitiveFields, open]);
@@ -372,7 +443,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
   useEffect(() => {
     if (open) {
       restoreFocusRef.current = document.activeElement as HTMLElement | null;
-      setMode('working');
+      setMode(defaultMode(initialSource));
       setSince('');
       setAuthor('');
       setRevision('');
@@ -380,16 +451,25 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       setPatchText('');
       setCompareA('');
       setCompareB('');
+      setBeforeFile(null);
+      setAfterFile(null);
+      setReadingBefore(false);
+      setReadingAfter(false);
       setCompareDirA('');
       setCompareDirB('');
       setPathScope('');
-      setForceLearn(false);
+      setForceLearn(initialSource !== 'git');
       setUseGraphify(false);
       setDryRun(false);
-      setLang(viewerLocale);
+      setLang(viewerLocaleRef.current);
       setPrivacyMode('');
       setAdvancedOpen(false);
-      const raf = requestAnimationFrame(() => firstFocusRef.current?.focus());
+      const raf = requestAnimationFrame(() => {
+        const sourceButton = dialogRef.current?.querySelector<HTMLButtonElement>(
+          '[data-learn-source][aria-pressed="true"]',
+        );
+        (sourceButton ?? firstFocusRef.current)?.focus();
+      });
       return () => {
         cancelAnimationFrame(raf);
         restoreFocusRef.current?.focus({ preventScroll: true });
@@ -397,7 +477,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
       };
     }
     return undefined;
-  }, [open, viewerLocale]);
+  }, [open, initialSource]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -437,55 +517,68 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
 
   const handleModeSelect = useCallback((m: CaptureMode) => {
     setMode(m);
+    if (m !== 'compare_files') {
+      setReadingBefore(false);
+      setReadingAfter(false);
+    }
     if (isAdvancedMode(m) && !advancedOpen) setAdvancedOpen(true);
   }, [advancedOpen]);
 
+  const handleSourceSelect = (next: LearnSource): void => {
+    if (next !== source) {
+      setBeforeFile(null);
+      setAfterFile(null);
+      setPatchText('');
+      setPatchUrl('');
+      setReadingBefore(false);
+      setReadingAfter(false);
+    }
+    setMode(defaultMode(next));
+    setForceLearn(next !== 'git');
+    setAdvancedOpen(false);
+  };
+
+  const handlePreview = async (): Promise<void> => {
+    if (!canPreview) return;
+    const controller = new AbortController();
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = controller;
+    setPreviewLoading(true);
+    setPreview(null);
+    setPreviewFailed(false);
+    setPreviewErrorCode(null);
+    try {
+      const result = await estimateLearn(payload, { signal: controller.signal });
+      if (controller.signal.aborted || previewAbortRef.current !== controller) return;
+      if (typeof result.preview_patch !== 'string') throw new Error('Preview unavailable');
+      setPreview(result);
+      setPreviewKey(payloadKey);
+    } catch (error: unknown) {
+      if (controller.signal.aborted || previewAbortRef.current !== controller) return;
+      setPreviewFailed(true);
+      setPreviewErrorCode(error instanceof ApiError ? error.errorCode ?? null : null);
+    } finally {
+      if (previewAbortRef.current === controller) {
+        previewAbortRef.current = null;
+        setPreviewLoading(false);
+      }
+    }
+  };
+
   const handleSubmit = useCallback(() => {
     if (!canSubmit) return;
-    const payload = buildPayload({
-      mode,
-      since,
-      author,
-      revision,
-      patchUrl,
-      patchText,
-      compareA,
-      compareB,
-      compareDirA,
-      compareDirB,
-      changedPaths: pathScopeResult.paths,
-      forceLearn,
-      useGraphify,
-      dryRun,
-      lang,
-      privacyMode,
-    });
     const controller = new AbortController();
     estimateAbortRef.current?.abort();
     estimateAbortRef.current = controller;
     void requestLearn(payload, { signal: controller.signal }).finally(() => {
       if (estimateAbortRef.current === controller) estimateAbortRef.current = null;
+      if (controller.signal.aborted) return;
       clearSensitiveFields();
-      if (!controller.signal.aborted) onClose();
+      onClose();
     });
   }, [
     canSubmit,
-    mode,
-    since,
-    author,
-    revision,
-    patchUrl,
-    patchText,
-    compareA,
-    compareB,
-    compareDirA,
-    compareDirB,
-    pathScopeResult.paths,
-    forceLearn,
-    useGraphify,
-    dryRun,
-    lang,
-    privacyMode,
+    payload,
     requestLearn,
     clearSensitiveFields,
     onClose,
@@ -513,9 +606,10 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
         </header>
 
         <div className="learn-dialog__body">
-          <fieldset className="learn-dialog__fieldset">
-            <legend className="learn-dialog__legend">{t('LearnDialog.subtitle')}</legend>
-            {/* Quick mode tiles */}
+          <LearnSourcePicker selected={source} onSelect={handleSourceSelect} disabled={isTaskBusy} />
+          <fieldset className="learn-dialog__fieldset" disabled={isTaskBusy}>
+            <legend className="learn-dialog__sr-only">{t('LearnDialog.subtitle')}</legend>
+            {source === 'git' && (
             <div className="learn-dialog__tiles">
               {QUICK_MODES.map((m) => (
                 <label
@@ -543,30 +637,85 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
               ))}
             </div>
 
-          {!advancedOpen && (
-            <p id="learn-dialog-mode-hint" className="learn-dialog__mode-hint">
-              {t('LearnDialog.mode_hint')}
-            </p>
-          )}
+            )}
+            {mode === 'compare_files' && (
+              <div className="learn-dialog__file-pair">
+                <LearnFilePicker side="before" value={beforeFile} disabled={isTaskBusy} onChange={setBeforeFile} onPendingChange={setReadingBefore} />
+                <LearnFilePicker side="after" value={afterFile} disabled={isTaskBusy} onChange={setAfterFile} onPendingChange={setReadingAfter} />
+              </div>
+            )}
+                {/* Inline inputs for Patch (paste) */}
+                {mode === 'patch' && (
+                  <div className="learn-dialog__input-area">
+                    <div className="learn-dialog__radio-row learn-dialog__radio-row--block">
+                      <label
+                        id="learn-mode-patch-label"
+                        htmlFor="learn-mode-patch-text"
+                        className="learn-dialog__radio-label"
+                      >
+                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch')}</span>
+                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_hint')}</span>
+                      </label>
+                      <textarea
+                        id="learn-mode-patch-text"
+                        className="learn-dialog__textarea"
+                        aria-labelledby="learn-mode-patch-label"
+                        aria-describedby={patchErrorId}
+                        aria-invalid={patchTooLarge || undefined}
+                        placeholder={t('LearnDialog.mode_patch_ph')}
+                        value={patchText}
+                        maxLength={MAX_PATCH_TEXT_BYTES * 4}
+                        onFocus={() => handleModeSelect('patch')}
+                        onChange={(e) => {
+                          handleModeSelect('patch');
+                          setPatchText(e.target.value);
+                        }}
+                        rows={6}
+                      />
+                      {patchValidationMessage && (
+                        <p
+                          id="learn-mode-patch-error"
+                          className="learn-dialog__error"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          {patchValidationMessage}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+            {source !== 'git' && (
+              <div className="learn-dialog__explicit-learn">
+                <label className="learn-dialog__checkbox">
+                  <input
+                    type="checkbox"
+                    checked={forceLearn}
+                    onChange={(e) => setForceLearn(e.target.checked)}
+                  />
+                  <span className="learn-dialog__checkbox-copy">
+                    <span className="learn-dialog__checkbox-label">{t('LearnDialog.opt_force')}</span>
+                    <span className="learn-dialog__checkbox-hint">
+                      {t('LearnDialog.opt_force_hint')}
+                    </span>
+                  </span>
+                </label>
 
-          {/* Advanced toggle */}
-          <button
-            type="button"
-            className="learn-dialog__advanced-toggle"
-            aria-expanded={advancedOpen}
-            aria-controls="learn-dialog-advanced"
-            aria-describedby={!advancedOpen ? 'learn-dialog-mode-hint' : undefined}
-            onClick={() => setAdvancedOpen((v) => !v)}
-          >
-            <span className="learn-dialog__advanced-arrow" aria-hidden="true">
-              {advancedOpen ? '▾' : '▸'}
-            </span>
-            {advancedOpen ? t('LearnDialog.advanced_toggle_open') : t('LearnDialog.advanced_toggle_closed')}
-          </button>
-
-          {/* Advanced section */}
-          {advancedOpen && (
-            <div id="learn-dialog-advanced" className="learn-dialog__advanced">
+              </div>
+            )}
+            <button
+              type="button"
+              className="learn-dialog__advanced-toggle"
+              aria-expanded={advancedOpen}
+              aria-controls="learn-dialog-advanced"
+              onClick={() => setAdvancedOpen((value) => !value)}
+            >
+              <span className="learn-dialog__advanced-arrow" aria-hidden="true">{advancedOpen ? '▾' : '▸'}</span>
+              {advancedOpen ? t('LearnDialog.advanced_toggle_open') : t('LearnDialog.advanced_toggle_closed')}
+            </button>
+            {advancedOpen && (
+              <div id="learn-dialog-advanced" className="learn-dialog__advanced">
+                {source === 'git' && (<>
               <div className="learn-dialog__path-scope-row">
                 <div className="learn-dialog__path-scope-copy">
                   <label htmlFor="learn-mode-path-scope" className="learn-dialog__path-scope-label">
@@ -774,6 +923,9 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                 )}
               </div>
 
+
+                </>)}
+                {source === 'patch' && (<>
               {/* ============== Patch group ============== */}
               <div className="learn-dialog__adv-group" role="group" aria-labelledby="learn-adv-group-patch">
                 <div id="learn-adv-group-patch" className="learn-dialog__adv-group-title">
@@ -874,49 +1026,12 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   </div>
                 )}
 
-                {/* Inline inputs for Patch (paste) */}
-                {mode === 'patch' && (
-                  <div className="learn-dialog__input-area">
-                    <div className="learn-dialog__radio-row learn-dialog__radio-row--block">
-                      <label
-                        id="learn-mode-patch-label"
-                        htmlFor="learn-mode-patch-text"
-                        className="learn-dialog__radio-label"
-                      >
-                        <span className="learn-dialog__radio-label-main">{t('LearnDialog.mode_patch')}</span>
-                        <span className="learn-dialog__radio-hint">{t('LearnDialog.mode_patch_hint')}</span>
-                      </label>
-                      <textarea
-                        id="learn-mode-patch-text"
-                        className="learn-dialog__textarea"
-                        aria-labelledby="learn-mode-patch-label"
-                        aria-describedby={patchErrorId}
-                        aria-invalid={patchTooLarge || undefined}
-                        placeholder={t('LearnDialog.mode_patch_ph')}
-                        value={patchText}
-                        maxLength={MAX_PATCH_TEXT_BYTES * 4}
-                        onFocus={() => handleModeSelect('patch')}
-                        onChange={(e) => {
-                          handleModeSelect('patch');
-                          setPatchText(e.target.value);
-                        }}
-                        rows={6}
-                      />
-                      {patchValidationMessage && (
-                        <p
-                          id="learn-mode-patch-error"
-                          className="learn-dialog__error"
-                          role="status"
-                          aria-live="polite"
-                        >
-                          {patchValidationMessage}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
+
               </div>
 
+
+                </>)}
+                {source === 'files' && (<>
               {/* ============== Compare group ============== */}
               <div className="learn-dialog__adv-group" role="group" aria-labelledby="learn-adv-group-compare">
                 <div id="learn-adv-group-compare" className="learn-dialog__adv-group-title">
@@ -924,6 +1039,11 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   <span className="learn-dialog__adv-group-meta">{t('LearnDialog.adv_group_compare_meta')}</span>
                 </div>
                 <div className="learn-dialog__adv-grid">
+                  <label className={`learn-dialog__adv-card${mode === 'compare_files' ? ' learn-dialog__adv-card--selected' : ''}`}>
+                    <input type="radio" name="capture-mode" checked={mode === 'compare_files'} onChange={() => handleModeSelect('compare_files')} className="learn-dialog__tile-radio" />
+                    <span className="learn-dialog__adv-card-title">{t('LearnDialog.source_files')}</span>
+                    <span className="learn-dialog__adv-desc">{t('LearnDialog.source_files_hint')}</span>
+                  </label>
                   {/* Compare files card */}
                   <label
                     className={`learn-dialog__adv-card${mode === 'compare' ? ' learn-dialog__adv-card--selected' : ''}`}
@@ -1060,9 +1180,12 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                 )}
               </div>
 
+
+                </>)}
               {/* Options */}
               <div className="learn-dialog__options">
                 <div className="learn-dialog__options-title">{t('LearnDialog.options_title')}</div>
+{source === 'git' && (
                 <label className="learn-dialog__checkbox">
                   <input
                     type="checkbox"
@@ -1076,6 +1199,7 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                     </span>
                   </span>
                 </label>
+)}
                 <label className="learn-dialog__checkbox">
                   <input
                     type="checkbox"
@@ -1138,9 +1262,33 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
                   </select>
                 </div>
               </div>
-            </div>
-          )}
+              </div>
+            )}
           </fieldset>
+          <p className="learn-dialog__preview-hint">{t('LearnDialog.preview_hint')}</p>
+          {requestTooLarge && <p className="learn-dialog__error" role="alert">{t('LearnDialog.error_request_too_large')}</p>}
+          {previewFailed && (
+            <p className="learn-dialog__error" role="alert">
+              {getErrorMessage(t, previewErrorCode, t('LearnDialog.preview_failed'))}
+              {' '}{t('LearnDialog.preview_retry_hint')}
+            </p>
+          )}
+          {previewLoading && <p role="status" aria-live="polite">{t('LearnDialog.preview_loading')}</p>}
+          {hasCurrentPreview && preview && (
+            <section className="learn-dialog__preview" aria-labelledby="learn-preview-title">
+              <h3 id="learn-preview-title">{t('LearnDialog.preview_title')}</h3>
+              <p className="learn-dialog__preview-stats" role="status">
+                {t('Learn.preflight_files', { count: preview.file_count })}
+                {' · '}{formatBytes(preview.patch_bytes, locale, buildFormatTexts(t))}
+              </p>
+              {preview.preview_truncated && <p>{t('LearnDialog.preview_truncated')}</p>}
+              {(preview.diff_clipped || (preview.omitted_files_count ?? 0) > 0) && <p className="learn-dialog__error">{t('LearnDialog.preview_capture_clipped')}</p>}
+              {preview.risk_level !== 'ok' && <p>{t('LearnDialog.preview_risk')}</p>}
+              {preview.preview_patch?.trim()
+                ? <pre className="learn-dialog__preview-diff" tabIndex={0} aria-label={t('LearnDialog.preview_title')}>{preview.preview_patch}</pre>
+                : <p>{t('LearnDialog.preview_empty')}</p>}
+            </section>
+          )}
         </div>
 
         <footer className="learn-dialog__footer">
@@ -1152,8 +1300,17 @@ export default function LearnModeDialog({ open, onClose }: LearnModeDialogProps)
             {t('LearnDialog.cancel')}
           </button>
           <p className="learn-dialog__sr-only" role="status" aria-live="polite">
-            {isBusy ? t('LearnDialog.status_busy') : t('LearnDialog.status_ready')}
+            {isBusy ? t('LearnDialog.status_busy') : canSubmit ? t('LearnDialog.status_ready') : t('LearnDialog.subtitle')}
           </p>
+          <button
+            type="button"
+            className="learn-dialog__btn learn-dialog__btn--ghost learn-dialog__preview-button"
+            disabled={!canPreview}
+            aria-busy={previewLoading}
+            onClick={() => void handlePreview()}
+          >
+            {t(hasCurrentPreview ? 'LearnDialog.preview_again' : 'LearnDialog.preview_action')}
+          </button>
           <button
             type="button"
             className="learn-dialog__btn learn-dialog__btn--primary"

@@ -119,6 +119,57 @@ test.describe('cross-browser corner cases', () => {
     await installServeMock(page);
   });
 
+  for (const locale of ['en', 'zh-CN']) {
+    test(`page frames stay centered on wide screens and usable on phones (${locale})`, async ({ page, baseURL }) => {
+      if (!baseURL) throw new Error('baseURL is required');
+      await page.context().addCookies([{ name: 'ahadiff_lang', value: locale, url: baseURL }]);
+      const routes = [
+        { hash: '/', selector: '[data-page="dashboard"]' },
+        { hash: '/run/test-run/lesson', selector: '[data-page="lesson"]' },
+        { hash: '/run/test-run/diff', selector: '[data-page="diff"]' },
+        { hash: '/ratchet', selector: '.ratchet-page' },
+      ];
+
+      for (const width of [2560, 375]) {
+        await page.setViewportSize({ width, height: width > 1000 ? 1440 : 812 });
+        for (const route of routes) {
+          await page.goto(`/#${route.hash}`);
+          const frame = page.locator(route.selector);
+          await expect(frame).toBeVisible();
+          await expect.poll(() => frame.evaluate(element => {
+            const available = element.parentElement?.getBoundingClientRect();
+            if (!available) throw new Error('Page frame has no content container');
+            const bounds = element.getBoundingClientRect();
+            return Math.abs((bounds.left - available.left) - (available.right - bounds.right));
+          })).toBeLessThanOrEqual(2);
+          expect(await page.evaluate(() =>
+            document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          )).toBeLessThanOrEqual(1);
+
+          if (width > 1000 && route.hash.endsWith('/diff')) {
+            const code = page.locator('.diff-page__body');
+            const inspector = page.locator('.claim-inspector');
+            await expect(code.locator('.diff-view')).toBeVisible();
+            await expect(inspector).toBeVisible();
+            const codeBounds = await code.boundingBox();
+            const inspectorBounds = await inspector.boundingBox();
+            if (!codeBounds || !inspectorBounds) throw new Error('Diff columns are not rendered');
+            expect(codeBounds.width).toBeGreaterThan(inspectorBounds.width);
+
+            const compact = page.locator('.diff-page__header .graphify-card--compact');
+            const counts = compact.locator('.graphify-card__counts');
+            await expect(counts).toBeVisible();
+            const compactBounds = await compact.boundingBox();
+            const countsBounds = await counts.boundingBox();
+            if (!compactBounds || !countsBounds) throw new Error('Graph summary is not rendered');
+            expect(compactBounds.width).toBeGreaterThan(100);
+            expect(countsBounds.x + countsBounds.width).toBeLessThanOrEqual(compactBounds.x + compactBounds.width + 1);
+          }
+        }
+      }
+    });
+  }
+
   test('rapid locale toggle settles to final state', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
@@ -350,7 +401,7 @@ test.describe('cross-browser corner cases', () => {
 
     const learnDialog = page.getByRole('dialog', { name: /Start a Learn Run/i });
     await expect(learnDialog).toBeVisible();
-    const advancedToggle = learnDialog.getByRole('button', { name: /More capture modes/i });
+    const advancedToggle = learnDialog.getByRole('button', { name: /More options for this source/i });
     await expect(advancedToggle).toHaveAttribute('aria-expanded', 'false');
     await advancedToggle.focus();
 

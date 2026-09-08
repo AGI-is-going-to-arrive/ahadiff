@@ -41,6 +41,7 @@ function formatElapsed(s: number): string {
 export default function LearnTaskBanner() {
   const { t, locale } = useTranslation();
   const phase = useLearnStore((s) => s.phase);
+  const taskId = useLearnStore((s) => s.taskId);
   const task = useLearnStore((s) => s.task);
   const estimate = useLearnStore((s) => s.estimate);
   const error = useLearnStore((s) => s.error);
@@ -73,6 +74,7 @@ export default function LearnTaskBanner() {
   if (phase === 'idle') return null;
 
   const isPending = task?.status === 'pending';
+  const isAwaitingCancellationId = phase === 'cancelling' && taskId === null;
   const pct = progress && progress.total > 0
     ? Math.max(0, Math.min(100, Math.round((progress.current / progress.total) * 100)))
     : 0;
@@ -163,6 +165,9 @@ export default function LearnTaskBanner() {
         <div className="learn-banner__body">
           <span className="learn-banner__spinner" aria-hidden="true" />
           <span>{t('Learn.submitting')}</span>
+          <button type="button" className="learn-banner__btn learn-banner__btn--cancel" onClick={() => void cancelLearn()}>
+            {t('Learn.cancel')}
+          </button>
         </div>
       )}
 
@@ -175,7 +180,9 @@ export default function LearnTaskBanner() {
                 <span className="learn-banner__pulse" aria-hidden="true" />
               )}
               <span className="learn-banner__step">
-                {isPending
+                {isAwaitingCancellationId
+                  ? t('Learn.cancelling_submission')
+                  : isPending
                   ? t('Learn.pending')
                   : progress
                     ? t('Learn.step_progress', {
@@ -211,7 +218,7 @@ export default function LearnTaskBanner() {
                 {t('Learn.long_running_hint')}
               </div>
             )}
-            {!isPending && (
+            {!isPending && !isAwaitingCancellationId && (
               <div
                 className={`learn-banner__bar-track${isLlmStep ? ' learn-banner__bar-track--active' : ''}`}
                 role="progressbar"
@@ -238,7 +245,7 @@ export default function LearnTaskBanner() {
             >
               {phase === 'cancelling' ? t('Learn.cancelling') : t('Learn.cancel')}
             </button>
-            {phase === 'cancelling' && (
+            {phase === 'cancelling' && !isAwaitingCancellationId && (
               <button
                 type="button"
                 className="learn-banner__btn learn-banner__btn--dismiss"

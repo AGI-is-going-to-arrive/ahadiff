@@ -126,6 +126,9 @@ class LearnEstimateResponse(BaseModel):
     omitted_files_count: int = 0
     risk_level: LearnEstimateRiskLevel
     warnings: list[str]
+    preview_patch: str = ""
+    preview_truncated: bool = False
+    source_kind: SourceKind | None = None
 
 
 class RunSummary(BaseModel):

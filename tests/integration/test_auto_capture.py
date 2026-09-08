@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from starlette.testclient import TestClient
 
+from ahadiff.contracts import RunSource
 from ahadiff.contracts.serve_app import LearnEstimateResponse
 from ahadiff.core.orchestrator import LearnRequest, run_learn_pipeline
 from ahadiff.serve import ServeState, create_app, routes_learn
@@ -211,6 +212,12 @@ def test_learn_estimate_auto_mode_reports_effective_limits_and_clipping_without_
     def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
         captured_kwargs.update(kwargs)
         return SimpleNamespace(
+            run_source=RunSource(
+                source_kind="git_ref",
+                source_ref="a" * 40,
+                capability_level=3,
+                degraded_flags={"diff_clipped": True},
+            ),
             persisted_patch_text=_PATCH_TEXT,
             metadata={
                 "selected_files": [f"src/f{i}.py" for i in range(100)],
@@ -234,6 +241,7 @@ def test_learn_estimate_auto_mode_reports_effective_limits_and_clipping_without_
     assert payload.file_count == 100
     assert payload.diff_clipped is True
     assert payload.omitted_files_count == 2
+    assert payload.source_kind == "git_ref"
     assert payload.risk_level == "warn"
     assert any("Capture omitted 2 files" in warning for warning in payload.warnings)
     assert any("Diff was clipped" in warning for warning in payload.warnings)
@@ -291,6 +299,12 @@ def test_learn_estimate_manual_mode_preserves_old_file_count_risk_behavior(
     def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
         captured_kwargs.update(kwargs)
         return SimpleNamespace(
+            run_source=RunSource(
+                source_kind="git_ref",
+                source_ref="a" * 40,
+                capability_level=3,
+                degraded_flags={"diff_clipped": True},
+            ),
             persisted_patch_text=_PATCH_TEXT,
             metadata={
                 "selected_files": [f"src/f{i}.py" for i in range(51)],
@@ -311,6 +325,7 @@ def test_learn_estimate_manual_mode_preserves_old_file_count_risk_behavior(
         assert captured_kwargs[key] == value
     assert payload.diff_clipped is True
     assert payload.omitted_files_count == 1
+    assert payload.source_kind == "git_ref"
     assert payload.risk_level == "danger"
     assert any("File count 51 exceeds 50" in warning for warning in payload.warnings)
     assert all("Capture omitted" not in warning for warning in payload.warnings)

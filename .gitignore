@@ -13,6 +13,10 @@ eval-screenshots/
 # Local AhaDiff per-repo state
 .ahadiff/
 
+# Local validation bundles, reports, and generated lessons
+/dist/maintenance-*/
+live-validation/
+
 # macOS
 .DS_Store
 .DS_Store?

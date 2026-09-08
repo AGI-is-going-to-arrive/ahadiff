@@ -340,9 +340,9 @@ def _run_doctor_checks(state: ServeState) -> dict[str, Any]:
 
     cfg: Any | None = None
     try:
-        from ahadiff.core.config import load_config
+        from .config_runtime import load_serve_config_snapshot
 
-        cfg = load_config(repo_root, global_config_root=state.global_config_root)
+        cfg = load_serve_config_snapshot(state)
         checks.append(
             _doctor_check(
                 "config_valid",

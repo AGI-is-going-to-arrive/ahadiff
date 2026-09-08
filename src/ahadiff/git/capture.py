@@ -23,6 +23,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, BinaryIO, Literal, cast
 
 from ahadiff.contracts import RunSource
+from ahadiff.contracts.run_source import COMPARE_FILES_MAX_BYTES, CompareFileInput
 from ahadiff.core.config import DEFAULT_CONFIG, load_config, load_workspace_config
 from ahadiff.core.errors import InputError, StorageError
 from ahadiff.core.ids import make_run_id
@@ -187,7 +188,9 @@ def capture_patch(
     patch: str | None = None,
     patch_text: str | None = None,
     compare: tuple[Path, Path] | None = None,
+    compare_files: tuple[CompareFileInput, CompareFileInput] | None = None,
     compare_dir: tuple[Path, Path] | None = None,
+    allow_empty_compare: bool = False,
     patch_url: str | None = None,
     use_graphify: bool | None = None,
     max_files: int | None = None,
@@ -231,7 +234,9 @@ def capture_patch(
         patch=patch,
         patch_text=patch_text,
         compare=compare,
+        compare_files=compare_files,
         compare_dir=compare_dir,
+        allow_empty_compare=allow_empty_compare,
         patch_url=patch_url,
         max_files=effective_max_files,
         max_patch_bytes=effective_max_patch_bytes,
@@ -1113,7 +1118,9 @@ def _capture_input(
     patch: str | None,
     patch_text: str | None,
     compare: tuple[Path, Path] | None,
+    compare_files: tuple[CompareFileInput, CompareFileInput] | None,
     compare_dir: tuple[Path, Path] | None,
+    allow_empty_compare: bool,
     patch_url: str | None,
     max_files: int,
     max_patch_bytes: int | None,
@@ -1128,6 +1135,7 @@ def _capture_input(
             patch is not None,
             patch_text is not None,
             compare is not None,
+            compare_files is not None,
             compare_dir is not None,
             patch_url is not None,
             staged,
@@ -1143,6 +1151,7 @@ def _capture_input(
         patch is not None,
         patch_text is not None,
         compare is not None,
+        compare_files is not None,
         compare_dir is not None,
         patch_url is not None,
         staged or unstaged,
@@ -1153,7 +1162,8 @@ def _capture_input(
     if sum(1 for item in selections if item) != 1:
         raise InputError(
             "choose exactly one input mode: revision range/single commit, --last, "
-            "--since, --staged/--unstaged, --patch, --patch-url, --compare, or --compare-dir"
+            "--since, --staged/--unstaged, --patch, --patch-url, --compare, "
+            "compare_files, or --compare-dir"
         )
     if author is not None and since is None:
         raise InputError("--author can only be used together with --since")
@@ -1183,12 +1193,20 @@ def _capture_input(
             workspace_root,
             compare,
             max_patch_bytes=effective_max_patch_bytes,
+            allow_empty=allow_empty_compare,
+        )
+    if compare_files is not None:
+        return _capture_compare_files_input(
+            compare_files,
+            max_patch_bytes=effective_max_patch_bytes,
+            allow_empty=allow_empty_compare,
         )
     if compare_dir is not None:
         return _capture_compare_dir_input(
             workspace_root,
             compare_dir,
             max_patch_bytes=effective_max_patch_bytes,
+            allow_empty=allow_empty_compare,
         )
 
     repo = open_repo(workspace_root)
@@ -1780,6 +1798,7 @@ def _capture_compare_input(
     compare: tuple[Path, Path],
     *,
     max_patch_bytes: int,
+    allow_empty: bool = False,
 ) -> _RawCapture:
     old_path = resolve_safe_path_from_root(workspace_root, compare[0])
     new_path = resolve_safe_path_from_root(workspace_root, compare[1])
@@ -1793,15 +1812,63 @@ def _capture_compare_input(
         max_bytes=max_patch_bytes - len(old_bytes),
         total_budget_bytes=max_patch_bytes,
     )
+    return _build_compare_capture(
+        old_bytes=old_bytes,
+        new_bytes=new_bytes,
+        old_rel=old_path.relative_to(workspace_root).as_posix(),
+        new_rel=new_path.relative_to(workspace_root).as_posix(),
+        source_type="compare",
+        max_patch_bytes=max_patch_bytes,
+        allow_empty=allow_empty,
+    )
+
+
+def _capture_compare_files_input(
+    compare_files: tuple[CompareFileInput, CompareFileInput],
+    *,
+    max_patch_bytes: int,
+    allow_empty: bool = False,
+) -> _RawCapture:
+    old_file, new_file = compare_files
+    old_bytes = old_file.content.encode("utf-8")
+    new_bytes = new_file.content.encode("utf-8")
+    byte_limit = min(max_patch_bytes, COMPARE_FILES_MAX_BYTES)
+    if len(old_bytes) + len(new_bytes) > byte_limit:
+        raise InputError(f"compare input files exceed {byte_limit} bytes total")
+    return _build_compare_capture(
+        old_bytes=old_bytes,
+        new_bytes=new_bytes,
+        old_rel=f"before/{old_file.name}",
+        new_rel=f"after/{new_file.name}",
+        source_type="compare_files",
+        max_patch_bytes=max_patch_bytes,
+        allow_empty=allow_empty,
+    )
+
+
+def _build_compare_capture(
+    *,
+    old_bytes: bytes,
+    new_bytes: bytes,
+    old_rel: str,
+    new_rel: str,
+    source_type: Literal["compare", "compare_files"],
+    max_patch_bytes: int,
+    allow_empty: bool = False,
+) -> _RawCapture:
+    if old_bytes == new_bytes and not allow_empty:
+        raise InputError("compare input files are identical")
     old_binary = b"\x00" in old_bytes
     new_binary = b"\x00" in new_bytes
-    old_rel = old_path.relative_to(workspace_root).as_posix()
-    new_rel = new_path.relative_to(workspace_root).as_posix()
+    # Length framing distinguishes (a::b, c) from (a, b::c).
+    source_digest = hashlib.sha256(len(old_bytes).to_bytes(8, "big") + old_bytes + new_bytes)
+    source_ref = f"sha256:{source_digest.hexdigest()}"
 
     if old_binary or new_binary:
-        raw_patch = f"Binary files a/{old_rel} and b/{new_rel} differ\n"
+        raw_patch = (
+            "" if old_bytes == new_bytes else f"Binary files a/{old_rel} and b/{new_rel} differ\n"
+        )
         _ensure_patch_text_size(raw_patch, max_patch_bytes=max_patch_bytes)
-        source_ref = f"sha256:{hashlib.sha256(old_bytes + b'::' + new_bytes).hexdigest()}"
         return _RawCapture(
             source_kind="file_compare",
             source_ref=source_ref,
@@ -1810,10 +1877,10 @@ def _capture_compare_input(
             base_ref=None,
             head_ref=None,
             source_detail={
-                "type": "compare",
+                "type": source_type,
                 "old_name": Path(old_rel).name,
                 "new_name": Path(new_rel).name,
-                "binary_only": True,
+                "binary_only": bool(raw_patch),
             },
             branch_names=(),
             tag_names=(),
@@ -1842,7 +1909,7 @@ def _capture_compare_input(
             }
         else:
             old_text, new_text, source_detail_extra = rendered
-    if old_text == new_text:
+    if old_text == new_text and not allow_empty:
         raise InputError("compare input files are identical")
 
     diff_lines = unified_diff(
@@ -1856,7 +1923,6 @@ def _capture_compare_input(
     if raw_patch and not raw_patch.endswith("\n"):
         raw_patch += "\n"
     _ensure_patch_text_size(raw_patch, max_patch_bytes=max_patch_bytes)
-    source_ref = f"sha256:{hashlib.sha256(old_bytes + b'::' + new_bytes).hexdigest()}"
     return _RawCapture(
         source_kind="file_compare",
         source_ref=source_ref,
@@ -1865,7 +1931,7 @@ def _capture_compare_input(
         base_ref=None,
         head_ref=None,
         source_detail={
-            "type": "compare",
+            "type": source_type,
             "old_name": Path(old_rel).name,
             "new_name": Path(new_rel).name,
             **source_detail_extra,
@@ -1883,6 +1949,7 @@ def _capture_compare_dir_input(
     compare_dir: tuple[Path, Path],
     *,
     max_patch_bytes: int,
+    allow_empty: bool = False,
 ) -> _RawCapture:
     old_dir = resolve_safe_path_from_root(workspace_root, compare_dir[0])
     new_dir = resolve_safe_path_from_root(workspace_root, compare_dir[1])
@@ -1900,7 +1967,7 @@ def _capture_compare_dir_input(
         total_budget_bytes=max_patch_bytes,
     )
     all_paths = sorted(set(old_files) | set(new_files))
-    if not all_paths:
+    if not all_paths and not allow_empty:
         raise InputError("directories have no comparable files")
 
     patch_chunks: list[str] = []
@@ -1979,7 +2046,7 @@ def _capture_compare_dir_input(
             raise InputError(f"compare-dir patch exceeds {max_patch_bytes} bytes")
         patch_chunks.append(rendered)
 
-    if changed_count == 0:
+    if changed_count == 0 and not allow_empty:
         raise InputError("directories have no differences")
 
     raw_patch = "".join(patch_chunks)
@@ -2200,12 +2267,12 @@ def _render_notebook_pair(
     from ahadiff.git.notebook import NotebookRender, render_notebook_source_for_diff
 
     old_render = (
-        render_notebook_source_for_diff(old_bytes, display_path=old_rel)
+        render_notebook_source_for_diff(old_bytes)
         if old_exists
         else NotebookRender(text="", cell_count=0, warnings=())
     )
     new_render = (
-        render_notebook_source_for_diff(new_bytes, display_path=new_rel)
+        render_notebook_source_for_diff(new_bytes)
         if new_exists
         else NotebookRender(text="", cell_count=0, warnings=())
     )

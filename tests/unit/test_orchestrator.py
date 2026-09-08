@@ -977,6 +977,7 @@ def _patch_completed_pipeline(
     on_import_graphify: Callable[[Path, bool], object] | None = None,
     claim_status: str = "verified",
     claim_source_hunks: list[dict[str, object]] | None = None,
+    quiz_questions: list[object] | None = None,
 ) -> None:
     def _resolve_provider_from_config(
         **kwargs: object,
@@ -1064,7 +1065,9 @@ def _patch_completed_pipeline(
             callback = cast("Callable[[str], None]", sub_progress)
             callback("Generating quiz questions (1/2)")
             callback("Generating misconception cards (2/2)")
-        return fake_repo / ".ahadiff" / "runs" / capture.run_id / "quiz.json", []
+        return fake_repo / ".ahadiff" / "runs" / capture.run_id / "quiz.json", list(
+            quiz_questions or []
+        )
 
     def _evaluate_run(_run_path: Path) -> MagicMock:
         return fake_report
@@ -1901,19 +1904,21 @@ def test_no_verified_claims_skip(
     assert register_calls == [(fake_repo, fake_repo / ".ahadiff")]
 
 
-def test_weak_hunk_claims_without_symbol_index_still_generate_lesson(
+@pytest.mark.parametrize("capability_level", [1, 2])
+def test_weak_hunk_claims_without_symbols_still_generate_lesson(
     monkeypatch: pytest.MonkeyPatch,
     fake_repo: Path,
+    capability_level: int,
 ) -> None:
-    """Patch-only capture can be useful when weak claims are still hunk anchored."""
+    """Patch and text-file captures retain useful hunk evidence without symbols."""
     _patch_config_and_paths(monkeypatch, fake_repo)
     capture = _patch_capture(monkeypatch, fake_repo)
     capture.metadata.update(
         {
-            "capability_level": 1,
+            "capability_level": capability_level,
             "capability_flags": {
                 "has_repo_context": False,
-                "has_symbol_index": False,
+                "has_symbol_index": capability_level >= 2,
                 "has_cross_file_context": False,
                 "has_source_ref": True,
                 "has_graph": False,
@@ -1938,6 +1943,45 @@ def test_weak_hunk_claims_without_symbol_index_still_generate_lesson(
     assert result.status == "keep"
     assert generated_lessons
     assert any("weak diff-anchored claims" in warning for warning in result.warnings)
+
+
+def test_document_compare_hunk_evidence_remains_weak_but_can_generate_lesson() -> None:
+    from ahadiff.claims.schema import ClaimCandidate
+    from ahadiff.claims.verify import verify_claim_candidate
+    from ahadiff.contracts import SourceHunk
+    from ahadiff.git.line_map import build_line_map
+    from ahadiff.git.parser import parse_unified_diff
+    from ahadiff.git.symbols import extract_symbols
+
+    patch = "--- a/before.md\n+++ b/after.md\n@@ -1 +1 @@\n-Wait one second.\n+Wait two seconds.\n"
+    records = parse_unified_diff(patch)
+    before, after = {"before.md": "Wait one second.\n"}, {"after.md": "Wait two seconds.\n"}
+    symbols = extract_symbols(records, before_text_by_path=before, after_text_by_path=after)
+    candidate = ClaimCandidate(
+        claim_id="c1",
+        run_id="r1",
+        text="The documented delay is two seconds.",
+        source_hunks=[SourceHunk(file="after.md", start=1, end=1, side="new")],
+    )
+    claim = verify_claim_candidate(
+        candidate,
+        line_maps=build_line_map(records),
+        symbols=symbols,
+        before_text_by_path=before,
+        after_text_by_path=after,
+    )
+    assert not symbols
+    assert claim.record.status == "weak"
+    assert orchestrator_module._can_generate_lesson_from_weak_claims(  # pyright: ignore[reportPrivateUsage]
+        [claim],
+        capture_metadata={"capability_flags": {"has_symbol_index": True}},
+        has_symbols=bool(symbols),
+    )
+    assert not orchestrator_module._can_generate_lesson_from_weak_claims(  # pyright: ignore[reportPrivateUsage]
+        [claim],
+        capture_metadata={"capability_flags": {"has_symbol_index": True}},
+        has_symbols=True,
+    )
 
 
 def test_verification_candidates_strip_symbols_without_symbol_index() -> None:
@@ -2362,6 +2406,113 @@ def test_pipeline_uses_auto_lower_bound_for_zero_diff_stats(
 
     assert result.status == "keep"
     assert seen["question_count"] == 5
+
+
+@pytest.mark.parametrize("source_kind", ["patch_file", "patch_stdin", "file_compare"])
+@pytest.mark.parametrize("concept_result", ["success", "fail_before_write", "fail_after_write"])
+def test_run_local_concepts_are_immutable_before_first_finalization(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+    source_kind: str,
+    concept_result: str,
+) -> None:
+    from ahadiff.contracts import ResultEvent
+    from ahadiff.eval.results import finalized_artifact_digest, write_finalized_result
+    from ahadiff.quiz.schemas import QuizEvidence, QuizQuestion
+    from ahadiff.wiki.concepts import append_concepts
+
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.run_source.source_kind = source_kind
+    _patch_learnability(monkeypatch, score=0.7)
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    phases: list[tuple[str, bool]] = []
+    event = ResultEvent(
+        event_id="finalization-order-event",
+        run_id=capture.run_id,
+        event_type="learn",
+        timestamp="2026-09-08T00:00:00Z",
+        source_ref="sha256:fixture",
+        prompt_version="fixture",
+        eval_bundle_version="fixture",
+        overall=91.0,
+        verdict="PASS",
+        status="keep",
+        weakest_dim="learnability",
+    )
+
+    def publish(current_run_path: Path) -> None:
+        phases.append(("publish", (current_run_path / "concepts_local.jsonl").exists()))
+        score_path = current_run_path / "score.json"
+        score_path.write_text('{"overall":91.0,"verdict":"PASS"}\n', encoding="utf-8")
+        write_finalized_result(run_path=current_run_path, event=event, score_path=score_path)
+
+    def append(**kwargs: Any) -> Path | None:
+        phases.append(("concepts", (run_path / "finalized.json").exists()))
+        if concept_result == "fail_before_write":
+            raise OSError("local concept write failed")
+        result = append_concepts(**kwargs)
+        if concept_result == "fail_after_write":
+            raise OSError("local concept write failed")
+        return result
+
+    question = QuizQuestion(
+        question="What does the guard protect?",
+        expected_answer="Empty lists.",
+        source_claims=["claim_1"],
+        concepts=["guard clause"],
+        evidence=[QuizEvidence(file="after/statistics.py", line=3)],
+    )
+    _patch_completed_pipeline(
+        monkeypatch,
+        fake_repo,
+        capture,
+        on_persist=publish,
+        quiz_questions=[question],
+    )
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", append)
+    result = run_learn_pipeline(LearnRequest(workspace_root=fake_repo, use_graphify=False))
+
+    marker = json.loads((run_path / "finalized.json").read_text(encoding="utf-8"))
+    count, checksum = finalized_artifact_digest(run_path)
+    assert (count, checksum) == (marker["artifact_count"], marker["checksum"])
+    assert phases == [("concepts", False), ("publish", concept_result != "fail_before_write")]
+    assert not (fake_repo / ".ahadiff" / "concepts.jsonl").exists()
+    assert result.status == "keep"
+    if concept_result != "success":
+        assert "concepts append failed: local concept write failed" in result.warnings
+
+
+def test_cancellation_after_local_concepts_cleans_unpublished_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_repo: Path,
+) -> None:
+    _patch_config_and_paths(monkeypatch, fake_repo)
+    capture = _patch_capture(monkeypatch, fake_repo)
+    capture.run_source.source_kind = "file_compare"
+    _patch_learnability(monkeypatch, score=0.7)
+    run_path = fake_repo / ".ahadiff" / "runs" / capture.run_id
+    cancelled = False
+    persisted: list[Path] = []
+
+    def append(**kwargs: object) -> Path:
+        del kwargs
+        nonlocal cancelled
+        path = run_path / "concepts_local.jsonl"
+        path.write_text('{"concept":"guard clause"}\n', encoding="utf-8")
+        cancelled = True
+        return path
+
+    _patch_completed_pipeline(monkeypatch, fake_repo, capture, on_persist=persisted.append)
+    monkeypatch.setattr("ahadiff.wiki.concepts.append_concepts", append)
+    with pytest.raises(AhaDiffError, match="cancelled"):
+        run_learn_pipeline(
+            LearnRequest(workspace_root=fake_repo, use_graphify=False),
+            is_cancelled=lambda: cancelled,
+        )
+    assert persisted == []
+    assert not run_path.exists()
+    assert not (fake_repo / ".ahadiff" / "concepts.jsonl").exists()
 
 
 def test_cancellation_before_persist_skips_finalized_and_result_events(

@@ -1122,3 +1122,109 @@
     border-color: #3c6f5b;
   }
 }
+
+/* Source-first entry keeps the existing paper, hairline and accent tokens. */
+.learn-dialog__file-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.learn-dialog__file-picker {
+  min-width: 0;
+  padding: var(--sp-4);
+  border: 1px dashed var(--hair-strong);
+  border-radius: var(--r-md);
+  background: var(--elevated);
+  overflow-wrap: anywhere;
+}
+
+.learn-dialog__file-label {
+  display: block;
+  color: var(--ink-strong);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.learn-dialog__file-hint,
+.learn-dialog__preview-hint {
+  color: var(--muted-strong);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-relaxed);
+}
+
+.learn-dialog__file-input[hidden] {
+  display: none;
+}
+
+.learn-dialog__file-choose {
+  border: 1px solid var(--hair);
+  border-radius: var(--r-sm);
+  padding: var(--sp-2);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.learn-dialog__file-choose:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 3px;
+}
+
+.learn-dialog__file-choose:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.learn-dialog__file-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-block: var(--sp-3);
+  font-size: var(--fs-xs);
+}
+
+.learn-dialog__explicit-learn { margin-top: var(--sp-4); }
+.learn-dialog__preview { margin-top: var(--sp-4); }
+.learn-dialog__preview h3 {
+  margin-bottom: var(--sp-2);
+  font-family: var(--font-serif);
+  font-size: var(--fs-md);
+  color: var(--ink-strong);
+}
+.learn-dialog__preview p {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-relaxed);
+}
+.learn-dialog__preview-stats { color: var(--muted-strong); }
+.learn-dialog__preview-diff {
+  max-height: 280px;
+  overflow: auto;
+  padding: var(--sp-3);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-md);
+  background: var(--subtle);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-relaxed);
+  white-space: pre;
+  tab-size: 2;
+}
+.learn-dialog__preview-diff:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+.learn-dialog__footer { flex-wrap: wrap; }
+
+@media (max-width: 599px) {
+  .learn-dialog__file-pair { grid-template-columns: 1fr; }
+}
+
+@media (forced-colors: active) {
+  .learn-dialog__file-picker,
+  .learn-dialog__preview-diff,
+  .learn-dialog__file-choose { border-color: ButtonText; }
+}

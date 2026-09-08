@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
+from ahadiff.core.errors import InputError
 from ahadiff.core.json_util import safe_json_loads
 
-_HEADER_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]+")
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 _HEADER_MAX_CHARS = 160
+_MAX_JSON_DEPTH = 128
+_JSON_DEPTH_ERROR = f"Notebook JSON nesting exceeds {_MAX_JSON_DEPTH} levels"
 
 
 @dataclass(frozen=True)
@@ -19,15 +22,18 @@ class NotebookRender:
     warnings: tuple[str, ...]
 
 
-def render_notebook_source_for_diff(data: bytes, *, display_path: str) -> NotebookRender | None:
+def render_notebook_source_for_diff(data: bytes) -> NotebookRender | None:
     try:
         decoded = data.decode("utf-8-sig")
     except UnicodeDecodeError:
         return None
     try:
-        payload = safe_json_loads(decoded)
+        payload: object = safe_json_loads(decoded)
+    except RecursionError:
+        raise InputError(_JSON_DEPTH_ERROR) from None
     except (json.JSONDecodeError, ValueError):
         return None
+    _validate_json_depth(payload)
     if not isinstance(payload, dict):
         return None
     payload_map = cast("dict[str, Any]", payload)
@@ -38,7 +44,7 @@ def render_notebook_source_for_diff(data: bytes, *, display_path: str) -> Notebo
 
     warnings: list[str] = []
     lines = [
-        f"# Notebook source view: {_header_text(Path(display_path).as_posix())}",
+        "# Notebook source view",
         "# Metadata and outputs are intentionally ignored by AhaDiff.",
         "",
     ]
@@ -65,6 +71,27 @@ def render_notebook_source_for_diff(data: bytes, *, display_path: str) -> Notebo
     return NotebookRender(text="\n".join(lines), cell_count=len(cells), warnings=tuple(warnings))
 
 
+def _validate_json_depth(payload: object) -> None:
+    # Iterator frames keep extra memory proportional to depth, even for wide
+    # output/metadata arrays. JSON strings (including brackets) are leaf values.
+    stack: list[Iterator[object]] = [iter((payload,))]
+    while stack:
+        try:
+            value = next(stack[-1])
+        except StopIteration:
+            stack.pop()
+            continue
+        if isinstance(value, dict):
+            children = iter(cast("dict[str, object]", value).values())
+        elif isinstance(value, list):
+            children = iter(cast("list[object]", value))
+        else:
+            continue
+        if len(stack) > _MAX_JSON_DEPTH:
+            raise InputError(_JSON_DEPTH_ERROR)
+        stack.append(children)
+
+
 def _cell_type(value: object) -> str:
     if isinstance(value, str) and value.strip():
         return _header_text(value)
@@ -72,7 +99,8 @@ def _cell_type(value: object) -> str:
 
 
 def _header_text(value: str) -> str:
-    cleaned = _HEADER_CONTROL_RE.sub(" ", value).strip()
+    _validate_notebook_text(value, source=False)
+    cleaned = "".join(char if char.isprintable() else " " for char in value).strip()
     if not cleaned:
         return "unknown"
     if len(cleaned) > _HEADER_MAX_CHARS:
@@ -82,11 +110,13 @@ def _header_text(value: str) -> str:
 
 def _cell_source(value: object, warnings: list[str], *, index: int) -> str:
     if isinstance(value, str):
+        _validate_notebook_text(value, source=True)
         return value.replace("\r\n", "\n")
     if isinstance(value, list):
         parts: list[str] = []
         for item in cast("list[object]", value):
             if isinstance(item, str):
+                _validate_notebook_text(item, source=True)
                 parts.append(item)
             elif item is not None:
                 warnings.append(f"cell {index} source contains non-string entries")
@@ -96,3 +126,16 @@ def _cell_source(value: object, warnings: list[str], *, index: int) -> str:
         return ""
     warnings.append(f"cell {index} source is not a string or list")
     return ""
+
+
+def _validate_notebook_text(value: str, *, source: bool) -> None:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise InputError("Notebook cell text contains invalid Unicode") from None
+    if "\x00" in value:
+        raise InputError("Notebook cell text contains a null character")
+    if source and any(
+        (ord(char) < 32 or ord(char) == 127) and char not in "\t\r\n" for char in value
+    ):
+        raise InputError("Notebook source contains unsupported control characters")

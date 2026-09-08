@@ -2,14 +2,72 @@ from __future__ import annotations
 
 import pytest
 
+from ahadiff.claims.schema import ClaimCandidate
+from ahadiff.claims.verify import verify_claim_candidate
+from ahadiff.contracts import SourceHunk
+from ahadiff.git.line_map import build_line_map
 from ahadiff.git.parser import parse_unified_diff
 from ahadiff.git.symbols import (
     SYMBOLS_SCHEMA,
     SYMBOLS_SCHEMA_VERSION,
+    SymbolExtractorMode,
     extract_symbols,
     serialize_symbols_payload,
 )
 from ahadiff.git.tree_sitter_runtime import TreeSitterExtractionResult, TreeSitterSymbolCandidate
+
+
+@pytest.mark.parametrize(
+    "extension", ["md", "txt", "rst", "yaml", "yml", "toml", "json", "sql", "ipynb"]
+)
+@pytest.mark.parametrize("symbol_extractor", ["auto", "builtin", "tree_sitter"])
+def test_document_prose_and_section_headers_do_not_create_code_symbols(
+    extension: str,
+    symbol_extractor: SymbolExtractorMode,
+) -> None:
+    path = f"notes.{extension}"
+    patch = (
+        f"--- a/{path}\n+++ b/{path}\n@@ -3 +3 @@ class Customer\n"
+        "-class Old means previous grouping.\n+class Customer means learning group.\n"
+    )
+    records = parse_unified_diff(patch)
+    before = {path: "# Grouping\n\nclass Old means previous grouping.\n"}
+    after = {path: "# Grouping\n\nclass Customer means learning group.\n"}
+    symbols = extract_symbols(
+        records,
+        before_text_by_path=before,
+        after_text_by_path=after,
+        symbol_extractor=symbol_extractor,
+    )
+    assert symbols == ()
+    candidate = ClaimCandidate(
+        claim_id="c1",
+        run_id="r1",
+        text="Customer is a newly implemented class.",
+        symbols=["Customer"],
+        source_hunks=[SourceHunk(file=path, start=3, end=3, side="new")],
+    )
+    verified = verify_claim_candidate(
+        candidate,
+        line_maps=build_line_map(records),
+        symbols=symbols,
+        before_text_by_path=before,
+        after_text_by_path=after,
+    )
+    assert verified.record.status == "not_proven"
+
+
+def test_markdown_fenced_code_example_has_no_executable_symbol_evidence() -> None:
+    patch = (
+        "--- a/notes.md\n+++ b/notes.md\n@@ -2,2 +2,2 @@\n"
+        "-def old_example():\n-    return 1\n+def new_example():\n+    return 2\n"
+    )
+    symbols = extract_symbols(
+        parse_unified_diff(patch),
+        before_text_by_path={"notes.md": "```python\ndef old_example():\n    return 1\n```\n"},
+        after_text_by_path={"notes.md": "```python\ndef new_example():\n    return 2\n```\n"},
+    )
+    assert symbols == ()
 
 
 def test_extract_symbols_prefers_python_ast_over_section_header() -> None:
@@ -919,6 +977,7 @@ def test_extract_symbols_keeps_python_scope_on_old_side_for_cross_extension_rena
         if symbol.path == "src/old.py" and symbol.qualified_name == "Service.run"
     )
     assert old_symbol.parent == "Service"
+    assert all(symbol.path != "src/new.txt" for symbol in symbols)
 
 
 def test_serialize_symbols_payload_wraps_schema_and_symbols() -> None:

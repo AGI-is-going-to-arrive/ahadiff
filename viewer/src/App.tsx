@@ -39,7 +39,7 @@ function RouteFallback() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <HashRouter>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />

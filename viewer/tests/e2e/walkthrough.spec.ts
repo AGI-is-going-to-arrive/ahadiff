@@ -1108,12 +1108,50 @@ test.describe('walkthrough: full-app functional test', () => {
       page.locator('.onboarding-steps__item[data-state="done"]').first(),
     ).toBeVisible();
 
-    // CLI commands card; doctor all-pass opens on the learn step.
-    await expect(steps.nth(0)).toContainText(/Pick a repo|选择仓库/);
-    await expect(steps.nth(1)).toContainText(/Add provider key|添加 Provider key/);
-    await expect(steps.nth(2)).toContainText(/Install agent|安装 Agent/);
-    await expect(page.locator('pre')).toBeVisible();
-    await expect(page.locator('pre').first()).toContainText('ahadiff learn HEAD~1..HEAD');
+    await expect(steps.nth(0)).toContainText(/Choose a work folder|选择工作目录/);
+    await expect(steps.nth(1)).toContainText(/Choose a model provider|选择模型提供商/);
+    await expect(steps.nth(2)).toContainText(/Connect an agent \(optional\)|连接 Agent（可选）/);
+    await expect(steps.nth(3)).toContainText(/Start your first lesson|开始第一次学习/);
+
+    // Exercise each real step. Commands belong to setup; the learning step
+    // offers source selection and preview instead of assuming a Git commit.
+    const activeCard = page.locator('[data-testid="onboarding-active-card"]');
+    await expect(activeCard.locator('[data-learn-source]')).toHaveCount(3);
+    await activateControlWithKeyboard(page, page.locator('[data-testid="onboarding-step-jump-1"]'));
+    await expect(activeCard.getByRole('heading', { level: 2 })).toHaveText(/Choose a work folder|选择工作目录/);
+    const setupCommands = activeCard.locator('.command-block__code');
+    await expect(setupCommands).toHaveCount(2);
+    await expect(setupCommands.nth(0)).toHaveText('pipx install ahadiff');
+    await expect(setupCommands.nth(1)).toContainText(/cd your-folder|Set-Location \.\\your-folder/);
+    await expect(setupCommands.nth(1)).toContainText('ahadiff serve');
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async (text: string): Promise<void> => {
+          document.documentElement.dataset.onboardingCopiedCommand = text;
+        } },
+      });
+    });
+    const launchCommand = await setupCommands.nth(1).innerText();
+    await activateControlWithKeyboard(page, activeCard.locator('.command-block__copy-btn').nth(1));
+    await expect(page.locator('html')).toHaveAttribute('data-onboarding-copied-command', launchCommand);
+
+    await activateControlWithKeyboard(page, page.locator('[data-testid="onboarding-step-jump-2"]'));
+    await expect(activeCard.getByRole('heading', { level: 2 })).toHaveText(/Choose a model provider|选择模型提供商/);
+    await expect(activeCard.locator('.command-block__code')).toHaveText(/^(export OPENAI_API_KEY=|\$env:OPENAI_API_KEY = )"<your-key>"$/);
+    await expect(activeCard.getByRole('link')).toHaveAttribute('href', '#/settings?tab=provider');
+
+    await activateControlWithKeyboard(page, page.locator('[data-testid="onboarding-step-jump-3"]'));
+    await expect(steps.nth(2)).toHaveAttribute('aria-current', 'step');
+    await expect(activeCard.locator('.command-block__code')).toHaveText([
+      'ahadiff install claude --dry-run', 'ahadiff install cursor --dry-run', 'ahadiff install codex --dry-run',
+    ]);
+    await expect(activeCard.getByRole('link')).toHaveAttribute('href', '#/settings?tab=integrations');
+
+    await activateControlWithKeyboard(page, page.locator('[data-testid="onboarding-step-jump-4"]'));
+    await expect(activeCard.locator('[data-learn-source]')).toHaveCount(3);
+    await expect(activeCard.locator('[data-learn-source="files"]')).toContainText(/Two files|两份文件/);
+    await expect(activeCard.locator('pre')).toHaveCount(0);
 
     // Doctor checks in the onboarding grid
     await expect(
@@ -1511,13 +1549,14 @@ test.describe('walkthrough: full-app functional test', () => {
     );
     await activateControlWithKeyboard(
       page,
-      page.getByRole('button', { name: /Start from your diff|从你的 diff 开始/ }),
+      page.getByRole('button', { name: /Choose a learning source|选择学习来源/ }),
     );
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.keyboard.press('Escape');
 
-    // CLI command
-    await expect(page.locator('.cli-cmd')).toContainText('ahadiff learn HEAD~1..HEAD');
+    // All primary sources are visible without opening CLI documentation.
+    await expect(page.locator('.hero [data-learn-source]')).toHaveCount(3);
+    await expect(page.locator('.hero [data-learn-source="files"]')).toContainText(/Two files|两份文件/);
     await expect(page.locator('.hero-demo__source')).toContainText(/Latest finalized run|最新完成运行/);
 
     // Feature cards (4)

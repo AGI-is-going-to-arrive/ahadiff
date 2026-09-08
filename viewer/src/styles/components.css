@@ -20,7 +20,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-off
 .btn.ghost:hover{background:var(--subtle);color:var(--ink);box-shadow:none;transform:none}
 
 /* Page container */
-.page{display:none;padding:32px 40px 88px;max-width:1440px;animation:fadeUp .28s ease-out}
+.page{display:none;padding:32px 40px 88px;max-width:1440px;margin-inline:auto;animation:fadeUp .28s ease-out}
 .page.active{display:block}
 @keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .page-head{display:flex;align-items:flex-start;gap:24px;padding-bottom:22px;margin-bottom:28px;border-bottom:4px double var(--hair-strong);flex-wrap:wrap}

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from starlette.testclient import TestClient
 
+from ahadiff.contracts import RunSource
 from ahadiff.core.budget import (
     CaptureRecommendation,
     compute_cjk_factor,
@@ -296,6 +297,7 @@ def test_auto_mode_estimate_uses_effective_capture_limits(
     def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
         captured_kwargs.update(kwargs)
         return SimpleNamespace(
+            run_source=RunSource(source_kind="git_ref", source_ref="a" * 40, capability_level=3),
             persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
             metadata={"selected_files": ["a.py"], "omitted_files": []},
         )
@@ -315,6 +317,7 @@ def test_auto_mode_estimate_uses_effective_capture_limits(
     assert captured_kwargs["max_patch_bytes"] == effective["max_patch_bytes"]
     assert payload["diff_clipped"] is False
     assert payload["omitted_files_count"] == 0
+    assert payload["source_kind"] == "git_ref"
 
 
 def test_manual_mode_estimate_preserves_configured_capture_limits(
@@ -334,6 +337,12 @@ def test_manual_mode_estimate_preserves_configured_capture_limits(
     def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
         captured_kwargs.update(kwargs)
         return SimpleNamespace(
+            run_source=RunSource(
+                source_kind="git_ref",
+                source_ref="a" * 40,
+                capability_level=3,
+                degraded_flags={"diff_clipped": True},
+            ),
             persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
             metadata={
                 "selected_files": ["a.py"],
@@ -356,6 +365,7 @@ def test_manual_mode_estimate_preserves_configured_capture_limits(
     assert payload["effective_capture_limits"]["mode"] == "manual"
     assert payload["diff_clipped"] is True
     assert payload["omitted_files_count"] == 1
+    assert payload["source_kind"] == "git_ref"
 
 
 def test_capture_recommendation_dataclass_serializes_for_api_response() -> None:

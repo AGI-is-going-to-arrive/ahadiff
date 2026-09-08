@@ -139,6 +139,32 @@ _JS_LIKE_NON_SYMBOL_NAMES = frozenset(
     }
 )
 _JS_LIKE_EXTENSIONS = (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx")
+# Only actual source-code file types may use the generic fallback patterns.
+# SQL and mixed Notebook/document formats need format-aware extractors before
+# their prose, comments, or examples can establish executable code symbols.
+_REGEX_CODE_EXTENSIONS = frozenset(
+    {
+        "py",
+        "pyi",
+        "c",
+        "cc",
+        "cpp",
+        "cxx",
+        "h",
+        "hh",
+        "hpp",
+        "hxx",
+        "kt",
+        "kts",
+        "scala",
+        "swift",
+        "sh",
+        "bash",
+        "zsh",
+        "ps1",
+        "psm1",
+    }
+)
 _SECTION_HEADER_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)"), "function"),
     (re.compile(r"class\s+([A-Za-z_][A-Za-z0-9_]*)"), "class"),
@@ -227,6 +253,8 @@ def _extract_best_symbols(
     symbol_extractor: SymbolExtractorMode = "auto",
 ) -> list[SymbolRecord]:
     target_path = path_override or changed_file.display_path
+    if not _supports_code_symbols(target_path):
+        return []
     python_records, python_error = _extract_python_symbols(
         changed_file=changed_file,
         before_text=before_text,
@@ -279,6 +307,13 @@ def _extract_best_symbols(
 
 def _should_try_tree_sitter(path: str, symbol_extractor: SymbolExtractorMode) -> bool:
     return symbol_extractor != "builtin" and supports_tree_sitter_path(path)
+
+
+def _supports_code_symbols(path: str) -> bool:
+    _, dot, suffix = path.rpartition(".")
+    return supports_tree_sitter_path(path) or bool(
+        dot and suffix.casefold() in _REGEX_CODE_EXTENSIONS
+    )
 
 
 def _fallback_error(

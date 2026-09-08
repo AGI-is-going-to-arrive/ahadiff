@@ -147,7 +147,7 @@ jobs:
       - name: Install Chromium for Windows viewer smoke
         working-directory: viewer
         run: pnpm exec playwright install chromium
-      - name: Check Windows provider, guidance, and locale interactions
+      - name: Check Windows learning, provider, guidance, and locale interactions
         working-directory: viewer
         env:
           AHADIFF_VIEWER_E2E_PORT: "5174"
@@ -157,12 +157,14 @@ jobs:
           tests/e2e/integrations.spec.ts
           tests/e2e/cross-browser.spec.ts
           tests/e2e/i18n.spec.ts
+          tests/e2e/onboarding.spec.ts
+          tests/e2e/learn-task.spec.ts
           --project=chromium-desktop --project=chromium-mobile --workers=2
       - shell: bash
         run: uv sync --locked --dev --python ${{ env.PYTHON_VERSION }}
       - name: Verify supported Windows SQLite runtime
         shell: bash
-        run: uv run python -c "import sqlite3; from ahadiff.core.sqlite_util import sqlite_runtime_gate_ok; print(sqlite3.sqlite_version); assert sqlite_runtime_gate_ok()"
+        run: uv run python -c "import sqlite3; from ahadiff.core.sqlite_util import assert_sqlite_runtime_supported; print(sqlite3.sqlite_version); assert_sqlite_runtime_supported()"
       - shell: bash
         run: |
           uv run pytest -q --tb=long \
@@ -183,3 +185,12 @@ jobs:
             tests/unit/test_stage1_task1.py::test_unlock_repo_write_lock_rejects_windows_reparse_point \
             tests/unit/test_stage1_task1.py::test_workspace_identity_key_casefolds_on_windows \
             tests/unit/test_stage1_task1.py::test_cli_doctor_exits_non_zero_when_sqlite_gate_fails
+      - name: Check Windows file-source and request-boundary regressions
+        shell: bash
+        run: >-
+          uv run pytest -q --tb=long
+          tests/unit/test_git_capture.py
+          tests/unit/test_routes_learn.py
+          tests/unit/test_symbol_extract.py
+          tests/unit/test_serve_app.py
+          -k "compare_files or notebook or request_timeout or ambiguous_body_framing or normal_chunked_bodies or empty_post_without_content_type or document_prose or markdown_fenced"

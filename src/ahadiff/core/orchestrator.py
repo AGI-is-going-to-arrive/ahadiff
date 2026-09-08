@@ -53,6 +53,7 @@ from ahadiff.llm.cost import effective_output_cap, resolve_model_limits
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ahadiff.contracts.run_source import CompareFileInput
     from ahadiff.safety.gates import TransportTarget
 
 log = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class LearnRequest:
     patch: str | None = None
     patch_text: str | None = None
     compare: tuple[Path, Path] | None = None
+    compare_files: tuple[CompareFileInput, CompareFileInput] | None = None
     compare_dir: tuple[Path, Path] | None = None
     against_spec: Path | None = None
     spec_semantic_review: bool = False
@@ -822,8 +824,9 @@ def _can_generate_lesson_from_weak_claims(
     claims: Iterable[Any],
     *,
     capture_metadata: dict[str, Any],
+    has_symbols: bool,
 ) -> bool:
-    if _capture_has_symbol_index(capture_metadata):
+    if _capture_has_symbol_index(capture_metadata) and has_symbols:
         return False
     return any(_has_hunk_anchored_weak_claim(claim) for claim in claims)
 
@@ -1230,6 +1233,7 @@ def run_learn_pipeline(
         request.patch is not None
         or request.patch_text is not None
         or request.compare is not None
+        or request.compare_files is not None
         or request.compare_dir is not None
         or request.patch_url is not None
     )
@@ -1316,6 +1320,7 @@ def run_learn_pipeline(
                 patch=request.patch,
                 patch_text=request.patch_text,
                 compare=request.compare,
+                compare_files=request.compare_files,
                 compare_dir=request.compare_dir,
                 patch_url=request.patch_url,
                 use_graphify=request.use_graphify,
@@ -1359,6 +1364,7 @@ def run_learn_pipeline(
                         patch=request.patch,
                         patch_text=request.patch_text,
                         compare=request.compare,
+                        compare_files=request.compare_files,
                         compare_dir=request.compare_dir,
                         patch_url=request.patch_url,
                         use_graphify=request.use_graphify,
@@ -1657,10 +1663,11 @@ def run_learn_pipeline(
                         if _can_generate_lesson_from_weak_claims(
                             verified,
                             capture_metadata=capture.metadata,
+                            has_symbols=bool(symbols),
                         ):
                             learn_warnings.append(
-                                "lesson generated from weak diff-anchored claims because "
-                                "this capture mode has no symbol index"
+                                "lesson generated from weak diff-anchored claims; "
+                                "no usable symbol evidence was available"
                             )
                         else:
                             lesson_skip_reason = "no verified claims survived verification"
@@ -1997,6 +2004,30 @@ def run_learn_pipeline(
                     _emit(9, "Persisting results")
                     _check_cancelled(_cancelled)
 
+                    from ahadiff.wiki.concepts import append_concepts, is_run_local_concept_source
+
+                    def _append_run_concepts() -> None:
+                        try:
+                            append_concepts(
+                                workspace_root=root,
+                                run_path=run_path,
+                                run_id=capture.run_id,
+                                source_kind=str(capture.run_source.source_kind),
+                                source_ref=str(capture.run_source.source_ref),
+                                questions=quiz_questions,
+                            )
+                        except Exception as concept_error:
+                            learn_warnings.append(f"concepts append failed: {concept_error}")
+
+                    local_concepts = is_run_local_concept_source(
+                        str(capture.run_source.source_kind)
+                    )
+                    if local_concepts:
+                        # Run-local snapshots must exist before the first finalization
+                        # digest. Workspace projections remain after the commit boundary.
+                        _append_run_concepts()
+                        _check_cancelled(_cancelled)
+
                     learn_outcome, persist_warnings = _persist_evaluated_run_sync(
                         run_path=run_path,
                         report=learn_report,
@@ -2069,19 +2100,8 @@ def run_learn_pipeline(
                     except Exception as graphify_refresh_error:
                         learn_warnings.append(f"graphify refresh skipped: {graphify_refresh_error}")
 
-                    try:
-                        from ahadiff.wiki.concepts import append_concepts
-
-                        append_concepts(
-                            workspace_root=root,
-                            run_path=run_path,
-                            run_id=capture.run_id,
-                            source_kind=str(capture.run_source.source_kind),
-                            source_ref=str(capture.run_source.source_ref),
-                            questions=quiz_questions,
-                        )
-                    except Exception as concept_error:
-                        learn_warnings.append(f"concepts append failed: {concept_error}")
+                    if not local_concepts:
+                        _append_run_concepts()
         except AhaDiffError as exc:
             if str(exc) == "cancelled":
                 _cleanup_cancelled_run(run_path=run_path, learn_outcome=learn_outcome)

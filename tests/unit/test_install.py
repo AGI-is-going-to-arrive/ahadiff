@@ -5,6 +5,7 @@ import json
 import re
 import stat
 import subprocess
+import sys
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,9 @@ from ahadiff.install.usage_hints import get_usage_hint
 
 _RUNNER = CliRunner()
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_POSIX_HOOKS_ONLY = pytest.mark.skipif(
+    sys.platform == "win32", reason="Git hooks require POSIX shell and file permissions"
+)
 
 
 def _strip_ansi(text: str) -> str:
@@ -304,8 +308,12 @@ def test_install_dry_run_lists_workspace_targets(tmp_path: Path) -> None:
             ["install", target, "--repo-root", str(repo_root), "--dry-run"],
         )
 
-        assert result.exit_code == 0
-        assert "write" in result.output or "merge-section" in result.output
+        if target == "hooks" and sys.platform == "win32":
+            assert result.exit_code == 1
+            assert "not supported on Windows" in result.output
+        else:
+            assert result.exit_code == 0
+            assert "write" in result.output or "merge-section" in result.output
 
     assert not (repo_root / "AGENTS.md").exists()
     assert not (repo_root / ".claude").exists()
@@ -1001,11 +1009,11 @@ def test_install_usage_hint_respects_repo_config_lang_before_system_lang(
     config_path.parent.mkdir()
     config_path.write_text('lang = "zh-CN"\n', encoding="utf-8")
 
-    result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+    result = _RUNNER.invoke(app(), ["install", "codex", "--repo-root", str(repo_root)])
 
     assert result.exit_code == 0, result.output
-    assert "Git hooks 默认只在 commit 后提醒学习" in result.output
-    assert "commit-time learn reminders" not in result.output
+    assert "把 Codex 指引写入当前仓库" in result.output
+    assert "Write the Codex guidance into this repository" not in result.output
 
 
 def test_install_usage_hint_env_lang_overrides_repo_config_lang(
@@ -1021,13 +1029,14 @@ def test_install_usage_hint_env_lang_overrides_repo_config_lang(
     config_path.parent.mkdir()
     config_path.write_text('lang = "zh-CN"\n', encoding="utf-8")
 
-    result = _RUNNER.invoke(app(), ["install", "hooks", "--repo-root", str(repo_root)])
+    result = _RUNNER.invoke(app(), ["install", "codex", "--repo-root", str(repo_root)])
 
     assert result.exit_code == 0, result.output
-    assert "Git hooks defaults to commit-time learn reminders" in result.output
-    assert "Git hooks 默认只在 commit 后提醒学习" not in result.output
+    assert "Write the Codex guidance into this repository" in result.output
+    assert "把 Codex 指引写入当前仓库" not in result.output
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_install_uninstall_respect_ahadiff_lang_for_usage_hints(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1143,6 +1152,7 @@ def test_opencode_install_writes_agents_and_agent_file(tmp_path: Path) -> None:
     assert (repo_root / ".opencode" / "agents" / "ahadiff.md").exists()
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1179,6 +1189,7 @@ def test_hooks_install_is_non_blocking_and_uninstall_removes_sections(tmp_path: 
     assert "AHADIFF:BEGIN target=hooks" not in post_commit.read_text(encoding="utf-8")
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_default_install_matches_reminder_template(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1193,6 +1204,7 @@ def test_hooks_default_install_matches_reminder_template(tmp_path: Path) -> None
     )
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_auto_learn_switches_section_in_place_and_is_idempotent(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     repo_root.mkdir()
@@ -1242,6 +1254,7 @@ def test_hooks_auto_learn_switches_section_in_place_and_is_idempotent(tmp_path: 
     )
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_auto_learn_bakes_shell_quoted_binary_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1272,6 +1285,7 @@ def test_hooks_auto_learn_bakes_shell_quoted_binary_fallback(
     assert 'nohup "$ahadiff_bin" learn --last' in hook_text
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_auto_learn_logs_skip_when_binary_missing_from_gui_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1327,6 +1341,7 @@ def test_hooks_auto_learn_is_rejected_for_non_hooks_target(tmp_path: Path) -> No
     assert "--auto-learn is only supported for: ahadiff install hooks" in result.output
 
 
+@_POSIX_HOOKS_ONLY
 def test_append_hook_section_preserves_existing_hook_mode(tmp_path: Path) -> None:
     hooks_dir = tmp_path / ".git" / "hooks"
     hooks_dir.mkdir(parents=True)
@@ -1366,6 +1381,7 @@ def test_append_hook_section_rejects_symlink_hook_path(tmp_path: Path) -> None:
     assert linked_target.read_text(encoding="utf-8") == "#!/bin/sh\nprintf 'linked'\n"
 
 
+@_POSIX_HOOKS_ONLY
 def test_append_hook_section_does_not_follow_legacy_predictable_temp_symlink(
     tmp_path: Path,
 ) -> None:
@@ -1389,6 +1405,7 @@ def test_append_hook_section_does_not_follow_legacy_predictable_temp_symlink(
     assert victim_path.read_text(encoding="utf-8") == "victim\n"
 
 
+@_POSIX_HOOKS_ONLY
 def test_remove_hook_section_does_not_follow_legacy_predictable_temp_symlink(
     tmp_path: Path,
 ) -> None:
@@ -1514,6 +1531,7 @@ def test_hooks_git_path_reports_git_timeout(
         )
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_install_rejects_hooks_path_outside_repo_or_git_dir(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     outside_hooks = tmp_path / "outside-hooks"
@@ -1563,6 +1581,7 @@ def test_hooks_install_rejects_windows_platform(
     assert not (repo_root / ".git" / "hooks" / "pre-push").exists()
 
 
+@_POSIX_HOOKS_ONLY
 def test_hooks_install_supports_git_worktree(tmp_path: Path) -> None:
     repo_root = tmp_path / "repo"
     worktree_root = tmp_path / "worktree"

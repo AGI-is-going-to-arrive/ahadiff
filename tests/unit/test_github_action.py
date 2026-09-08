@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -228,6 +231,40 @@ def test_repository_backend_ci_uses_linux_macos_matrix() -> None:
         python_version="3.13",
     )
     assert "tests/integration/test_learn_pipeline.py" in workflow_text
+
+
+@pytest.mark.parametrize(("version", "expected_returncode"), [("3.51.3", 0), ("3.51.2", 1)])
+def test_windows_runtime_sqlite_gate_executes_and_rejects_unsupported_versions(
+    version: str, expected_returncode: int
+) -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    workflow = _load_workflow(repo_root / ".github" / "workflows" / "ci.yml")
+    step = next(
+        step
+        for step in workflow["jobs"]["windows-runtime"]["steps"]
+        if step.get("name") == "Verify supported Windows SQLite runtime"
+    )
+    command = shlex.split(step["run"])
+    assert command[:4] == ["uv", "run", "python", "-c"]
+    assert len(command) == 5
+
+    # Run the actual CI snippet against both sides of the version gate. Checking
+    # its text alone missed an invalid call signature before the native tests.
+    result = subprocess.run(
+        [sys.executable, "-c", f"import sqlite3; sqlite3.sqlite_version={version!r}; {command[4]}"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=30,
+    )
+
+    assert result.returncode == expected_returncode, result.stdout + result.stderr
+    assert version in result.stdout
+    if expected_returncode != 0:
+        assert "StorageError" in result.stderr
 
 
 def test_repository_nightly_eval_uses_job_level_live_llm_env() -> None:

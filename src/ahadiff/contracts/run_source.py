@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Literal, TypeAlias, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
@@ -51,6 +52,49 @@ ProviderCapabilityOverride: TypeAlias = Literal[
 ]
 ProviderLimitsSource: TypeAlias = Literal["live", "registry", "default", "fallback"]
 _PROVIDER_CAPABILITY_OVERRIDE_FIELDS = frozenset(get_args(ProviderCapabilityOverride))
+COMPARE_FILE_MAX_BYTES = 256 * 1024
+COMPARE_FILES_MAX_BYTES = 2 * COMPARE_FILE_MAX_BYTES
+_WINDOWS_DEVICE_NAME = re.compile(r"^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)", re.I)
+
+
+class CompareFileInput(BaseModel):
+    """A browser-selected text file, held in memory until capture redacts it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+
+    name: str = Field(min_length=1, max_length=255)
+    content: str = Field(repr=False)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if (
+            value != value.strip()
+            or value.endswith(".")
+            or value.casefold() in {".", "..", ".git", ".ahadiff"}
+            or not value.isprintable()
+            or any(char in value for char in '/\\:<>"|?*')
+            or _WINDOWS_DEVICE_NAME.match(value)
+        ):
+            raise ValueError("file name must be a portable basename, not a path")
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("file name must be valid Unicode") from None
+        return value
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        if "\x00" in value:
+            raise ValueError("file content must be text, not binary")
+        try:
+            size = len(value.encode("utf-8"))
+        except UnicodeEncodeError:
+            raise ValueError("file content must be valid Unicode") from None
+        if size > COMPARE_FILE_MAX_BYTES:
+            raise ValueError(f"file content exceeds {COMPARE_FILE_MAX_BYTES} UTF-8 bytes")
+        return value
 
 
 def empty_degraded_flags() -> DegradedFlagsMap:
@@ -138,6 +182,9 @@ class AllowlistPolicy(BaseModel):
 
 
 __all__ = [
+    "COMPARE_FILE_MAX_BYTES",
+    "COMPARE_FILES_MAX_BYTES",
+    "CompareFileInput",
     "SourceKind",
     "DegradedFlag",
     "PrivacyMode",

@@ -12,9 +12,8 @@ function rewriteLoopbackProxyHeaders(proxyReq: ClientRequest, _req: IncomingMess
   proxyReq.setHeader('Referer', DEV_API_ORIGIN);
 }
 
-// Phase 2G: route-based code splitting + manualChunks budget guard.
-// Goal: keep initial gzip < 80KB by ensuring vendor / heavy modules ship in
-// their own async chunks. See plan §2G + risk R6 (graph renderer).
+// Keep page-only dependencies in async chunks. The build script reports shell
+// and first-Dashboard transfer sizes and validates their local asset references.
 const GRAPH_RENDERER_VENDOR_MARKERS = [
   'node_modules/@tweenjs/tween.js',
   'node_modules/accessor-fn',
@@ -77,8 +76,8 @@ export default defineConfig({
      * Phase 4F: Strip page-only async dependencies (zod, graph renderer,
      * future prismjs) from the synchronous modulepreload set. Without this,
      * any vendor chunk imported transitively by a single lazy page would be
-     * preloaded on initial HTML and counted against the < 80KB initial-gzip
-     * budget. We still ship the chunks; they just load on the first route
+     * preloaded on initial HTML and included in the initial transfer size.
+     * These chunks load on the first route
      * navigation that needs them.
      *
      * `resolveDependencies` runs per-chunk; it controls modulepreload tag
@@ -120,20 +119,16 @@ export default defineConfig({
           }
           // Routing + state are also part of the shell, but smaller; keep
           // them together so route-level chunks don't duplicate them.
-          // `@remix-run/router` is a transitive dep of react-router-dom and
-          // belongs in the same bucket — without this branch it would fall
-          // into vendor-misc and quietly enter the initial critical path.
           if (
             id.includes('node_modules/react-router') ||
-            id.includes('node_modules/@remix-run/router') ||
             id.includes('node_modules/zustand')
           ) {
             return 'vendor-router';
           }
           // Page-only deps (zod runtime validation, graph renderer,
           // future prismjs) are excluded from modulepreload above so they
-          // don't enter the < 80KB initial budget. Adding more lazy-only
-          // deps? Add their substring here; the budget guard fails closed.
+          // don't enter the shell's modulepreload set. Add new lazy-only
+          // dependencies here and review the reported build transfer sizes.
           if (id.includes('node_modules/zod')) {
             return 'vendor-page-deps';
           }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   BookOpen,
   Brain,
@@ -20,7 +20,10 @@ import { getInstallTargets, type InstallTarget } from '../api/config';
 import { useTranslation, type MessageKey, type TranslateFn } from '../i18n/useTranslation';
 import { detectPlatform, getEnvVarCommand, type Platform } from '../utils/platform';
 import UsagePanel from '../components/UsagePanel';
+import LearnSourcePicker, { type LearnSource } from '../components/LearnSourcePicker';
 import './GuidePage.css';
+
+const LearnModeDialog = lazy(() => import('../components/LearnModeDialog'));
 
 type IconType = typeof BookOpen;
 
@@ -217,6 +220,7 @@ interface NavTarget {
 }
 
 const NAV_TARGETS: ReadonlyArray<NavTarget> = [
+  { id: 'start-learning', labelKey: 'Guide.nav_sources' },
   { id: 'workflow', labelKey: 'Guide.nav_workflow' },
   { id: 'commands', labelKey: 'Guide.nav_commands' },
   { id: 'setup', labelKey: 'Guide.nav_setup' },
@@ -237,6 +241,7 @@ export default function GuidePage() {
   const [targets, setTargets] = useState<InstallTarget[]>([]);
   const [catalogueState, setCatalogueState] = useState<CatalogueState>('loading');
   const [retryCount, setRetryCount] = useState(0);
+  const [learnSource, setLearnSource] = useState<LearnSource | null>(null);
   const retryCatalogue = useCallback(() => setRetryCount(value => value + 1), []);
 
   useEffect(() => {
@@ -262,7 +267,7 @@ export default function GuidePage() {
   };
 
   return (
-    <AppShell>
+    <AppShell globalShortcutsDisabled={learnSource !== null}>
       <div className="page active guide" data-page="skills">
         <header className="guide__head">
           <p className="guide__eyebrow">§ {t('Guide.eyebrow')}</p>
@@ -271,6 +276,16 @@ export default function GuidePage() {
         </header>
 
         <SectionNav t={t} />
+
+        <section id="start-learning" className="guide-section" aria-labelledby="guide-sources-title">
+          <h2 id="guide-sources-title" className="guide-section__title">
+            <BookOpen className="guide-section__icon" aria-hidden="true" size={20} />
+            {t('Guide.sources_title')}
+          </h2>
+          <p className="guide__subtitle">{t('Guide.sources_hint')}</p>
+          <LearnSourcePicker onSelect={setLearnSource} />
+          <p className="guide__subtitle">{t('Guide.sources_steps')}</p>
+        </section>
 
         <WorkflowSection t={t} />
 
@@ -302,6 +317,11 @@ export default function GuidePage() {
 
         <IntegrationsSection t={t} titleId="guide-integrations-title" targets={targets} catalogueState={catalogueState} onRetry={retryCatalogue} />
       </div>
+      {learnSource && (
+        <Suspense fallback={null}>
+          <LearnModeDialog open initialSource={learnSource} onClose={() => setLearnSource(null)} />
+        </Suspense>
+      )}
     </AppShell>
   );
 }

@@ -1511,10 +1511,26 @@ def test_get_doctor_config_valid_pass_when_config_loads(
     assert "Config loaded successfully" in checks["config_valid"]["message"]
 
 
-def test_get_doctor_config_valid_fail_when_no_git_repo(tmp_path: Path) -> None:
-    """Without a git repo, load_config raises and doctor reports config_valid=fail."""
+def test_get_doctor_config_valid_pass_for_non_git_workspace(tmp_path: Path) -> None:
+    """The doctor must accept the same non-Git workspace as learn and config."""
     state_dir = tmp_path / ".ahadiff"
     state_dir.mkdir()
+    client = _client(state_dir)
+
+    response = client.get("/api/doctor")
+
+    checks = {c["name"]: c for c in response.json()["checks"]}
+    assert checks["config_valid"]["status"] == "pass"
+    assert "Config loaded successfully" in checks["config_valid"]["message"]
+
+
+def test_get_doctor_config_valid_fail_when_config_malformed(
+    tmp_path: Path,
+) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+
+    (state_dir / "config.toml").write_text("[invalid\n", encoding="utf-8")
     client = _client(state_dir)
 
     response = client.get("/api/doctor")
@@ -1522,26 +1538,6 @@ def test_get_doctor_config_valid_fail_when_no_git_repo(tmp_path: Path) -> None:
     checks = {c["name"]: c for c in response.json()["checks"]}
     assert checks["config_valid"]["status"] == "fail"
     assert "Config error:" in checks["config_valid"]["message"]
-
-
-def test_get_doctor_config_valid_fail_when_config_malformed(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state_dir = tmp_path / ".ahadiff"
-    state_dir.mkdir()
-
-    def _raise_bad(*_a: Any, **_kw: Any) -> None:
-        raise ValueError("bad config")
-
-    monkeypatch.setattr("ahadiff.core.config.load_config", _raise_bad)
-    client = _client(state_dir)
-
-    response = client.get("/api/doctor")
-
-    checks = {c["name"]: c for c in response.json()["checks"]}
-    assert checks["config_valid"]["status"] == "fail"
-    assert "Config error: ValueError" in checks["config_valid"]["message"]
 
 
 def test_get_doctor_review_db_pass_when_present(tmp_path: Path) -> None:

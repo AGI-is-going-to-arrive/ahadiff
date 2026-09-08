@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import anyio
-import httpx
+import httpx2 as httpx
 import pytest
 from anyio.to_thread import run_sync as run_sync_in_thread
 from starlette.testclient import TestClient
@@ -201,6 +201,7 @@ def test_post_learn_estimate_happy_path(
 
     def fake_capture_patch(**_: object) -> SimpleNamespace:
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text=patch_text,
             metadata={"selected_files": ["a.py"]},
         )
@@ -236,6 +237,9 @@ def test_post_learn_estimate_happy_path(
     assert payload.provider_max_output == 4_000
     assert payload.risk_level == "ok"
     assert payload.warnings == []
+    assert payload.preview_patch == patch_text
+    assert payload.preview_truncated is False
+    assert payload.source_kind == "git_ref"
 
 
 def test_post_learn_estimate_passes_changed_paths_to_capture(
@@ -248,6 +252,7 @@ def test_post_learn_estimate_passes_changed_paths_to_capture(
     def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
         captured_kwargs.update(kwargs)
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text="diff --git a/src/app.py b/src/app.py\n+print('hello')\n",
             metadata={"selected_files": ["src/app.py"]},
         )
@@ -294,6 +299,7 @@ def test_post_learn_estimate_accepts_large_inline_patch_text(
     def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
         captured_kwargs.update(kwargs)
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text=patch_text,
             metadata={"selected_files": ["app.py"]},
         )
@@ -309,6 +315,239 @@ def test_post_learn_estimate_accepts_large_inline_patch_text(
     assert resp.status_code == 200
     assert captured_kwargs["patch_text"] == patch_text
     assert captured_kwargs["patch"] is None
+
+
+def test_compare_files_estimate_returns_only_sanitized_preview(tmp_path: Path) -> None:
+    secret = "sk-" + "aB2cD3eF4gH5iJ6kL7mN8pQ9rS0tU1vW2xY3zA4b"
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    with _client(state_dir) as client:
+        response = _post_learn_estimate(
+            client,
+            body={
+                "compare_files": [
+                    {"name": "settings.py", "content": 'api_key = "old"\n'},
+                    {"name": "settings.py", "content": f'api_key = "{secret}"\n'},
+                ]
+            },
+        )
+
+    assert response.status_code == 200
+    assert secret not in response.text
+    payload = LearnEstimateResponse.model_validate(response.json())
+    assert payload.source_kind == "file_compare"
+    assert payload.file_count == 1
+    assert "REDACTED" in payload.preview_patch
+    assert "+++ b/after/settings.py" in payload.preview_patch
+    assert not (state_dir / "runs").exists()
+    assert not (tmp_path / "before").exists()
+    assert not (tmp_path / "after").exists()
+
+
+def test_compare_files_preview_matches_dry_run_capture(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    state_dir.mkdir()
+    body: dict[str, object] = {
+        "compare_files": [
+            {"name": "例子.py", "content": "def compute():\n    return 1\n"},
+            {"name": "例子.py", "content": "def compute():\n    return 2\n"},
+        ],
+        "dry_run": True,
+        "use_graphify": False,
+    }
+    with _client(state_dir) as client:
+        preview = _post_learn_estimate(client, body=body)
+        assert preview.status_code == 200
+        submitted = _post_learn(client, body=body)
+        assert submitted.status_code == 202
+        task = _wait_for_task(client, _task_id_from(submitted), expected_status="completed")
+    result = cast("dict[str, object]", task["result_summary"])
+    assert result["status"] == "dry_run"
+    run_path = state_dir / "runs" / str(result["run_id"])
+    assert (run_path / "patch.diff").read_text(encoding="utf-8") == preview.json()["preview_patch"]
+    metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["source_kind"] == "file_compare"
+    assert metadata["source_detail"]["type"] == "compare_files"
+    assert not (tmp_path / ".git").exists()
+
+
+@pytest.mark.parametrize("field", ["source", "id", "cell_type"])
+def test_notebook_decoded_invalid_unicode_returns_400(tmp_path: Path, field: str) -> None:
+    cell = {"cell_type": "code", "id": "example", "source": "value = 2\n"}
+    cell[field] = "PRIVATE_NOTEBOOK_SENTINEL\ud800"
+    files = [
+        {"name": "notes.ipynb", "content": json.dumps({"cells": []})},
+        {"name": "notes.ipynb", "content": json.dumps({"cells": [cell]}, ensure_ascii=True)},
+    ]
+    with _client(tmp_path / ".ahadiff") as client:
+        response = _post_learn_estimate(client, body={"compare_files": files})
+    assert response.status_code == 400
+    assert response.json()["error_code"] == "INPUT_BAD_FIELD"
+    assert "PRIVATE_NOTEBOOK_SENTINEL" not in response.text
+    assert "UnicodeEncodeError" not in response.text
+
+
+@pytest.mark.parametrize("notebook", [False, True])
+def test_unchanged_compare_files_returns_empty_preview_without_creating_a_run(
+    tmp_path: Path,
+    notebook: bool,
+) -> None:
+    before = "相同内容\n"
+    after = "相同内容\n"
+    extension = "txt"
+    if notebook:
+        extension = "ipynb"
+        before = json.dumps(
+            {
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "id": "same",
+                        "source": "value = 1\n",
+                        "outputs": [{"text": "old"}],
+                    }
+                ]
+            }
+        )
+        after = json.dumps(
+            {
+                "cells": [
+                    {
+                        "cell_type": "code",
+                        "id": "same",
+                        "source": "value = 1\n",
+                        "outputs": [{"text": "new"}],
+                    }
+                ]
+            }
+        )
+    body = {
+        "compare_files": [
+            {"name": f"before.{extension}", "content": before},
+            {"name": f"after.{extension}", "content": after},
+        ]
+    }
+    state_dir = tmp_path / ".ahadiff"
+    with _client(state_dir) as client:
+        response = _post_learn_estimate(client, body=body)
+    assert response.status_code == 200
+    payload = LearnEstimateResponse.model_validate(response.json())
+    assert payload.source_kind == "file_compare"
+    assert payload.file_count == 0
+    assert payload.patch_bytes == 0
+    assert payload.preview_patch == ""
+    assert payload.preview_truncated is False
+    assert not (state_dir / "runs").exists()
+
+
+def test_unchanged_workspace_files_return_empty_preview(tmp_path: Path) -> None:
+    for name in ("before.txt", "after.txt"):
+        (tmp_path / name).write_text("same\n", encoding="utf-8")
+    with _client(tmp_path / ".ahadiff") as client:
+        response = _post_learn_estimate(client, body={"compare": ["before.txt", "after.txt"]})
+    assert response.status_code == 200
+    payload = LearnEstimateResponse.model_validate(response.json())
+    assert payload.source_kind == "file_compare"
+    assert payload.file_count == payload.patch_bytes == 0
+    assert payload.preview_patch == ""
+
+
+def test_empty_compare_preview_does_not_allow_an_empty_learn_task(tmp_path: Path) -> None:
+    state_dir = tmp_path / ".ahadiff"
+    body = {
+        "compare_files": [
+            {"name": "a.txt", "content": "same\n"},
+            {"name": "b.txt", "content": "same\n"},
+        ],
+        "dry_run": True,
+        "force_learn": True,
+    }
+    with _client(state_dir) as client:
+        assert _post_learn_estimate(client, body=body).status_code == 200
+        submitted = _post_learn(client, body=body)
+        assert submitted.status_code == 202
+        task = _wait_for_task(client, _task_id_from(submitted), expected_status="failed")
+    assert task["result_summary"] is None
+    assert not (state_dir / "runs").exists()
+
+
+@pytest.mark.parametrize("endpoint", ["/api/learn", "/api/learn/estimate"])
+@pytest.mark.parametrize(
+    "files",
+    [
+        [],
+        [{"name": "a.txt", "content": "one file"}],
+        [{"name": "../private.txt", "content": "a"}, {"name": "b.txt", "content": "b"}],
+        [{"name": "CON", "content": "a"}, {"name": "b.txt", "content": "b"}],
+        [{"name": "a.txt", "content": "binary\x00"}, {"name": "b.txt", "content": "b"}],
+        [{"name": "a.txt", "content": 123}, {"name": "b.txt", "content": "b"}],
+        [{"name": "a.txt", "content": "中" * 90_000}, {"name": "b.txt", "content": "b"}],
+    ],
+)
+def test_compare_files_routes_reject_invalid_input(
+    tmp_path: Path,
+    endpoint: str,
+    files: object,
+) -> None:
+    with _client(tmp_path / ".ahadiff") as client:
+        response = client.post(
+            endpoint,
+            json={"compare_files": files},
+            headers={
+                "X-AhaDiff-Token": "test-token",
+                "origin": "http://localhost:8765",
+            },
+        )
+    assert response.status_code == 422
+    assert response.json()["error"] == "invalid_value_for_compare_files"
+    assert "input_value" not in response.text
+    assert "private.txt" not in response.text
+
+
+def test_compare_files_json_escape_expansion_still_respects_request_limit(tmp_path: Path) -> None:
+    files = [
+        {"name": "a.txt", "content": "\t" * (256 * 1024)},
+        {"name": "b.txt", "content": "\n" * (256 * 1024)},
+    ]
+    with _client(tmp_path / ".ahadiff") as client:
+        response = _post_learn_estimate(client, body={"compare_files": files})
+    assert response.status_code == 413
+
+
+def test_compare_files_task_uses_same_source_and_redacts_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sentinel = "UPLOADED_BODY_MUST_NOT_APPEAR_IN_TASK_OR_LOG"
+    files = [
+        {"name": "example.txt", "content": "before\n"},
+        {"name": "example.txt", "content": sentinel},
+    ]
+
+    def fail(request: LearnRequest, **_: object) -> LearnResult:
+        assert request.compare_files is not None
+        assert [file.model_dump() for file in request.compare_files] == files
+        raise RuntimeError(sentinel)
+
+    monkeypatch.setattr("ahadiff.core.orchestrator.run_learn_pipeline", fail)
+    with _client(tmp_path / ".ahadiff") as client:
+        response = _post_learn(client, body={"compare_files": files})
+        assert response.status_code == 202
+        info = _wait_for_task(client, _task_id_from(response), expected_status="failed")
+    assert sentinel not in json.dumps(info)
+    assert sentinel not in caplog.text
+    assert "selected file contents were redacted" in str(info["error"])
+
+
+def test_patch_preview_is_utf8_bounded_and_marks_truncation() -> None:
+    patch = "--- a/notes.md\n+++ b/notes.md\n" + "+学习\n" * 12_000
+    preview, truncated = routes_learn._bounded_patch_preview(patch)  # pyright: ignore[reportPrivateUsage]
+    assert truncated is True
+    assert len(preview.encode("utf-8")) <= 64 * 1024
+    assert patch.startswith(preview)
+    assert "\ufffd" not in preview
+    assert preview.endswith("\n")
 
 
 def test_post_learn_estimate_captures_under_repo_write_lock(
@@ -334,6 +573,7 @@ def test_post_learn_estimate_captures_under_repo_write_lock(
     def fake_capture_patch(**_: object) -> SimpleNamespace:
         assert lock_depth == 1
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
             metadata={"selected_files": ["a.py"]},
         )
@@ -368,6 +608,7 @@ def test_post_learn_estimate_uses_threadpool_for_capture_lock(
 
     def fake_capture_patch(**_: object) -> SimpleNamespace:
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
             metadata={"selected_files": ["a.py"]},
         )
@@ -440,6 +681,7 @@ def test_post_learn_estimate_risk_levels(
 
     def fake_capture_patch(**_: object) -> SimpleNamespace:
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text=patch_text,
             metadata={"selected_files": [f"f{i}.py" for i in range(file_count)]},
         )
@@ -486,6 +728,7 @@ def test_post_learn_estimate_auto_mode_warns_on_omitted_files_not_file_count(
 
     def fake_capture_patch(**_: object) -> SimpleNamespace:
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text="x\n",
             metadata={
                 "selected_files": [f"f{i}.py" for i in range(100)],
@@ -536,6 +779,7 @@ def test_post_learn_estimate_audits_clipped_diff_and_omitted_files(
     def fake_capture_patch(**kwargs: object) -> SimpleNamespace:
         captured_kwargs.update(kwargs)
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
             metadata={
                 "selected_files": ["a.py"],
@@ -617,6 +861,7 @@ def test_post_learn_estimate_uses_one_config_snapshot_for_capture_and_limits(
 
     def fake_capture_patch(**_: object) -> SimpleNamespace:
         return SimpleNamespace(
+            run_source=SimpleNamespace(source_kind="git_ref"),
             persisted_patch_text="diff --git a/a.py b/a.py\n+print('hello')\n",
             metadata={"selected_files": ["a.py"]},
         )

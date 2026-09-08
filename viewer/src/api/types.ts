@@ -715,6 +715,11 @@ export interface WatchStatusResponse {
   failure_threshold_hit: boolean;
 }
 
+export interface LearnFileInput {
+  name: string;
+  content: string;
+}
+
 export interface LearnSubmitPayload {
   revision?: string;
   last?: boolean;
@@ -726,6 +731,7 @@ export interface LearnSubmitPayload {
   since?: string;
   patch?: string;
   compare?: [string, string];
+  compare_files?: [LearnFileInput, LearnFileInput];
   compare_dir?: [string, string];
   against_spec?: string;
   spec_semantic_review?: boolean;
@@ -773,6 +779,9 @@ export interface LearnEstimateResponse {
   effective_capture_limits?: EffectiveCaptureLimits | null;
   diff_clipped?: boolean;
   omitted_files_count?: number;
+  preview_patch?: string;
+  preview_truncated?: boolean;
+  source_kind?: SourceKind | null;
 }
 
 export interface TaskProgressResponse {

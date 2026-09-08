@@ -4,9 +4,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from anyio.to_thread import run_sync as run_sync_in_thread
+from pydantic import ValidationError
 from starlette.responses import JSONResponse
 
 from ahadiff.contracts import ErrorCode
+from ahadiff.contracts.run_source import CompareFileInput
 from ahadiff.contracts.serve_app import LearnEstimateResponse, LearnEstimateRiskLevel
 from ahadiff.contracts.serve_runtime import TaskSubmitResponse
 from ahadiff.core.budget import compute_cjk_factor
@@ -47,6 +49,7 @@ _ACCEPTED_FIELDS = frozenset(
         "include_untracked",
         "patch",
         "compare",
+        "compare_files",
         "compare_dir",
         "against_spec",
         "spec_semantic_review",
@@ -91,6 +94,8 @@ _WARN_CONTEXT_RATIO = 0.5
 _WARN_FILE_COUNT = 30
 _DANGER_FILE_COUNT = 50
 _REDACTED_PATCH_TASK_ERROR = "learn task failed; pasted patch details were redacted"
+_REDACTED_FILE_TASK_ERROR = "learn task failed; selected file contents were redacted"
+_MAX_PREVIEW_BYTES = 64 * 1024
 
 
 def _contains_control_chars(value: str) -> bool:
@@ -159,6 +164,22 @@ def _coerce_path_pair(key: str, value: object) -> tuple[Path, Path]:
     return coerced[0], coerced[1]
 
 
+def _coerce_compare_files(value: object) -> tuple[CompareFileInput, CompareFileInput]:
+    if not isinstance(value, list | tuple):
+        raise ValueError("compare_files expects exactly two text files")
+    raw_files = cast("list[object] | tuple[object, ...]", value)
+    if len(raw_files) != 2:
+        raise ValueError("compare_files expects exactly two text files")
+    try:
+        return (
+            CompareFileInput.model_validate(raw_files[0]),
+            CompareFileInput.model_validate(raw_files[1]),
+        )
+    except ValidationError:
+        # Pydantic's rendered exception can contain the uploaded body.
+        raise ValueError("compare_files contains an invalid name or UTF-8 text body") from None
+
+
 def _coerce_path(key: str, value: object) -> Path:
     if not isinstance(value, str):
         raise TypeError(f"{key} expects string path value")
@@ -196,6 +217,8 @@ def _coerce_changed_paths(value: object) -> tuple[str, ...]:
 
 
 def _coerce_field(key: str, value: object) -> object:
+    if key == "compare_files":
+        return _coerce_compare_files(value)
     if key == "changed_paths":
         return _coerce_changed_paths(value)
     if key == "patch":
@@ -474,6 +497,17 @@ def _capture_recommendation_for_estimate(
     )
 
 
+def _bounded_patch_preview(patch_text: str) -> tuple[str, bool]:
+    encoded = patch_text.encode("utf-8")
+    if len(encoded) <= _MAX_PREVIEW_BYTES:
+        return patch_text, False
+    preview = encoded[:_MAX_PREVIEW_BYTES].decode("utf-8", errors="ignore")
+    last_newline = preview.rfind("\n")
+    if last_newline >= 0:
+        preview = preview[: last_newline + 1]
+    return preview, True
+
+
 async def post_learn_estimate(request: Request) -> JSONResponse:
     """POST /api/learn/estimate -- capture and estimate a learn run without LLM calls."""
     require_write_token(request)
@@ -536,7 +570,11 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
             patch=cast("str | None", params.get("patch")),
             patch_text=cast("str | None", params.get("patch_text")),
             compare=cast("tuple[Path, Path] | None", params.get("compare")),
+            compare_files=cast(
+                "tuple[CompareFileInput, CompareFileInput] | None", params.get("compare_files")
+            ),
             compare_dir=cast("tuple[Path, Path] | None", params.get("compare_dir")),
+            allow_empty_compare=True,
             patch_url=cast("str | None", params.get("patch_url")),
             use_graphify=cast("bool | None", params.get("use_graphify")),
             max_files=limits.max_files,
@@ -560,6 +598,7 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
                 has_git_repo=has_git_repo,
                 snapshot=snapshot,
                 capture_config=capture_config,
+                global_config_root=state.global_config_root,
                 cjk_factor=compute_cjk_factor(patch_text),
             )
             if (
@@ -603,6 +642,7 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         diff_clipped=diff_clipped,
         omitted_files_count=omitted_files_count,
     )
+    preview_patch, preview_truncated = _bounded_patch_preview(patch_text)
     response = LearnEstimateResponse(
         patch_bytes=patch_bytes,
         file_count=file_count,
@@ -615,6 +655,9 @@ async def post_learn_estimate(request: Request) -> JSONResponse:
         omitted_files_count=omitted_files_count,
         risk_level=risk_level,
         warnings=warnings,
+        preview_patch=preview_patch,
+        preview_truncated=preview_truncated,
+        source_kind=capture.run_source.source_kind,
     )
     return JSONResponse(response.model_dump(mode="json"))
 
@@ -660,6 +703,7 @@ async def post_learn(request: Request) -> JSONResponse:
 
     learn_request = LearnRequest(workspace_root=workspace_root, **params)
     has_sensitive_patch_text = learn_request.patch_text is not None
+    has_sensitive_file_text = learn_request.compare_files is not None
 
     async def _learn_task(handle: TaskHandle) -> dict[str, Any]:
         def _on_progress(step: int, total: int, message: str) -> None:
@@ -691,8 +735,10 @@ async def post_learn(request: Request) -> JSONResponse:
         _learn_task,
         max_pending=_MAX_PENDING_TASKS,
         thread_backed=True,
-        redact_errors=has_sensitive_patch_text,
-        redacted_error_message=_REDACTED_PATCH_TASK_ERROR,
+        redact_errors=has_sensitive_patch_text or has_sensitive_file_text,
+        redacted_error_message=(
+            _REDACTED_FILE_TASK_ERROR if has_sensitive_file_text else _REDACTED_PATCH_TASK_ERROR
+        ),
     )
     if task_id is None:
         return error_response(

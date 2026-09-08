@@ -6,11 +6,10 @@
  * `renderToStaticMarkup`, React's `useEffect` does NOT fire, so we cannot
  * exercise the doctor-fetch effect normally.
  *
- * To still cover the documented 11 scenarios, this file injects controlled
- * `useState` initial values via a partial mock of `react`. Each test pushes
- * the desired initial states for OnboardingPage's four `useState` calls
- * (in order: doctor, dbCheck, activeStep, activeStepTouched) into a queue,
- * then renders the page. Other components used in the tree (AppShell,
+ * This file injects local diagnostic and setup states via a partial mock of
+ * `react`, then renders the page. Provider selection is also checked through
+ * its pure resolver; asynchronous refresh is covered by the browser suite.
+ * Other components used in the tree (AppShell,
  * CommandBlock, Skeleton) are mocked to passthroughs so they don't consume
  * `useState` slots.
  *
@@ -27,7 +26,21 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { DoctorCheck, DbCheckResult } from '../../api/config';
+import type { DoctorCheck, DbCheckResult, ProviderSummary } from '../../api/config';
+import type { RunSummary } from '../../api/types';
+import type { ProviderSetupStatus } from '../OnboardingPage';
+
+const runState = vi.hoisted(() => ({
+  runs: [] as RunSummary[],
+  loadRuns: async (): Promise<void> => undefined,
+  loading: false,
+  error: null as string | null,
+  lastLoadedAt: 1 as number | null,
+}));
+
+vi.mock('../../state/runs-store', () => ({
+  useRunsStore: <T,>(selector: (state: typeof runState) => T): T => selector(runState),
+}));
 
 /* ----------------------------- React state injection ----------------------------- */
 
@@ -192,30 +205,33 @@ const SETTLED_DOCTOR_LOAD = (checks: DoctorCheck[]): DoctorState => ({
 });
 
 /**
- * Push initial states for the four `useState` calls in OnboardingPage:
- *   1. doctor, 2. dbCheck, 3. activeStep, 4. activeStepTouched.
+ * Push initial states for local diagnostics, selected step, source dialog and
+ * the independently checked provider configuration.
  */
 function setStates(opts: {
   doctor: DoctorState;
   dbCheck?: DbCheckState;
   activeStep?: 1 | 2 | 3 | 4;
   activeStepTouched?: boolean;
+  providerSetup?: ProviderSetupStatus;
 }) {
   stateOverrides.length = 0;
   stateOverrides.push(opts.doctor);
   stateOverrides.push(opts.dbCheck ?? SETTLED_DB_LOAD);
   stateOverrides.push(opts.activeStep ?? 4);
   stateOverrides.push(opts.activeStepTouched ?? true);
+  stateOverrides.push(null);
+  stateOverrides.push(opts.providerSetup ?? 'configured');
 }
 
-async function renderPage(props: { previewScore?: number } = {}): Promise<string> {
+async function renderPage(): Promise<string> {
   stateCallCounter = 0;
   const mod = await import('../OnboardingPage');
   const OnboardingPage = mod.default;
   // No MemoryRouter wrapper: OnboardingPage uses no router hooks directly,
   // and react-router's MemoryRouter consumes 3 useState slots which would
   // shift our state-injection ordering off by 3.
-  return renderToStaticMarkup(<OnboardingPage {...props} />);
+  return renderToStaticMarkup(<OnboardingPage />);
 }
 
 /* ----------------------------- beforeEach ----------------------------- */
@@ -229,6 +245,10 @@ beforeEach(() => {
   fetchDbCheckMock.mockResolvedValue(HEALTHY_DB);
   stateOverrides.length = 0;
   stateCallCounter = 0;
+  runState.runs = [];
+  runState.loading = false;
+  runState.error = null;
+  runState.lastLoadedAt = 1;
 });
 
 afterEach(() => {
@@ -254,6 +274,13 @@ function getStepState(html: string, step: 1 | 2 | 3 | 4): string | null {
 }
 
 describe('OnboardingPage stepper', () => {
+  it.each(['missing', 'select', 'missing_key', 'error', 'loading'] as const)('valid TOML does not complete provider setup when it is %s', async providerSetup => {
+    setStates({ doctor: SETTLED_DOCTOR_LOAD(ALL_PASS_CHECKS), activeStep: 2, providerSetup });
+    const html = await renderPage();
+    expect(getStepState(html, 2)).toBe('current');
+    expect(getStepState(html, 4)).toBe('pending');
+    expect(html).not.toContain('data-testid="onboarding-completion"');
+  });
   it('renders 4 stepper items and marks active step current (all-fail → step 2 current)', async () => {
     setStates({
       doctor: SETTLED_DOCTOR_LOAD(ALL_FAIL_CHECKS),
@@ -296,15 +323,72 @@ describe('OnboardingPage stepper', () => {
       activeStep: 4,
     });
     const html = await renderPage();
-    // step 1, 2, 3 are done; step 4 is current. isComplete=false (warn present).
-    expect(getStepState(html, 3)).toBe('done');
+    // Doctor cannot prove the optional agent was installed.
+    expect(getStepState(html, 3)).toBe('pending');
     expect(getStepState(html, 4)).toBe('current');
     // No completion section because not all pass
     expect(html).not.toMatch(/data-testid="onboarding-completion"/);
   });
 });
 
+describe('OnboardingPage generation-provider configuration', () => {
+  function provider(alias: string, overrides: Partial<ProviderSummary> = {}): ProviderSummary {
+    return {
+      alias, provider_class: 'ollama', provider_kind: 'ollama', model_name: 'local-model',
+      base_url: 'http://127.0.0.1:11434', key_status: 'unknown', probed: false,
+      probed_max_context: null, ...overrides,
+    };
+  }
+
+  it('requires a provider even when a default generation model is present elsewhere in config', async () => {
+    const { resolveProviderSetupStatus } = await import('../OnboardingPage');
+    expect(resolveProviderSetupStatus({ generate_provider: null }, [])).toBe('missing');
+  });
+
+  it('allows a single configured provider without pretending a probe succeeded', async () => {
+    const { resolveProviderSetupStatus } = await import('../OnboardingPage');
+    expect(resolveProviderSetupStatus({ generate_provider: null }, [provider('local')])).toBe('configured');
+  });
+
+  it('requires a valid explicit alias among multiple providers and does not infer selection from role labels', async () => {
+    const { resolveProviderSetupStatus } = await import('../OnboardingPage');
+    const providers = [provider('first', { role: 'generate' }), provider('second', { role: 'judge' })];
+    expect(resolveProviderSetupStatus({ generate_provider: '' }, providers)).toBe('select');
+    expect(resolveProviderSetupStatus({ generate_provider: 'second' }, providers)).toBe('configured');
+    expect(resolveProviderSetupStatus({ generate_provider: 'deleted' }, providers)).toBe('select');
+    expect(resolveProviderSetupStatus({ generate_provider: 'deleted' }, [providers[0]])).toBe('select');
+  });
+
+  it('does not mark an explicitly missing key or incomplete provider as configured', async () => {
+    const { resolveProviderSetupStatus } = await import('../OnboardingPage');
+    expect(resolveProviderSetupStatus({ generate_provider: null }, [provider('local', { key_status: 'missing' })])).toBe('missing_key');
+    expect(resolveProviderSetupStatus({ generate_provider: null }, [provider('local', { model_name: ' ' })])).toBe('missing');
+  });
+});
+
 describe('OnboardingPage DiagnosticRow status mapping', () => {
+  it('does not report database issues when the check returned no result', async () => {
+    setStates({
+      doctor: SETTLED_DOCTOR_LOAD(ALL_PASS_CHECKS),
+      dbCheck: { result: null, loading: false },
+    });
+    const html = await renderPage();
+    expect(html).toContain('无法完成数据库检查');
+    expect(html).not.toContain('数据库异常');
+    expect(html).not.toContain('onboarding-db-row-health');
+  });
+
+  it('still reports database issues for an actual unhealthy result', async () => {
+    setStates({
+      doctor: SETTLED_DOCTOR_LOAD(ALL_PASS_CHECKS),
+      dbCheck: { result: { ...HEALTHY_DB, healthy: false, quick_check: 'check failed' }, loading: false },
+    });
+    const html = await renderPage();
+    expect(html).toContain('数据库异常');
+    expect(html).toMatch(/data-status="fail"\s+data-testid="onboarding-db-row-health"/);
+    expect(html).not.toContain('无法完成数据库检查');
+  });
+
   it('renders DiagnosticRow with data-status="pass" and aria-label "通过" for a passing check', async () => {
     setStates({
       doctor: SETTLED_DOCTOR_LOAD([makeCheck('repo_root', 'pass')]),
@@ -396,18 +480,66 @@ describe('OnboardingPage Skip CTA visibility', () => {
 });
 
 describe('OnboardingPage preview verdict score', () => {
-  it('falls back to "--" when previewScore prop is not provided', async () => {
+  it('shows loading before the first run list has settled, rather than claiming there are no runs', async () => {
+    runState.lastLoadedAt = null;
+    const html = await renderPage();
+    expect(html).toContain('正在加载学习记录');
+    expect(html).not.toContain('还没有已完成的运行');
+  });
+
+  it('reports a list failure without echoing raw errors or claiming an empty history', async () => {
+    runState.error = 'private schema details';
+    const html = await renderPage();
+    expect(html).toContain('无法加载学习记录');
+    expect(html).toContain('重试加载记录');
+    expect(html).not.toContain('private schema details');
+    expect(html).not.toContain('还没有已完成的运行');
+  });
+
+  it('keeps an earlier run explicitly stale when refreshing fails', async () => {
+    runState.error = 'private refresh error';
+    runState.runs = [{
+      run_id: 'run_earlier', source_ref: 'sha256:test', source_kind: 'file_compare',
+      content_lang: 'zh-CN', capability_level: 2, verdict: 'PASS', overall: 91.25,
+      status: 'non_ratcheted', weakest_dim: 'evidence', created_at: '2026-09-08T00:00:00Z',
+      degraded_flags: {},
+    }];
+    const html = await renderPage();
+    expect(html).toContain('run_earlier');
+    expect(html).toContain('此前加载的记录');
+    expect(html).toContain('无法刷新学习记录');
+    expect(html).not.toContain('private refresh error');
+    expect(html).not.toContain('最近一次学习');
+    expect(html).not.toContain('还没有已完成的运行');
+  });
+
+  it('shows an empty state without invented score, diff or specification counts', async () => {
     setStates({
       doctor: SETTLED_DOCTOR_LOAD(ALL_FAIL_CHECKS),
       activeStep: 2,
     });
     const html = await renderPage();
-    // The verdict badge resolves Onboarding.preview_caution_score with score="--"
-    expect(html).toContain('警示 · --');
-    // Hardcoded "78" must NOT appear anywhere in the rendered output.
-    const verdictMatch = html.match(/data-testid="onboarding-preview-verdict-badge"[^<]*<[^>]*>([^<]*)/);
-    expect(verdictMatch?.[1] ?? '').not.toContain('78');
-    expect(html).not.toContain('警示 · 78');
+    expect(html).toContain('还没有已完成的运行');
+    expect(html).not.toContain('onboarding-preview-verdict-badge');
+    expect(html).not.toContain('PKCE');
+    expect(html).not.toContain('+187');
+  });
+
+  it.each(['PASS', 'FAIL'] as const)('shows the persisted %s verdict beside the actual score', async (verdict) => {
+    runState.runs = [{
+      run_id: 'run_uploaded', source_ref: 'sha256:test', source_kind: 'file_compare',
+      content_lang: 'zh-CN', capability_level: 2, verdict, overall: 91.25,
+      status: 'non_ratcheted', weakest_dim: 'evidence', created_at: '2026-09-08T00:00:00Z',
+      degraded_flags: {},
+    }];
+    const html = await renderPage();
+    expect(html).toContain(`verdict-badge--${verdict}`);
+    expect(html).toContain('91.25');
+    expect(html).toContain('两份文件');
+    expect(html).toContain('#/run/run_uploaded');
+    expect(html).not.toContain('8 项需求');
+    expect(html).not.toContain('+187');
+    expect(html).not.toContain('verdict-badge--CAUTION');
   });
 });
 

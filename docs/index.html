@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>知返 AhaDiff: AI 写完，Diff 教回</title>
+<title>知返 AhaDiff：读懂这次改动</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="description" content="Local-first diff-anchored learning layer. Turn AI-generated git diffs into learning notes with code evidence chains and explicit claim states." />
+<meta name="description" content="从 Git 改动、两份文件或粘贴的 diff 学习。普通文件夹也能开始，先预览变化，再读课程、查证据、测验和复习。" />
 <meta name="theme-color" content="#FAF8F2" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -305,7 +305,7 @@ img { max-width: 100%; display: block; }
   position: relative;
 }
 .arch-layer:hover { border-color: var(--accent); background: var(--elevated); box-shadow: 0 4px 16px -6px rgba(120,80,40,.15); transform: translateX(4px); }
-.arch-layer:hover .arch-tooltip { opacity: 1; visibility: visible; transform: translateX(0); }
+.arch-layer:hover .arch-tooltip { opacity: 1; visibility: visible; transform: translateY(0); }
 .arch-num {
   font-family: var(--font-mono); font-size: 11px; font-weight: 600;
   color: #fff; width: 26px; height: 26px; border-radius: 6px;
@@ -314,15 +314,16 @@ img { max-width: 100%; display: block; }
 .arch-layer-name { font-weight: 600; font-size: 14px; flex: 1; }
 .arch-layer-sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .arch-tooltip {
-  position: absolute; left: calc(100% + 16px); top: 50%; transform: translateX(8px) translateY(-50%);
+  position: absolute; right: 0; top: calc(100% + 6px); transform: translateY(4px);
   background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 8px;
-  font-size: 12px; line-height: 1.5; white-space: nowrap;
+  font-size: 12px; line-height: 1.5; white-space: normal;
+  width: max-content; max-width: min(360px, 100%); overflow-wrap: anywhere;
   opacity: 0; visibility: hidden; transition: all .2s;
   pointer-events: none; z-index: 10;
 }
 .arch-tooltip::before {
-  content: ''; position: absolute; left: -6px; top: 50%; transform: translateY(-50%);
-  border: 6px solid transparent; border-right-color: var(--ink);
+  content: ''; position: absolute; right: 18px; top: -12px;
+  border: 6px solid transparent; border-bottom-color: var(--ink);
 }
 /* Layer colors */
 .al-0 .arch-num { background: #6366F1; }
@@ -389,9 +390,6 @@ img { max-width: 100%; display: block; }
 .cmp-table tbody tr:last-child td { border-bottom: none; }
 .cmp-table tbody tr:first-child { background: var(--accent-soft); }
 .cmp-table tbody tr:first-child td:first-child { color: var(--accent-ink); font-weight: 700; }
-.cmp-check { color: var(--success); font-weight: 700; font-size: 16px; }
-.cmp-cross { color: var(--muted-2); font-size: 16px; }
-.cmp-partial { color: var(--warning); font-size: 14px; }
 
 /* ===== Getting Started ===== */
 .start { background: var(--subtle); }
@@ -660,7 +658,7 @@ a.badge { text-decoration: none; }
 .start-steps { display: flex; flex-direction: column; gap: 18px; max-width: 940px; margin: 0 auto; }
 .start-step { display: grid; grid-template-columns: minmax(0, 340px) 1fr; gap: 28px; align-items: start; background: var(--elevated); border: 1px solid var(--hair); border-radius: 14px; padding: 26px 28px; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
 .start-step__head { min-width: 0; }
-.start-step__n { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #fff; background: var(--accent); width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; margin-bottom: 12px; }
+.start-step__n { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #fff; background: var(--accent-ink); width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; margin-bottom: 12px; }
 .start-step__head h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
 .start-step__head p { color: var(--muted); font-size: 14px; line-height: 1.6; }
 .start-step__body { min-width: 0; }
@@ -671,7 +669,7 @@ a.badge { text-decoration: none; }
 
 .video-wrap { max-width: 860px; margin: 0 auto; }
 .video-frame { border-radius: 14px; overflow: hidden; border: 1px solid var(--hair); background: #1E1D1A; box-shadow: 0 12px 48px -16px rgba(0,0,0,.35); }
-.video-frame video { display: block; width: 100%; height: auto; background: #1E1D1A; }
+.video-frame video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: contain; background: #1E1D1A; }
 .video-link { text-align: center; margin-top: 16px; font-family: var(--font-mono); font-size: 13px; }
 .video-note { text-align: center; max-width: 680px; margin: 8px auto 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 
@@ -720,13 +718,13 @@ a.badge { text-decoration: none; }
       <span data-i18n="nav.brand">知返</span>
     </a>
     <div class="topnav-links">
-      <a href="#problem" data-nav data-i18n="nav.problem">痛点</a>
+      <a href="#problem" data-nav data-i18n="nav.problem">学习来源</a>
       <a href="#how" data-nav data-i18n="nav.how">原理</a>
       <a href="#features" data-nav data-i18n="nav.features">特性</a>
       <a href="#arch" data-nav data-i18n="nav.arch">架构</a>
       <a href="#screens" data-nav data-i18n="nav.screens">预览</a>
       <a href="#start" data-nav data-i18n="nav.start">开始</a>
-      <button class="lang-toggle" id="langToggle" aria-label="Toggle language">zh / EN</button>
+      <button class="lang-toggle" id="langToggle" aria-label="切换为英文">zh / EN</button>
     </div>
   </div>
 </nav>
@@ -737,10 +735,10 @@ a.badge { text-decoration: none; }
   <div class="b-eyebrow"><span data-i18n="hero.eyebrow">Local-first &middot; v1.3.8</span></div>
   <div class="hero-badge"><span>&Delta;</span> <span data-i18n="hero.badge">Local-first Diff-Anchored Learning</span></div>
   <h1 class="b-display"><span data-i18n="hero.title.pre">知返 Aha</span><span class="delta shout">Diff</span></h1>
-  <p class="hero-tagline" data-i18n="hero.tagline">AI 写完，<span class="b-mark">Diff 教回</span>。</p>
-  <p class="hero-tagline-en" data-i18n="hero.tagline_en">Ship with AI. <span class="b-mark">Learn it back.</span></p>
-  <p class="hero-desc" data-i18n="hero.desc">一个 local-first 的 <span class="b-mark">diff-anchored learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链、claim 状态、概念图谱、主动回忆测验和 SRS 复习卡的学习记录。</p>
-  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.8 · pipx install ahadiff</p>
+  <p class="hero-tagline" data-i18n="hero.tagline">读懂<span class="b-mark">这次改动</span>。</p>
+  <p class="hero-tagline-en" data-i18n="hero.tagline_en">Git 改动 · 两份文件 · 粘贴改动</p>
+  <p class="hero-desc" data-i18n="hero.desc">自己的修复、同事的修改、AI 生成的变化，都可以拿来学。提供修改前后的内容，先预览 diff，再读有证据可查的课程、做测验和复习。两份文件或粘贴 patch，无需创建 Git 仓库。</p>
+  <p class="hero-status" data-i18n="hero.status" style="display:inline-block;margin:12px auto 0;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:500;background:var(--accent-soft);color:var(--accent-ink);font-family:var(--font-mono);letter-spacing:.04em">v1.3.8 · 当前源码入口更新，尚未发布</p>
   <div class="hero-ctas">
     <a href="#start" class="btn-primary" data-i18n="hero.cta1">Get Started</a>
     <a href="https://github.com/AGI-is-going-to-arrive/ahadiff" target="_blank" rel="noopener" class="btn-secondary">
@@ -774,47 +772,47 @@ a.badge { text-decoration: none; }
   <div class="hero-insight">
     <div class="hero-insight-bar">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-      <span data-i18n="hero.insight_title">AhaDiff Verified Lesson</span>
+      <span data-i18n="hero.insight_title">AhaDiff 证据链课程示例</span>
     </div>
     <div class="hero-insight-body">
-      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim1">Added explicit algorithm pinning (HS256) to prevent algorithm confusion attacks</span> <span class="claim-ref">auth/session.py:15</span></div>
-      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim2">Token expiry is checked against the current system time (time.time())</span> <span class="claim-ref">auth/session.py:16</span></div>
-      <div class="claim"><span class="claim-badge weak">weak</span><span class="claim-text" data-i18n="hero.claim3">Exception handler catches all JWT errors including expired signatures</span> <span class="claim-ref">auth/session.py:17</span></div>
+      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim1">解码调用显式传入 algorithms=["HS256"]</span> <span class="claim-ref">auth/session.py:15</span></div>
+      <div class="claim"><span class="claim-badge">verified</span><span class="claim-text" data-i18n="hero.claim2">新增代码将 payload["exp"] 与 time.time() 比较</span> <span class="claim-ref">auth/session.py:16</span></div>
+      <div class="claim"><span class="claim-badge weak">weak</span><span class="claim-text" data-i18n="hero.claim3">新增 jwt.InvalidTokenError 异常处理；运行行为仍需测试</span> <span class="claim-ref">auth/session.py:17</span></div>
     </div>
   </div>
 </section>
 
-<blockquote class="b-pullquote container"><span data-i18n="quote.core">每一行 AI 写的代码，都应该能把学习教回给你。</span><cite>AhaDiff</cite></blockquote>
+<blockquote class="b-pullquote container"><span data-i18n="quote.core">把解释和修改前后的内容放在一起看。</span><cite>AhaDiff</cite></blockquote>
 
 <!-- ===== Problem Statement ===== -->
 <section class="section-pad problem" id="problem">
   <div class="container">
-    <div class="section-eyebrow reveal" data-i18n="problem.eyebrow">THE PROBLEM</div>
+    <div class="section-eyebrow reveal" data-i18n="problem.eyebrow">选择来源</div>
     <h2 class="section-title reveal">
-      <span data-i18n="problem.title">Vibe Coding 的知识断层</span>
+      <span data-i18n="problem.title">从你手头的材料开始</span>
     </h2>
-    <p class="section-subtitle reveal" data-i18n="problem.subtitle">AI 工具让你 10x 产出，但学习曲线变成了一条平线。</p>
+    <p class="section-subtitle reveal" data-i18n="problem.subtitle">欢迎、快速上手和使用指南都有这三个入口。安装 AI 工具指引是可选项。</p>
     <div class="pain-grid">
       <div class="pain-card reveal">
         <div class="pain-icon red">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         </div>
-        <h3 data-i18n="problem.p1.title">AI 写的代码看不懂</h3>
-        <p data-i18n="problem.p1.desc">Copilot / Claude 产出大量代码，你点了 Accept，却说不清它为什么有效、何时会失败。</p>
+        <h3 data-i18n="problem.p1.title">Git 改动</h3>
+        <p data-i18n="problem.p1.desc">已有 Git 仓库时，选择工作区修改或提交范围。可以学习自己的 bug 修复、同事的 commit 或 AI 编辑。</p>
       </div>
       <div class="pain-card reveal reveal-delay-1">
         <div class="pain-icon amber">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
         </div>
-        <h3 data-i18n="problem.p2.title">Code Review 成了橡皮图章</h3>
-        <p data-i18n="problem.p2.desc">diff 太大、上下文不够，review 变成形式主义。关键逻辑在 LGTM 中悄悄滑过。</p>
+        <h3 data-i18n="problem.p2.title">两份文件</h3>
+        <p data-i18n="problem.p2.desc">分别点选或拖放修改前、修改后的文件。代码练习、SQL、配置、Markdown 和 Notebook 两版本都能从这里开始。</p>
       </div>
       <div class="pain-card reveal reveal-delay-2">
         <div class="pain-icon grey">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/></svg>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><path d="M8 12h8M8 16h5"/></svg>
         </div>
-        <h3 data-i18n="problem.p3.title">知识债务无声堆积</h3>
-        <p data-i18n="problem.p3.desc">用 AI 交付越快，技术债中「人脑里欠的那部分」累积越深，直到一次线上事故暴露一切。</p>
+        <h3 data-i18n="problem.p3.title">粘贴改动</h3>
+        <p data-i18n="problem.p3.desc">粘贴从 review 或其他工具复制的统一 diff。先看安全处理后的变化预览，再决定是否生成课程。</p>
       </div>
     </div>
   </div>
@@ -824,35 +822,35 @@ a.badge { text-decoration: none; }
 <section class="section-pad" id="how">
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="how.eyebrow">HOW IT WORKS</div>
-    <h2 class="section-title reveal" data-i18n="how.title">四步从 Diff 到掌握</h2>
-    <p class="section-subtitle reveal" data-i18n="how.subtitle">每次 AI 写完代码，AhaDiff 用证据链帮你学会它。</p>
+    <h2 class="section-title reveal" data-i18n="how.title">从变化到课程和复习</h2>
+    <p class="section-subtitle reveal" data-i18n="how.subtitle">不同来源接入同一条学习流程，结论保留证据状态。</p>
     <div class="steps-grid">
       <div class="step-card reveal">
         <div class="step-num">1</div>
-        <div class="step-cmd">git diff</div>
+        <div class="step-cmd">Git / files / patch</div>
         <h3 data-i18n="how.s1.title">捕获变更</h3>
-        <p data-i18n="how.s1.desc">捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.8 已记录 DeepSeek 全局 provider 回归。</p>
+        <p data-i18n="how.s1.desc">选择 Git 改动、两份文件或粘贴改动。文件和 patch 的预览在本机完成，不调用 LLM；修改来源后需重新预览。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-1">
         <div class="step-num">2</div>
         <div class="step-cmd">verify</div>
         <h3 data-i18n="how.s2.title">证据链路分析</h3>
-        <p data-i18n="how.s2.desc">生成带 file:line 链接的 claim 状态。S1 语义蕴含仍是私有 shadow-only 测量，不是语义证明。</p>
+        <p data-i18n="how.s2.desc">解释链接到来源行，并区分已验证、证据较弱和未证明等状态。只有文本差异时，不冒充执行行为证明。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-2">
         <div class="step-num">3</div>
         <div class="step-cmd">learn</div>
         <h3 data-i18n="how.s3.title">生成学习材料</h3>
-        <p data-i18n="how.s3.desc">课文 + 测验 + SRS 卡片。三阶段撤架 (Full/Hint/Compact) 渐进掌握。</p>
+        <p data-i18n="how.s3.desc">用已配置的 provider 生成课程、测验和复习卡。课程有 Full / Hint / Compact 三种提示程度。</p>
         <span class="step-arrow">&rarr;</span>
       </div>
       <div class="step-card reveal reveal-delay-3">
         <div class="step-num">4</div>
         <div class="step-cmd">ratchet</div>
         <h3 data-i18n="how.s4.title">棘轮质量追踪</h3>
-        <p data-i18n="how.s4.desc">8 维评估 100 分制。Git ratchet 只接受通过确定性门禁且不低于基线的 run，Phase 2.5 突破瓶颈。</p>
+        <p data-i18n="how.s4.desc">记录确定性评分与硬门禁，比较课程质量。可选 LLM judge 提供建议，不覆盖最终判定。</p>
       </div>
     </div>
   </div>
@@ -865,7 +863,7 @@ a.badge { text-decoration: none; }
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="feat.eyebrow">FEATURES</div>
     <h2 class="section-title reveal" data-i18n="feat.title">每个细节都为学习设计</h2>
-    <p class="section-subtitle reveal" data-i18n="feat.subtitle">这是一个让你和 AI 共同成长的学习系统。</p>
+    <p class="section-subtitle reveal" data-i18n="feat.subtitle">读解释、查证据、独立作答，再按计划复习。</p>
     <div class="feat-grid">
       <!-- 1: Verified Claims -->
       <div class="feat-card reveal">
@@ -904,8 +902,8 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
         </div>
-        <h3 data-i18n="feat.f5.title">Git Ratchet</h3>
-        <p data-i18n="feat.f5.desc">只进不退：improve loop 渐进优化，Phase 2.5 在卡住时触发结构性重写，突破质量瓶颈。</p>
+        <h3 data-i18n="feat.f5.title">课程质量记录</h3>
+        <p data-i18n="feat.f5.desc">improve-run 可在已有运行上重新生成课程，仅在确定性评分提高时保留新结果；原运行保留。</p>
       </div>
       <!-- 6: Privacy -->
       <div class="feat-card reveal reveal-delay-1">
@@ -928,8 +926,8 @@ a.badge { text-decoration: none; }
         <div class="feat-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </div>
-        <h3 data-i18n="feat.f8.title">15 Tool Targets</h3>
-        <p data-i18n="feat.f8.desc">Claude、Codex、Gemini、Cursor、GitHub Actions、Git hooks 等 CLI / IDE / CI 目标都能接入。</p>
+        <h3 data-i18n="feat.f8.title">可选的 AI 工具集成</h3>
+        <p data-i18n="feat.f8.desc">设置与指南共用 16 个当前工具目标的目录。无需安装集成也能使用文件、patch 和普通 Git 学习。</p>
       </div>
     </div>
   </div>
@@ -949,8 +947,8 @@ a.badge { text-decoration: none; }
       </div>
       <div class="feat-card reveal reveal-delay-1">
         <div class="feat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg></div>
-        <h3 data-i18n="integ.c3.title">接入 15 个工具目标</h3>
-        <p data-i18n="integ.c3.desc">Claude、Codex、Cursor、Copilot、GitHub Actions、Git hooks 等 CLI / IDE / CI 的项目级接入指引。</p>
+        <h3 data-i18n="integ.c3.title">按需接入 AI 工具</h3>
+        <p data-i18n="integ.c3.desc">需要自动化时，再配置 Claude、Codex、Cursor、GitHub Actions 或 Git hooks 等项目级指引。</p>
       </div>
     </div>
   </div>
@@ -973,7 +971,7 @@ a.badge { text-decoration: none; }
         <div class="arch-num">1</div>
         <div class="arch-layer-name">Diff Capture</div>
         <div class="arch-layer-sub" data-i18n="arch.l1">worktree / range / since / patch / URL / compare</div>
-        <div class="arch-tooltip" data-i18n="arch.l1.tip">10 capture modes; v1.3.8 records the DeepSeek global-provider regression separately</div>
+        <div class="arch-tooltip" data-i18n="arch.l1.tip">统一捕获 Git、patch、文件和受支持的目录差异</div>
       </div>
       <div class="arch-layer al-2 reveal reveal-delay-1">
         <div class="arch-num">2</div>
@@ -997,7 +995,7 @@ a.badge { text-decoration: none; }
         <div class="arch-num">5</div>
         <div class="arch-layer-name">Ratchet</div>
         <div class="arch-layer-sub" data-i18n="arch.l5">evaluation bundle (immutable) + review.sqlite</div>
-        <div class="arch-tooltip" data-i18n="arch.l5.tip">Git ratchet: accepted runs must pass deterministic gates</div>
+        <div class="arch-tooltip" data-i18n="arch.l5.tip">质量历史：接受结果前检查确定性门禁</div>
       </div>
       <div class="arch-layer al-6 reveal reveal-delay-3">
         <div class="arch-num">6</div>
@@ -1034,7 +1032,7 @@ a.badge { text-decoration: none; }
         <a class="badge" href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:-2px"> <span data-i18n="video.zh">中文视频（B 站）</span></a>
       </div>
       <p class="video-link"><a id="tutorialVideoLink" href="./video/output/ahadiff-tutorial.en.burned-subtitles.mp4" target="_blank" rel="noopener" data-i18n="video.open">在新标签页打开视频 ↗</a> &middot; <a href="https://www.bilibili.com/video/BV1b57k6yEWm" target="_blank" rel="noopener" data-i18n="video.bilibili">中文版在 B 站观看 ↗</a></p>
-      <p class="video-note" data-i18n="video.note">视频里的安装就是 <code>pip install ahadiff</code>，一行装好。（现在推荐用 pipx 隔离安装，见下方安装说明）</p>
+      <p class="video-note" data-i18n="video.note">视频展示较早界面，当前源码的三个学习来源请按下方步骤操作。安装已发布版本推荐使用 pipx 或 uv tool。</p>
     </div>
   </div>
 </section>
@@ -1043,8 +1041,8 @@ a.badge { text-decoration: none; }
 <section class="section-pad" id="demo">
   <div class="container">
     <div class="section-eyebrow reveal" style="text-align:center;" data-i18n="demo.eyebrow">SEE IT IN ACTION</div>
-    <h2 class="section-title reveal" style="text-align:center;" data-i18n="demo.title">一条命令开始学习</h2>
-    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;" data-i18n="demo.subtitle">在任何 git 仓库中运行 ahadiff，立刻获得带证据链的学习反馈。</p>
+    <h2 class="section-title reveal" style="text-align:center;" data-i18n="demo.title">习惯终端，也能直接学习</h2>
+    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;" data-i18n="demo.subtitle">先配置 provider，再对比工作目录内的两份文件。Git 用户也可使用 --last 或提交范围。</p>
     <div class="terminal reveal">
       <div class="terminal-bar">
         <div class="terminal-dots"><span></span><span></span><span></span></div>
@@ -1053,17 +1051,17 @@ a.badge { text-decoration: none; }
       <div class="terminal-body">
         <div><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span></div>
         <div><span class="prompt">$ </span><span class="cmd">cd my-project</span></div>
-        <div><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
+        <div><span class="prompt">$ </span><span class="cmd">ahadiff learn --compare before.py after.py --force-learn --open</span></div>
         <div>&nbsp;</div>
-        <div><span class="ok">&check; </span><span data-i18n="demo.t1">Captured 3 files, 47 lines changed</span></div>
-        <div><span class="ok">&check; </span><span data-i18n="demo.t2">Generated 12 claim states</span> <span class="info">(10 verified, 2 weak)</span></div>
+        <div><span class="ok">&check; </span><span data-i18n="demo.t1">捕获 1 组文件版本，6 行变化</span></div>
+        <div><span class="ok">&check; </span><span data-i18n="demo.t2">生成 3 条 diff 锚定 claim</span> <span class="info">(3 weak)</span></div>
         <div><span class="ok">&check; </span><span data-i18n="demo.t3">Created lesson</span> <span class="info">(full/hint/compact)</span></div>
         <div><span class="ok">&check; </span><span data-i18n="demo.t4">Generated 5 quiz questions</span></div>
         <div><span class="ok">&check; </span>Score: <span class="score">86/100</span> (PASS) <span class="info">; weakest: quiz_transfer</span></div>
         <div><span class="arrow">&rarr; </span><span data-i18n="demo.t5">Opening</span> <span class="info">http://127.0.0.1:8765</span> ...</div>
       </div>
     </div>
-    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="demo.caption">示例输出。具体数字取决于你的 diff。</p>
+    <p class="section-subtitle reveal" style="text-align:center;margin-left:auto;margin-right:auto;margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="demo.caption">示例输出，不是验证结果。分数、题数和证据状态取决于输入与配置。</p>
   </div>
 </section>
 
@@ -1072,89 +1070,39 @@ a.badge { text-decoration: none; }
   <div class="container">
     <div class="section-eyebrow reveal" data-i18n="screens.eyebrow">WEBUI</div>
     <h2 class="section-title reveal" data-i18n="screens.title">界面预览</h2>
-    <p class="section-subtitle reveal" data-i18n="screens.subtitle">Dashboard、Lesson、Diff、Quiz、Review、Concepts、Settings：一个本地 React SPA。</p>
+    <p class="section-subtitle reveal" data-i18n="screens.subtitle">以下为已有界面示例；当前源码新增的三个学习入口见上方说明。</p>
     <div class="shots-grid">
-      <figure class="shot reveal"><img loading="lazy" data-shot="dashboard" src="./video/public/screenshots/en/en-dashboard.png" alt="Dashboard" /><figcaption data-i18n="shot.dashboard">运行面板：运行记录、分数、棘轮轨迹</figcaption></figure>
-      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="lesson" src="./video/public/screenshots/en/en-lesson.png" alt="Lesson" /><figcaption data-i18n="shot.lesson">课程页：带证据链的解释</figcaption></figure>
-      <figure class="shot reveal"><img loading="lazy" data-shot="diff" src="./video/public/screenshots/en/en-diff.png" alt="Diff" /><figcaption data-i18n="shot.diff">差异查看器：claim 高亮</figcaption></figure>
-      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="quiz" src="./video/public/screenshots/en/en-quiz.png" alt="Quiz" /><figcaption data-i18n="shot.quiz">测验：证据在作答前锁定</figcaption></figure>
-      <figure class="shot reveal"><img loading="lazy" data-shot="review" src="./video/public/screenshots/en/en-review.png" alt="Review" /><figcaption data-i18n="shot.review">复习：FSRS 间隔重复</figcaption></figure>
-      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="concepts-graph" src="./video/public/screenshots/en/en-concepts-graph.png" alt="Concept graph" /><figcaption data-i18n="shot.concepts">概念图谱：跨 diff 概念</figcaption></figure>
-      <figure class="shot reveal"><img loading="lazy" data-shot="rundetail-overview" src="./video/public/screenshots/en/en-rundetail-overview.png" alt="Run detail overview" /><figcaption data-i18n="shot.score">运行详情：概览与分数</figcaption></figure>
-      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="settings" src="./video/public/screenshots/en/en-settings.png" alt="Settings" /><figcaption data-i18n="shot.settings">设置：供应商与偏好</figcaption></figure>
+      <figure class="shot reveal"><img loading="lazy" data-shot="dashboard" src="./video/public/screenshots/en/en-dashboard.png" alt="Dashboard" width="3840" height="1892" /><figcaption data-i18n="shot.dashboard">运行面板：运行记录、分数、棘轮轨迹</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="lesson" src="./video/public/screenshots/en/en-lesson.png" alt="Lesson" width="3840" height="1892" /><figcaption data-i18n="shot.lesson">课程页：带证据链的解释</figcaption></figure>
+      <figure class="shot reveal"><img loading="lazy" data-shot="diff" src="./video/public/screenshots/en/en-diff.png" alt="Diff" width="3840" height="1892" /><figcaption data-i18n="shot.diff">差异查看器：claim 高亮</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="quiz" src="./video/public/screenshots/en/en-quiz.png" alt="Quiz" width="3840" height="1892" /><figcaption data-i18n="shot.quiz">测验：证据在作答前锁定</figcaption></figure>
+      <figure class="shot reveal"><img loading="lazy" data-shot="review" src="./video/public/screenshots/en/en-review.png" alt="Review" width="3840" height="1892" /><figcaption data-i18n="shot.review">复习：FSRS 间隔重复</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="concepts-graph" src="./video/public/screenshots/en/en-concepts-graph.png" alt="Concept graph" width="1920" height="1080" /><figcaption data-i18n="shot.concepts">概念图谱：跨 diff 概念</figcaption></figure>
+      <figure class="shot reveal"><img loading="lazy" data-shot="rundetail-overview" src="./video/public/screenshots/en/en-rundetail-overview.png" alt="Run detail overview" width="1920" height="1080" /><figcaption data-i18n="shot.score">运行详情：概览与分数</figcaption></figure>
+      <figure class="shot reveal reveal-delay-1"><img loading="lazy" data-shot="settings" src="./video/public/screenshots/en/en-settings.png" alt="Settings" width="3840" height="1892" /><figcaption data-i18n="shot.settings">设置：供应商与偏好</figcaption></figure>
     </div>
   </div>
 </section>
 
-<!-- ===== Comparison Table ===== -->
+<!-- ===== Supported Inputs ===== -->
 <section class="section-pad" id="compare" style="background:var(--subtle);">
   <div class="container">
-    <div class="section-eyebrow reveal" data-i18n="cmp.eyebrow">COMPARISON</div>
-    <h2 class="section-title reveal" data-i18n="cmp.title">AhaDiff vs. Alternatives</h2>
-    <p class="section-subtitle reveal" data-i18n="cmp.subtitle">保留 Code Review，再补上缺失的学习环。</p>
+    <div class="section-eyebrow reveal" data-i18n="cmp.eyebrow">适用场景</div>
+    <h2 class="section-title reveal" data-i18n="cmp.title">这些改动，可以怎么学</h2>
+    <p class="section-subtitle reveal" data-i18n="cmp.subtitle">选择来源后，共用同一套课程、测验、复习和质量历史。</p>
     <div class="cmp-wrap reveal">
       <table class="cmp-table">
-        <thead>
-          <tr>
-            <th data-i18n="cmp.col0">Tool</th>
-            <th data-i18n="cmp.col1">Verified Claims</th>
-            <th data-i18n="cmp.col2">SRS</th>
-            <th data-i18n="cmp.col3">Ratchet</th>
-            <th data-i18n="cmp.col4">Local-first</th>
-            <th data-i18n="cmp.col5">Evidence Chain</th>
-            <th data-i18n="cmp.col6">Agent Install</th>
-          </tr>
-        </thead>
+        <thead><tr><th data-i18n="cmp.col0">你要学什么</th><th data-i18n="cmp.col1">怎么输入</th><th data-i18n="cmp.col2">证据边界</th></tr></thead>
         <tbody>
-          <tr>
-            <td>AhaDiff</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-check">&check;</td>
-          </tr>
-          <tr>
-            <td>Code Wiki</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-partial">&sim;</td>
-            <td class="cmp-cross">&ndash;</td>
-          </tr>
-          <tr>
-            <td>Diffity</td>
-            <td class="cmp-partial">&sim;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-          </tr>
-          <tr>
-            <td>Anki + Code</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-check">&check;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-          </tr>
-          <tr>
-            <td>Exercism</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-partial">&sim;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-            <td class="cmp-cross">&ndash;</td>
-          </tr>
+          <tr><td data-i18n="cmp.r1.material">自己的修复、同事或 AI 的提交</td><td data-i18n="cmp.r1.input">Git 改动：工作区或提交范围</td><td data-i18n="cmp.r1.evidence">回查变化行；有可用代码上下文时补充符号证据。</td></tr>
+          <tr><td data-i18n="cmp.r2.material">代码练习、SQL、配置、Markdown</td><td data-i18n="cmp.r2.input">两份文件：修改前与修改后</td><td data-i18n="cmp.r2.evidence">比较文本来源，证据不足的结论会标明状态。</td></tr>
+          <tr><td data-i18n="cmp.r3.material">Notebook 两个版本</td><td data-i18n="cmp.r3.input">选择两份 .ipynb 文件</td><td data-i18n="cmp.r3.evidence">按单元格比较来源，不执行 Notebook。</td></tr>
+          <tr><td data-i18n="cmp.r4.material">复制来的 review patch</td><td data-i18n="cmp.r4.input">粘贴改动：统一 diff 文本</td><td data-i18n="cmp.r4.evidence">只有 diff hunk 支持时使用较弱证据，不冒充仓库符号证明。</td></tr>
+          <tr><td data-i18n="cmp.r5.material">只有当前文件，或一份 PDF / 网页</td><td data-i18n="cmp.r5.input">目前需要提供前后版本</td><td data-i18n="cmp.r5.evidence">独立资料学习与持久快照尚未实现。</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmp.footnote">本表反映 AhaDiff 自身的定位和设计重点，不是对其他工具的独立评测。</p>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmp.footnote">课程分数衡量生成材料的质量，不代表程序已测试通过，也不证明你已掌握。目录对比和 Git hooks 仅限 macOS/Linux；文件与 patch 入口面向三端。</p>
   </div>
 </section>
 
@@ -1177,7 +1125,7 @@ a.badge { text-decoration: none; }
           <tr><td class="cmd-name"><code>ahadiff verify &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.verify">重新校验 claims 与评分</td></tr>
           <tr><td class="cmd-name"><code>ahadiff improve --rounds N</code></td><td class="cmd-desc" data-i18n="cmds.improve">在 git worktree 里迭代优化生成 prompt（仅源码 checkout）</td></tr>
           <tr><td class="cmd-name"><code>ahadiff improve-run &lt;run_id&gt;</code></td><td class="cmd-desc" data-i18n="cmds.improverun">重新生成课程，仅当确定性评分更高时保留；任何安装方式可用（含 pip）</td></tr>
-          <tr><td class="cmd-name"><code>ahadiff serve</code></td><td class="cmd-desc" data-i18n="cmds.serve">打开本地 Web UI</td></tr>
+          <tr><td class="cmd-name"><code>ahadiff serve</code></td><td class="cmd-desc" data-i18n="cmds.serve">在仓库或普通目录打开本地 WebUI</td></tr>
           <tr><td class="cmd-name"><code>ahadiff export preview</code></td><td class="cmd-desc" data-i18n="cmds.export">生成本地静态预览包</td></tr>
           <tr><td class="cmd-name"><code>ahadiff watch</code></td><td class="cmd-desc" data-i18n="cmds.watch">工作区变更自动 learn</td></tr>
           <tr><td class="cmd-name"><code>ahadiff install hooks --auto-learn</code></td><td class="cmd-desc" data-i18n="cmds.hooksauto">每次 commit 后后台自动 learn</td></tr>
@@ -1185,46 +1133,46 @@ a.badge { text-decoration: none; }
         </tbody>
       </table>
     </div>
-    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整命令和 10 种捕获模式见使用指南；v1.3.8 本地 gate 和 live DeepSeek 全局 provider run 已记录，发布状态见 GitHub Release 与 PyPI。</p>
+    <p class="section-subtitle reveal" style="margin-top:16px;font-size:0.85em;opacity:0.7;" data-i18n="cmds.footnote">完整 CLI 命令、输入限制和跨平台说明见中英文使用指南；历史验证记录与本次尚未发布的源码更新分开记录。</p>
   </div>
 </section>
 
 <!-- ===== Getting Started ===== -->
 <section class="section-pad start b-focal" id="start">
   <div class="container">
-    <div class="section-eyebrow reveal" data-i18n="start.eyebrow">PYPI INSTALL</div>
+    <div class="section-eyebrow reveal" data-i18n="start.eyebrow">开始使用</div>
     <h2 class="section-title reveal" data-i18n="start.title">三步开始</h2>
     <p class="section-subtitle reveal" data-i18n="start.subtitle">几步之内，从安装到第一节课。</p>
     <div class="start-steps">
       <div class="start-step reveal">
         <div class="start-step__head">
           <div class="start-step__n">1</div>
-          <h3 data-i18n="start.c1.title">安装并配置</h3>
-          <p data-i18n="start.c1.desc">推荐用 <code>pipx install ahadiff</code> 隔离安装已发布的 CLI 和内置 WebUI（<code>uv tool install ahadiff</code> 同样可以，都不需要 git clone），然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。在 venv / conda 里用 <code>pip install ahadiff</code> 也可以；在 Homebrew / 系统 Python 上直接 pip 会触发 externally-managed-environment，改用 pipx 或 uv 即可。</p>
-          <div class="start-tip" data-i18n="start.c1.tip">提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。DeepSeek BYOK 使用 <code>openai_compat</code> 与 <code>https://api.deepseek.com</code>；结构化输出走 JSON object mode。DeepSeek v4 的 Thinking Level 只有「无」会关闭思考，低 / 中 / 高会按高处理。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加仓库级或全局 provider，保存前还能预览模型限额。</div>
+          <h3 data-i18n="start.c1.title">打开本地界面</h3>
+          <p data-i18n="start.c1.desc">用 pipx 或 uv tool 安装已发布版本。在准备保存学习记录的文件夹运行 ahadiff serve，再到设置添加一个本地或远端 provider。普通目录也可以，Agent 集成是可选项。</p>
+          <div class="start-tip" data-i18n="start.c1.tip">本页三来源界面更新尚在当前源码中，版本仍为 1.3.8，尚未发布；已发布版本可先用 CLI 的 --compare 和 --patch。源码构建、Windows PowerShell 和 provider 配置见中英文使用指南。</div>
         </div>
         <div class="start-step__body">
-          <div class="code-block"><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff init</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_API_KEY="&lt;your-provider-api-key&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">export AHADIFF_PROVIDER_BASE_URL="&lt;provider-base-url&gt;"</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff provider test \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--name default \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--provider-class openai \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--base-url "$AHADIFF_PROVIDER_BASE_URL" \</span><br/><span class="cmd">&nbsp;&nbsp;&nbsp;&nbsp;--api-key-env AHADIFF_PROVIDER_API_KEY</span></div>
+          <div class="code-block"><span class="prompt">$ </span><span class="cmd">pipx install ahadiff</span><br/><span class="prompt">$ </span><span class="cmd">cd your-folder</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff serve</span></div>
         </div>
       </div>
       <div class="start-step reveal reveal-delay-1">
         <div class="start-step__head">
           <div class="start-step__n">2</div>
-          <h3 data-i18n="start.c2.title">学习</h3>
-          <p data-i18n="start.c2.desc">在你的项目中运行 learn 命令，分析最近一次提交的 diff。</p>
+          <h3 data-i18n="start.c2.title">选来源，预览变化</h3>
+          <p data-i18n="start.c2.desc">在欢迎、快速上手或使用指南中选择来源。两份文件可点选或拖放，每份 UTF-8 文本最多 256 KiB；粘贴 diff 最多 64 KiB。预览不调用 LLM，开始学习时使用你的 provider 和隐私设置。</p>
         </div>
         <div class="start-step__body">
-          <div class="code-block"><span class="prompt">$ </span><span class="cmd">cd your-project</span><br/><span class="prompt">$ </span><span class="cmd">ahadiff learn --last</span></div>
+          <p data-i18n="start.c2.flow">欢迎 → 两份文件 → 放入修改前后文件 → 预览变化 → 开始学习</p>
         </div>
       </div>
       <div class="start-step reveal reveal-delay-2">
         <div class="start-step__head">
           <div class="start-step__n">3</div>
-          <h3 data-i18n="start.c3.title">复习</h3>
-          <p data-i18n="start.c3.desc">打开 Web UI 进行 SRS 复习和测验，巩固知识。</p>
+          <h3 data-i18n="start.c3.title">读课、作答、复习</h3>
+          <p data-i18n="start.c3.desc">完成后读课程、点击证据回到差异，再独立作答。到期复习会带回旧卡片；小练习可勾选“变化较小时仍生成课程”。</p>
         </div>
         <div class="start-step__body">
-          <div class="code-block"><span class="prompt">$ </span><span class="cmd">ahadiff serve</span><br/><span style="color:#6BB3D9;"># Opens http://127.0.0.1:8765</span></div>
+          <p data-i18n="start.c3.flow">课程 → 差异 → 测验 → 复习</p>
         </div>
       </div>
     </div>
@@ -1238,10 +1186,10 @@ a.badge { text-decoration: none; }
     <h2 class="section-title reveal" data-i18n="faq.title">你可能会问</h2>
     <div class="faq-list reveal">
       <details class="faq-item"><summary data-i18n="faq.q1">我的代码会被上传吗？</summary><div class="faq-a" data-i18n="faq.a1">默认 strict_local，不向任何远端模型发送内容。要用远端模型时，必须显式切到 redacted_remote 或 explicit_remote；远端请求前会执行隐私与脱敏门禁。</div></details>
-      <details class="faq-item"><summary data-i18n="faq.q2">需要从 PyPI 安装吗？</summary><div class="faq-a" data-i18n="faq.a2">是，从 PyPI 安装。推荐用 <code>pipx install ahadiff</code>（或 <code>uv tool install ahadiff</code>）隔离安装已发布的 CLI 和内置 WebUI，不需要 git clone。在 Homebrew / 系统 Python 上直接 <code>pip install</code> 会触发 externally-managed-environment，改用 pipx 或 uv 即可；源码 checkout 只适合贡献者开发。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q2">没有 Git 仓库或 AI 助手也能用吗？</summary><div class="faq-a" data-i18n="faq.a2">可以从两份文件或粘贴的统一 diff 开始。在普通文件夹运行 <code>ahadiff serve</code>，配置 provider，再选来源即可。CLI 的 <code>init</code>、<code>doctor</code> 仍要求 Git 仓库；无需为文件学习专门建仓库。</div></details>
       <details class="faq-item"><summary data-i18n="faq.q3">支持哪些模型？</summary><div class="faq-a" data-i18n="faq.a3">BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。</div></details>
-      <details class="faq-item"><summary data-i18n="faq.q4">要花钱吗？</summary><div class="faq-a" data-i18n="faq.a4">AhaDiff 本身免费、在本地运行；你只为自己的 LLM 供应商付费（BYOK）。</div></details>
-      <details class="faq-item"><summary data-i18n="faq.q5">评分会因为模型不稳定而乱跳吗？</summary><div class="faq-a" data-i18n="faq.a5">评分主体是 8 维确定性打分；LLM judge 只是可选 advisory，即使 judge 失败也会保留确定性分数。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q4">要花钱吗？</summary><div class="faq-a" data-i18n="faq.a4">AhaDiff 本身免费、本地运行。文件和 patch 预览不调用 LLM；配置探测与生成课程可能向你选定的 provider 发请求，费用按该服务计。</div></details>
+      <details class="faq-item"><summary data-i18n="faq.q5">高分代表我已经学会了吗？</summary><div class="faq-a" data-i18n="faq.a5">分数用于检查课程材料质量。是否学会要看你能否独立解释、作答和完成类似修改。最终判定来自确定性评分和硬门禁；可选 LLM judge 的建议不覆盖它。</div></details>
     </div>
   </div>
 </section>
@@ -1278,7 +1226,8 @@ a.badge { text-decoration: none; }
 /* ===== i18n ===== */
 const T = {
   "nav.brand": { zh: "知返", en: "AhaDiff" },
-  "nav.problem": { zh: "痛点", en: "Problem" },
+  "nav.language": { zh: "切换为英文", en: "Switch to Chinese" },
+  "nav.problem": { zh: "学习来源", en: "Sources" },
   "nav.how": { zh: "原理", en: "How" },
   "nav.features": { zh: "特性", en: "Features" },
   "nav.arch": { zh: "架构", en: "Architecture" },
@@ -1286,81 +1235,39 @@ const T = {
   "hero.eyebrow": { zh: "Local-first · v1.3.8", en: "Local-first · v1.3.8" },
   "hero.badge": { zh: "Local-first Diff 锚定学习", en: "Local-first Diff-Anchored Learning" },
   "hero.title.pre": { zh: "知返 Aha", en: "Aha" },
-  "hero.tagline": { zh: 'AI 写完，<span class="b-mark">Diff 教回</span>。', en: 'Ship with AI. <span class="b-mark">Learn it back.</span>' },
-  "hero.tagline_en": { zh: 'Ship with AI. <span class="b-mark">Learn it back.</span>', en: 'AI 写完，<span class="b-mark">Diff 教回</span>。' },
-  "hero.desc": {
-    zh: '一个 local-first 的 <span class="b-mark">diff-anchored learning layer</span>。把 Claude / Codex / Cursor 等 AI 工具写出的 git diff，变成带代码证据链、claim 状态、概念图谱、主动回忆测验和 SRS 复习卡的学习记录。',
-    en: 'A local-first <span class="b-mark">diff-anchored learning layer</span>. Transforms git diffs from AI coding tools like Claude, Codex, and Cursor into learning notes with code evidence chains, claim states, concept graphs, active recall quizzes, and SRS review cards.'
-  },
-  "quote.core": { zh: "每一行 AI 写的代码，都应该能把学习教回给你。", en: "Every line of AI-written code should teach you something back." },
-  "hero.status": { zh: "v1.3.8 · pipx install ahadiff", en: "v1.3.8 · pipx install ahadiff" },
+  "hero.tagline": { zh: "读懂<span class=\"b-mark\">这次改动</span>。", en: "Learn from <span class=\"b-mark\">what changed.</span>" },
+  "hero.tagline_en": { zh: "Git 改动 · 两份文件 · 粘贴改动", en: "Git changes · Two files · Paste a diff" },
+  "hero.desc": { zh: "自己的修复、同事的修改、AI 生成的变化，都可以拿来学。提供修改前后的内容，先预览 diff，再读有证据可查的课程、做测验和复习。两份文件或粘贴 patch，无需创建 Git 仓库。", en: "Study your own fixes, a colleague's edits, or AI-generated changes. Bring the before and after versions, preview the diff, then read evidence-linked lessons and practice with quizzes and review. File and patch inputs work without a Git repository." },
+  "quote.core": { zh: "把解释和修改前后的内容放在一起看。", en: "Read the explanation alongside the before and after versions." },
+  "hero.status": { zh: "v1.3.8 · 当前源码入口更新，尚未发布", en: "v1.3.8 · Source entry-point updates, pending publication" },
   "hero.cta1": { zh: "开始使用", en: "Get Started" },
-  "hero.insight_title": { zh: "AhaDiff 证据链课程", en: "AhaDiff Evidence-Linked Lesson" },
-  "hero.claim1": {
-    zh: "添加了显式算法固定 (HS256)，防止算法混淆攻击",
-    en: "Added explicit algorithm pinning (HS256) to prevent algorithm confusion attacks"
-  },
-  "hero.claim2": {
-    zh: "用当前系统时间（time.time()）检查 token 是否过期",
-    en: "Token expiry is checked against the current system time (time.time())"
-  },
-  "hero.claim3": {
-    zh: "异常处理捕获所有 JWT 错误，包括过期签名",
-    en: "Exception handler catches all JWT errors including expired signatures"
-  },
-  "problem.eyebrow": { zh: "问题", en: "THE PROBLEM" },
-  "problem.title": { zh: "Vibe Coding 的知识断层", en: "The Vibe Coding Gap" },
-  "problem.subtitle": {
-    zh: "AI 工具让你 10x 产出，但学习曲线变成了一条平线。",
-    en: "AI tools give you 10x output, but your learning curve flatlines."
-  },
-  "problem.p1.title": { zh: "AI 写的代码看不懂", en: "Code You Don't Understand" },
-  "problem.p1.desc": {
-    zh: "Copilot / Claude 产出大量代码，你点了 Accept，却说不清它为什么有效、何时会失败。",
-    en: "Copilot / Claude writes tons of code. You hit Accept, but can't explain why it works or when it breaks."
-  },
-  "problem.p2.title": { zh: "Code Review 成了橡皮图章", en: "Rubber-Stamp Reviews" },
-  "problem.p2.desc": {
-    zh: "diff 太大、上下文不够，review 变成形式主义。关键逻辑在 LGTM 中悄悄滑过。",
-    en: "Diffs too large, context too sparse. Reviews become formality. Critical logic slips through with LGTM."
-  },
-  "problem.p3.title": { zh: "知识债务无声堆积", en: "Silent Knowledge Debt" },
-  "problem.p3.desc": {
-    zh: "用 AI 交付越快，技术债中「人脑里欠的那部分」累积越深，直到一次线上事故暴露一切。",
-    en: "The faster AI ships, the deeper the \"brain debt\" compounds, until a production incident exposes it all."
-  },
+  "hero.insight_title": { zh: "AhaDiff 证据链课程示例", en: "AhaDiff Evidence-Linked Lesson Example" },
+  "hero.claim1": { zh: "解码调用显式传入 algorithms=[\"HS256\"]", en: "The decode call explicitly passes algorithms=[\"HS256\"]" },
+  "hero.claim2": { zh: "新增代码将 payload[\"exp\"] 与 time.time() 比较", en: "The added code compares payload[\"exp\"] with time.time()" },
+  "hero.claim3": { zh: "新增 jwt.InvalidTokenError 异常处理；运行行为仍需测试", en: "A jwt.InvalidTokenError handler was added; runtime behavior still needs testing" },
+  "problem.eyebrow": { zh: "选择来源", en: "CHOOSE A SOURCE" },
+  "problem.title": { zh: "从你手头的材料开始", en: "Start with what you have" },
+  "problem.subtitle": { zh: "欢迎、快速上手和使用指南都有这三个入口。安装 AI 工具指引是可选项。", en: "Welcome, Quick Start, and Guide share these three entry points. AI tool guidance is optional." },
+  "problem.p1.title": { zh: "Git 改动", en: "Git changes" },
+  "problem.p1.desc": { zh: "已有 Git 仓库时，选择工作区修改或提交范围。可以学习自己的 bug 修复、同事的 commit 或 AI 编辑。", en: "In an existing Git repository, choose working-tree edits or a commit range. Study your own bug fix, a colleague's commit, or AI edits." },
+  "problem.p2.title": { zh: "两份文件", en: "Two files" },
+  "problem.p2.desc": { zh: "分别点选或拖放修改前、修改后的文件。代码练习、SQL、配置、Markdown 和 Notebook 两版本都能从这里开始。", en: "Select or drop the before and after files. Start with a coding exercise, SQL, configuration, Markdown, or two Notebook versions." },
+  "problem.p3.title": { zh: "粘贴改动", en: "Paste a diff" },
+  "problem.p3.desc": { zh: "粘贴从 review 或其他工具复制的统一 diff。先看安全处理后的变化预览，再决定是否生成课程。", en: "Paste a unified diff from a review or another tool. Inspect the sanitized preview before starting lesson generation." },
   "how.eyebrow": { zh: "工作原理", en: "HOW IT WORKS" },
-  "how.title": { zh: "四步从 Diff 到掌握", en: "Four Steps from Diff to Mastery" },
-  "how.subtitle": {
-    zh: "每次 AI 写完代码，AhaDiff 用证据链帮你学会它。",
-    en: "Every time AI writes code, AhaDiff helps you learn it with evidence chains."
-  },
+  "how.title": { zh: "从变化到课程和复习", en: "From changes to lessons and review" },
+  "how.subtitle": { zh: "不同来源接入同一条学习流程，结论保留证据状态。", en: "Each source uses the same learning workflow, with evidence states attached to its claims." },
   "how.s1.title": { zh: "捕获变更", en: "Capture Changes" },
-  "how.s1.desc": {
-    zh: "捕获工作区、提交范围、时间窗口、patch URL、文件和目录对比等 10 种 diff 模式；发布验证分开记录捕获覆盖和 live LLM 课程生成，v1.3.8 已记录 DeepSeek 全局 provider 回归。",
-    en: "Capture 10 diff modes, including worktree, revision ranges, time windows, patch URLs, and file or directory comparisons; release validation records capture coverage separately from live LLM lesson generation, and v1.3.8 records the DeepSeek global-provider regression."
-  },
+  "how.s1.desc": { zh: "选择 Git 改动、两份文件或粘贴改动。文件和 patch 的预览在本机完成，不调用 LLM；修改来源后需重新预览。", en: "Choose Git changes, Two files, or Paste a diff. File and patch previews use the local service without an LLM call; editing the source requires a new preview." },
   "how.s2.title": { zh: "证据链路分析", en: "Evidence-Linked Analysis" },
-  "how.s2.desc": {
-    zh: "生成带 file:line 链接的 claim 状态。S1 语义蕴含仍是私有 shadow-only 测量，不是语义证明。",
-    en: "Generate claim states with file:line links. S1 semantic entailment remains private shadow-only measurement, not semantic proof."
-  },
+  "how.s2.desc": { zh: "解释链接到来源行，并区分已验证、证据较弱和未证明等状态。只有文本差异时，不冒充执行行为证明。", en: "Explanations link to source lines and distinguish verified, weak, and unproven states. Textual evidence does not establish execution behavior." },
   "how.s3.title": { zh: "生成学习材料", en: "Generate Learning Materials" },
-  "how.s3.desc": {
-    zh: "课文 + 测验 + SRS 卡片。三阶段撤架 (Full/Hint/Compact) 渐进掌握。",
-    en: "Lessons + Quizzes + SRS cards. Three-stage scaffolding (Full/Hint/Compact) for progressive mastery."
-  },
+  "how.s3.desc": { zh: "用已配置的 provider 生成课程、测验和复习卡。课程有 Full / Hint / Compact 三种提示程度。", en: "Use your configured provider to generate lessons, quizzes, and review cards. Lessons offer Full, Hint, and Compact levels of help." },
   "how.s4.title": { zh: "棘轮质量追踪", en: "Ratchet Quality Tracking" },
-  "how.s4.desc": {
-    zh: "8 维评估 100 分制。Git ratchet 只接受通过确定性门禁且不低于基线的 run，Phase 2.5 突破瓶颈。",
-    en: "8-dimension rubric, 100-point scale. Git ratchet only accepts runs that pass deterministic gates and do not fall below the baseline. Phase 2.5 breaks through plateaus."
-  },
+  "how.s4.desc": { zh: "记录确定性评分与硬门禁，比较课程质量。可选 LLM judge 提供建议，不覆盖最终判定。", en: "Record deterministic scores and hard gates to compare lesson quality. An optional LLM judge offers feedback without overriding the final verdict." },
   "feat.eyebrow": { zh: "核心特性", en: "FEATURES" },
   "feat.title": { zh: "每个细节都为学习设计", en: "Every Detail Designed for Learning" },
-  "feat.subtitle": {
-    zh: "这是一个让你和 AI 共同成长的学习系统。",
-    en: "A learning system that grows with you and AI."
-  },
+  "feat.subtitle": { zh: "读解释、查证据、独立作答，再按计划复习。", en: "Read the explanation, inspect evidence, answer questions, and return for scheduled review." },
   "feat.f1.title": { zh: "Verified Claims", en: "Verified Claims" },
   "feat.f1.desc": {
     zh: "解释会链接到 file:line 代码证据，并显示 5 种 claim 状态 (verified / weak / not_proven / contradicted / rejected)。",
@@ -1381,11 +1288,8 @@ const T = {
     zh: "accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 分。",
     en: "accuracy / evidence / diff_coverage / learnability / quiz_transfer / spec_alignment / conciseness / safety_privacy = 100 points."
   },
-  "feat.f5.title": { zh: "Git 棘轮", en: "Git Ratchet" },
-  "feat.f5.desc": {
-    zh: "只进不退：improve loop 渐进优化，Phase 2.5 在卡住时触发结构性重写，突破质量瓶颈。",
-    en: "Never regress: improve loop for progressive optimization. Phase 2.5 triggers structural rewrite when stuck."
-  },
+  "feat.f5.title": { zh: "课程质量记录", en: "Lesson Quality History" },
+  "feat.f5.desc": { zh: "improve-run 可在已有运行上重新生成课程，仅在确定性评分提高时保留新结果；原运行保留。", en: "improve-run regenerates a lesson from an existing run and keeps the new result only when its deterministic score improves. The original run remains available." },
   "feat.f6.title": { zh: "隐私优先", en: "Privacy First" },
   "feat.f6.desc": {
     zh: "strict_local / redacted_remote / explicit_remote 三档隐私。远端请求前会执行隐私与脱敏门禁。",
@@ -1396,11 +1300,8 @@ const T = {
     zh: "OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama 等 9 种 API 格式。BYOK，自动探测上下文长度；DeepSeek 走 JSON object 兼容模式，全局 provider 可直接选择并保存。",
     en: "9 API formats: OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama and more. BYOK, with context-length auto-probing; DeepSeek uses JSON object compatibility, and global providers can be selected and saved."
   },
-  "feat.f8.title": { zh: "15 个工具目标", en: "15 Tool Targets" },
-  "feat.f8.desc": {
-    zh: "Claude、Codex、Gemini、Cursor、GitHub Actions、Git hooks 等 CLI / IDE / CI 目标都能接入。",
-    en: "Connect CLI / IDE / CI targets such as Claude, Codex, Gemini, Cursor, GitHub Actions, and Git hooks."
-  },
+  "feat.f8.title": { zh: "可选的 AI 工具集成", en: "Optional AI Tool Integration" },
+  "feat.f8.desc": { zh: "设置与指南共用 16 个当前工具目标的目录。无需安装集成也能使用文件、patch 和普通 Git 学习。", en: "Settings and Guide share a catalogue of 16 current tool targets. File, patch, and ordinary Git learning work without installing an integration." },
   "arch.eyebrow": { zh: "系统架构", en: "ARCHITECTURE" },
   "arch.title": { zh: "八层分层架构", en: "Eight-Layer Architecture" },
   "arch.subtitle": {
@@ -1410,7 +1311,7 @@ const T = {
   "arch.l0": { zh: "ClaimStatus / RunSource / EvalBundle / EventLog", en: "ClaimStatus / RunSource / EvalBundle / EventLog" },
   "arch.l0.tip": { zh: "核心契约冻结：不可变类型定义", en: "Core contract freeze: immutable type definitions" },
   "arch.l1": { zh: "worktree / range / since / patch / URL / compare", en: "worktree / range / since / patch / URL / compare" },
-  "arch.l1.tip": { zh: "10 种捕获模式；v1.3.8 已单独记录 DeepSeek 全局 provider 回归", en: "10 capture modes; v1.3.8 records the DeepSeek global-provider regression separately" },
+  "arch.l1.tip": { zh: "统一捕获 Git、patch、文件和受支持的目录差异", en: "Normalize Git, patch, file, and supported directory differences" },
   "arch.l2": { zh: "2a 上下文组装 + 2b 安全门 + 2c 预算", en: "2a Assembly + 2b Safety Gate + 2c Budget" },
   "arch.l2.tip": { zh: "仓库文件、密钥扫描、token 预算", en: "Repo files, secret scan, token budget" },
   "arch.l3": { zh: "prompts/*.md + claim 提取", en: "prompts/*.md + claim extraction" },
@@ -1418,64 +1319,39 @@ const T = {
   "arch.l4": { zh: "claims.jsonl + 评分 + judge 产物", en: "claims.jsonl + score + judge artifacts" },
   "arch.l4.tip": { zh: "5 态 claims: verified / weak / not_proven / contradicted / rejected", en: "5-state claims: verified / weak / not_proven / contradicted / rejected" },
   "arch.l5": { zh: "evaluation bundle (不可变) + review.sqlite", en: "evaluation bundle (immutable) + review.sqlite" },
-  "arch.l5.tip": { zh: "Git 棘轮：必须通过确定性门禁才会被接受", en: "Git ratchet: accepted runs must pass deterministic gates" },
+  "arch.l5.tip": { zh: "质量历史：接受结果前检查确定性门禁", en: "Quality history: deterministic gates apply before a result is accepted" },
   "arch.l6": { zh: "测验 + SRS 复习 + concepts.jsonl", en: "quiz + SRS review + concepts.jsonl" },
   "arch.l6.tip": { zh: "FSRS-6 间隔重复 + 概念图谱", en: "FSRS-6 spaced repetition + concept graph" },
   "arch.l7": { zh: "React SPA via ahadiff serve", en: "React SPA via ahadiff serve" },
   "arch.l7.tip": { zh: "Starlette API + Vite + React 19", en: "Starlette API + Vite + React 19" },
   "demo.eyebrow": { zh: "实际演示", en: "SEE IT IN ACTION" },
-  "demo.title": { zh: "一条命令开始学习", en: "One Command to Start Learning" },
-  "demo.subtitle": {
-    zh: "在任何 git 仓库中运行 ahadiff，立刻获得带证据链的学习反馈。",
-    en: "Run ahadiff in any git repo for instant learning feedback with evidence chains."
-  },
-  "demo.t1": { zh: "捕获 3 个文件，47 行变更", en: "Captured 3 files, 47 lines changed" },
-  "demo.t2": { zh: "生成 12 条 claim 状态", en: "Generated 12 claim states" },
+  "demo.title": { zh: "习惯终端，也能直接学习", en: "Use the terminal if you prefer" },
+  "demo.subtitle": { zh: "先配置 provider，再对比工作目录内的两份文件。Git 用户也可使用 --last 或提交范围。", en: "Configure a provider, then compare two files inside your working folder. Git users can also select --last or a commit range." },
+  "demo.t1": { zh: "捕获 1 组文件版本，6 行变化", en: "Captured one file pair with 6 changed lines" },
+  "demo.t2": { zh: "生成 3 条 diff 锚定 claim", en: "Generated 3 diff-anchored claims" },
   "demo.t3": { zh: "创建学习笔记", en: "Created lesson" },
   "demo.t4": { zh: "生成 5 道测验题", en: "Generated 5 quiz questions" },
   "demo.t5": { zh: "正在打开", en: "Opening" },
-  "demo.caption": {
-    zh: "示例输出。具体数字取决于你的 diff。",
-    en: "Example output. Your numbers depend on your diff."
-  },
-  "cmp.eyebrow": { zh: "对比", en: "COMPARISON" },
-  "cmp.title": { zh: "AhaDiff vs. 替代方案", en: "AhaDiff vs. Alternatives" },
-  "cmp.subtitle": {
-    zh: "保留 Code Review，再补上缺失的学习环。",
-    en: "Keep Code Review, then add the missing learning loop."
-  },
-  "cmp.footnote": {
-    zh: "本表反映 AhaDiff 自身的定位和设计重点，不是对其他工具的独立评测。",
-    en: "This table reflects AhaDiff's own positioning and design priorities, not an independent benchmark of the other tools."
-  },
-  "cmp.col0": { zh: "工具", en: "Tool" },
-  "cmp.col1": { zh: "Verified Claims", en: "Verified Claims" },
-  "cmp.col2": { zh: "SRS", en: "SRS" },
-  "cmp.col3": { zh: "Ratchet", en: "Ratchet" },
-  "cmp.col4": { zh: "Local-first", en: "Local-first" },
-  "cmp.col5": { zh: "证据链", en: "Evidence Chain" },
-  "cmp.col6": { zh: "Agent 接入", en: "Agent Install" },
-  "start.eyebrow": { zh: "PyPI 安装", en: "PYPI INSTALL" },
+  "demo.caption": { zh: "示例输出，不是验证结果。分数、题数和证据状态取决于输入与配置。", en: "Illustrative output, not a validation result. Scores, question counts, and evidence states depend on the input and configuration." },
+  "cmp.eyebrow": { zh: "适用场景", en: "SUPPORTED INPUTS" },
+  "cmp.title": { zh: "这些改动，可以怎么学", en: "Choose a workflow for your change" },
+  "cmp.subtitle": { zh: "选择来源后，共用同一套课程、测验、复习和质量历史。", en: "Each source connects to the same lessons, quizzes, review, and quality history." },
+  "cmp.footnote": { zh: "课程分数衡量生成材料的质量，不代表程序已测试通过，也不证明你已掌握。目录对比和 Git hooks 仅限 macOS/Linux；文件与 patch 入口面向三端。", en: "Scores describe generated-material quality; they do not establish test results or mastery. Directory comparison and Git hooks are macOS/Linux-only; file and patch entry points target all three platforms." },
+  "cmp.col0": { zh: "你要学什么", en: "What you want to study" },
+  "cmp.col1": { zh: "怎么输入", en: "How to start" },
+  "cmp.col2": { zh: "证据边界", en: "Evidence boundary" },
+  "start.eyebrow": { zh: "开始使用", en: "GET STARTED" },
   "start.title": { zh: "三步开始", en: "Three Steps to Start" },
   "start.subtitle": {
     zh: "几步之内，从安装到第一节课。",
     en: "From install to your first lesson in a few steps."
   },
-  "start.c1.title": { zh: "安装并配置", en: "Install & configure" },
-  "start.c1.desc": {
-    zh: "推荐用 <code>pipx install ahadiff</code> 隔离安装已发布的 CLI 和内置 WebUI（<code>uv tool install ahadiff</code> 同样可以，都不需要 git clone），然后配置一个 LLM 供应商。learn 在配置供应商前无法运行。在 venv / conda 里用 <code>pip install ahadiff</code> 也可以；在 Homebrew / 系统 Python 上直接 pip 会触发 externally-managed-environment，改用 pipx 或 uv 即可。",
-    en: "Recommended: install the published CLI and bundled WebUI in isolation with <code>pipx install ahadiff</code> (<code>uv tool install ahadiff</code> works too — neither needs a git clone), then configure an LLM provider. learn cannot run until a provider is set up. <code>pip install ahadiff</code> is fine inside a venv / conda; on a Homebrew / system Python a bare pip install triggers externally-managed-environment, so use pipx or uv instead."
-  },
-  "start.c2.title": { zh: "学习", en: "Learn" },
-  "start.c2.desc": {
-    zh: "在你的项目中运行 learn 命令，分析最近一次提交的 diff。",
-    en: "Run the learn command in your project to analyze the latest commit diff."
-  },
-  "start.c3.title": { zh: "复习", en: "Review" },
-  "start.c3.desc": {
-    zh: "打开 Web UI 进行 SRS 复习和测验，巩固知识。",
-    en: "Open the Web UI for SRS review and quizzes to consolidate knowledge."
-  },
+  "start.c1.title": { zh: "打开本地界面", en: "Open the local WebUI" },
+  "start.c1.desc": { zh: "用 pipx 或 uv tool 安装已发布版本。在准备保存学习记录的文件夹运行 ahadiff serve，再到设置添加一个本地或远端 provider。普通目录也可以，Agent 集成是可选项。", en: "Install a published version with pipx or uv tool. Run ahadiff serve in the folder where you want to keep learning history, then add a local or remote provider in Settings. An ordinary folder works; agent integration is optional." },
+  "start.c2.title": { zh: "选来源，预览变化", en: "Choose a source and preview" },
+  "start.c2.desc": { zh: "在欢迎、快速上手或使用指南中选择来源。两份文件可点选或拖放，每份 UTF-8 文本最多 256 KiB；粘贴 diff 最多 64 KiB。预览不调用 LLM，开始学习时使用你的 provider 和隐私设置。", en: "Choose a source in Welcome, Quick Start, or Guide. Select or drop two UTF-8 text files up to 256 KiB each, or paste a diff up to 64 KiB. Preview does not call an LLM; starting learning uses your provider and privacy settings." },
+  "start.c3.title": { zh: "读课、作答、复习", en: "Read, answer, and review" },
+  "start.c3.desc": { zh: "完成后读课程、点击证据回到差异，再独立作答。到期复习会带回旧卡片；小练习可勾选“变化较小时仍生成课程”。", en: "After the run finishes, read the lesson, follow evidence links to the diff, and answer questions. Review brings back due cards. For a small exercise, enable “Generate a lesson even for small changes”." },
   "tech.eyebrow": { zh: "技术栈", en: "TECH STACK" },
   "tech.title": { zh: "技术选型", en: "Built On" },
   "footer.docsEn": { zh: "英文使用指南", en: "English User Guide" },
@@ -1490,19 +1366,19 @@ const T = {
   "integ.subtitle": { zh: "把学习记录导出、复习，或接进你的 agent 与 CI。", en: "Export your learning record, review it, or wire it into your agent and CI." },
   "integ.c1.title": { zh: "导出到 Anki / TSV", en: "Export to Anki / TSV" },
   "integ.c1.desc": { zh: "WebUI 一键导出 Anki <code>.apkg</code>；CLI 用 <code>export-results</code> 写 <code>results.tsv</code>，<code>export preview</code> 生成本地静态预览包。", en: "One-click Anki <code>.apkg</code> from the WebUI; the CLI writes <code>results.tsv</code> via <code>export-results</code> and a local static preview via <code>export preview</code>." },
-  "integ.c3.title": { zh: "接入 15 个工具目标", en: "15 Tool Targets" },
-  "integ.c3.desc": { zh: "Claude、Codex、Cursor、Copilot、GitHub Actions、Git hooks 等 CLI / IDE / CI 的项目级接入指引。", en: "Project-level setup for CLI / IDE / CI targets like Claude, Codex, Cursor, Copilot, GitHub Actions, and Git hooks." },
+  "integ.c3.title": { zh: "按需接入 AI 工具", en: "Connect AI Tools When Needed" },
+  "integ.c3.desc": { zh: "需要自动化时，再配置 Claude、Codex、Cursor、GitHub Actions 或 Git hooks 等项目级指引。", en: "For automation, add project guidance for tools such as Claude, Codex, Cursor, GitHub Actions, or Git hooks." },
   "video.eyebrow": { zh: "教程视频", en: "TUTORIAL VIDEO" },
   "video.title": { zh: "看一遍完整流程", en: "Watch the Full Walkthrough" },
   "video.subtitle": { zh: "从 learn 到复习，一个真实 run 的完整演示（带字幕）。", en: "From learn to review: a full walkthrough on a real run (subtitled)." },
   "video.open": { zh: "在新标签页打开视频 ↗", en: "Open the video in a new tab ↗" },
   "video.bilibili": { zh: "中文版在 B 站观看 ↗", en: "Watch the Chinese version on Bilibili ↗" },
-  "video.note": { zh: "视频里的安装就是 <code>pip install ahadiff</code>，一行装好。（现在推荐用 pipx 隔离安装，见下方安装说明）", en: "The install shown in the video is <code>pip install ahadiff</code> — one line. (we now recommend the isolated pipx install — see Install below)" },
+  "video.note": { zh: "视频展示较早界面，当前源码的三个学习来源请按下方步骤操作。安装已发布版本推荐使用 pipx 或 uv tool。", en: "The video shows an earlier interface. Follow the steps below for the current source entry points. Use pipx or uv tool for a published install." },
   "video.en": { zh: "英文视频（YouTube）", en: "English video (YouTube)" },
   "video.zh": { zh: "中文视频（B 站）", en: "Chinese video (Bilibili)" },
   "screens.eyebrow": { zh: "界面", en: "WEBUI" },
   "screens.title": { zh: "界面预览", en: "Inside the WebUI" },
-  "screens.subtitle": { zh: "Dashboard、Lesson、Diff、Quiz、Review、Concepts、Settings：一个本地 React SPA。", en: "Dashboard, Lesson, Diff, Quiz, Review, Concepts, Settings: one local React SPA." },
+  "screens.subtitle": { zh: "以下为已有界面示例；当前源码新增的三个学习入口见上方说明。", en: "These examples show the established interface; the current source adds the three learning entry points described above." },
   "shot.dashboard": { zh: "运行面板：运行记录、分数、棘轮轨迹", en: "Dashboard: runs, scores, ratchet trajectory" },
   "shot.lesson": { zh: "课程页：带证据链的解释", en: "Lesson: explanations with evidence chains" },
   "shot.diff": { zh: "差异查看器：claim 高亮", en: "Diff viewer: claim highlights" },
@@ -1522,25 +1398,44 @@ const T = {
   "cmds.verify": { zh: "重新校验 claims 与评分", en: "Re-verify claims and the score" },
   "cmds.improve": { zh: "在 git worktree 里迭代优化生成 prompt（仅源码 checkout）", en: "Iterate generation prompts in a git worktree (source checkout only)" },
   "cmds.improverun": { zh: "重新生成课程，仅当确定性评分更高时保留；任何安装方式可用（含 pip）", en: "Regenerate a lesson; keep it only if the deterministic score improves. Works in any install (incl. pip)." },
-  "cmds.serve": { zh: "打开本地 Web UI", en: "Open the local Web UI" },
+  "cmds.serve": { zh: "在仓库或普通目录打开本地 WebUI", en: "Open the local WebUI in a repository or ordinary folder" },
   "cmds.export": { zh: "生成本地静态预览包", en: "Write a local static preview bundle" },
   "cmds.watch": { zh: "工作区变更自动 learn", en: "Auto-learn on working-tree changes" },
   "cmds.hooksauto": { zh: "每次 commit 后后台自动 learn", en: "Background auto-learn after each commit" },
   "cmds.mcp": { zh: "面向 AI 工具的只读 MCP server（7 个工具）", en: "Read-only MCP server for AI tools (7 tools)" },
-  "cmds.footnote": { zh: "完整命令和 10 种捕获模式见使用指南；v1.3.8 本地 gate 和 live DeepSeek 全局 provider run 已记录，发布状态见 GitHub Release 与 PyPI。", en: "See the User Guide for the full command set and all 10 capture modes; the v1.3.8 local gate and live DeepSeek global-provider run are recorded, and release status belongs in GitHub Releases and PyPI." },
+  "cmds.footnote": { zh: "完整 CLI 命令、输入限制和跨平台说明见中英文使用指南；历史验证记录与本次尚未发布的源码更新分开记录。", en: "See the bilingual User Guides for CLI commands, input limits, and platform notes. Historical validation records are separate from these unpublished source updates." },
   "faq.eyebrow": { zh: "常见问题", en: "FAQ" },
   "faq.title": { zh: "你可能会问", en: "You Might Be Wondering" },
   "faq.q1": { zh: "我的代码会被上传吗？", en: "Does my code get uploaded?" },
   "faq.a1": { zh: "默认 <code>strict_local</code>，不向任何远端模型发送内容。要用远端模型时，必须显式切到 <code>redacted_remote</code> 或 <code>explicit_remote</code>；远端请求前会执行隐私与脱敏门禁。", en: "The default is <code>strict_local</code>: nothing is sent to a remote model. Remote models require explicitly switching to <code>redacted_remote</code> or <code>explicit_remote</code>; privacy and redaction gates run before the request." },
-  "faq.q2": { zh: "需要从 PyPI 安装吗？", en: "Do I install it from PyPI?" },
-  "faq.a2": { zh: "是，从 PyPI 安装。推荐用 <code>pipx install ahadiff</code>（或 <code>uv tool install ahadiff</code>）隔离安装已发布的 CLI 和内置 WebUI，不需要 git clone。在 Homebrew / 系统 Python 上直接 <code>pip install</code> 会触发 externally-managed-environment，改用 pipx 或 uv 即可；源码 checkout 只适合贡献者开发。", en: "Yes, from PyPI. We recommend the isolated <code>pipx install ahadiff</code> (or <code>uv tool install ahadiff</code>) for the published CLI and bundled WebUI — no git clone needed. On a Homebrew / system Python a bare <code>pip install</code> triggers externally-managed-environment, so use pipx or uv instead; source checkout installs are for contributors." },
+  "faq.q2": { zh: "没有 Git 仓库或 AI 助手也能用吗？", en: "Can I use it without a Git repository or AI assistant?" },
+  "faq.a2": { zh: "可以从两份文件或粘贴的统一 diff 开始。在普通文件夹运行 <code>ahadiff serve</code>，配置 provider，再选来源即可。CLI 的 <code>init</code>、<code>doctor</code> 仍要求 Git 仓库；无需为文件学习专门建仓库。", en: "Yes. Start with two files or a pasted unified diff. Run <code>ahadiff serve</code> in an ordinary folder, configure a provider, and choose a source. CLI <code>init</code> and <code>doctor</code> still require a Git repository; file learning does not require creating one." },
   "faq.q3": { zh: "支持哪些模型？", en: "Which models are supported?" },
   "faq.a3": { zh: "BYOK，覆盖 9 种 API 格式（OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio 等），并会自动探测上下文长度。DeepSeek BYOK 使用 OpenAI-compatible JSON object 口径。", en: "BYOK across 9 API formats (OpenAI / Anthropic / Gemini / Azure / DeepSeek / Ollama / LM Studio, and more), with context-length auto-probing. DeepSeek BYOK uses OpenAI-compatible JSON object mode." },
   "faq.q4": { zh: "要花钱吗？", en: "Does it cost anything?" },
-  "faq.a4": { zh: "AhaDiff 本身免费、在本地运行；你只为自己的 LLM 供应商付费（BYOK）。", en: "AhaDiff itself is free and runs locally; you only pay your own LLM provider (BYOK)." },
-  "faq.q5": { zh: "评分会因为模型不稳定而乱跳吗？", en: "Is the score stable across model runs?" },
-  "faq.a5": { zh: "评分主体是 8 维确定性打分；LLM judge 只是可选 advisory，即使 judge 失败也会保留确定性分数。", en: "Scoring is primarily an 8-dimension deterministic score. The LLM judge is optional and advisory; even if it fails, the deterministic score stands." },
-  "start.c1.tip": { zh: "提示：<code>provider test</code> 会发一个小探针请求，成功后把供应商写入 <code>.ahadiff/config.toml</code>。<code>--api-key-env</code> 填的是环境变量名，不是密钥本身。DeepSeek BYOK 使用 <code>openai_compat</code> 与 <code>https://api.deepseek.com</code>；结构化输出走 JSON object mode。DeepSeek v4 的 Thinking Level 只有「无」会关闭思考，低 / 中 / 高会按高处理。不想敲命令？先 <code>ahadiff serve</code>，在 Settings 里用表单添加仓库级或全局 provider，保存前还能预览模型限额。", en: "Tip: <code>provider test</code> sends a small probe and, on success, saves the provider to <code>.ahadiff/config.toml</code>. <code>--api-key-env</code> is the environment-variable name, not the secret itself. For DeepSeek BYOK, use <code>openai_compat</code> with <code>https://api.deepseek.com</code>; structured output uses JSON object mode. For DeepSeek v4, only none disables thinking, while low / medium / high map to high. Prefer a form? Run <code>ahadiff serve</code> first and add a repo or global provider in Settings, which can even preview model limits before you save." }
+  "faq.a4": { zh: "AhaDiff 本身免费、本地运行。文件和 patch 预览不调用 LLM；配置探测与生成课程可能向你选定的 provider 发请求，费用按该服务计。", en: "AhaDiff is free and runs locally. File and patch previews do not call an LLM. Provider probes and lesson generation may send requests to your chosen service, which sets its own fees." },
+  "faq.q5": { zh: "高分代表我已经学会了吗？", en: "Does a high score mean I have mastered the change?" },
+  "faq.a5": { zh: "分数用于检查课程材料质量。是否学会要看你能否独立解释、作答和完成类似修改。最终判定来自确定性评分和硬门禁；可选 LLM judge 的建议不覆盖它。", en: "The score checks lesson-material quality. Assess your understanding by explaining the change, answering questions, and making a similar edit yourself. Deterministic scores and hard gates decide the verdict; an optional LLM judge does not override it." },
+  "start.c1.tip": { zh: "本页三来源界面更新尚在当前源码中，版本仍为 1.3.8，尚未发布；已发布版本可先用 CLI 的 --compare 和 --patch。源码构建、Windows PowerShell 和 provider 配置见中英文使用指南。", en: "The three-source UI updates are pending publication in the current source; the version remains 1.3.8. Published installs can use CLI --compare and --patch. See the bilingual guides for source builds, Windows PowerShell, and provider setup." },
+  "page.title": { zh: "知返 AhaDiff：读懂这次改动", en: "AhaDiff: Learn from what changed" },
+  "page.description": { zh: "从 Git 改动、两份文件或粘贴的 diff 学习。普通文件夹也能开始，先预览变化，再读课程、查证据、测验和复习。", en: "Learn from Git changes, two file versions, or a pasted diff. Start in an ordinary folder, preview changes, then study evidence-linked lessons and practice with quizzes and review." },
+  "cmp.r1.material": { zh: "自己的修复、同事或 AI 的提交", en: "Your fixes, peer commits, or AI changes" },
+  "cmp.r1.input": { zh: "Git 改动：工作区或提交范围", en: "Git changes: working tree or commit range" },
+  "cmp.r1.evidence": { zh: "回查变化行；有可用代码上下文时补充符号证据。", en: "Inspect changed lines, with symbol evidence when code context is available." },
+  "cmp.r2.material": { zh: "代码练习、SQL、配置、Markdown", en: "Coding exercises, SQL, configuration, Markdown" },
+  "cmp.r2.input": { zh: "两份文件：修改前与修改后", en: "Two files: before and after" },
+  "cmp.r2.evidence": { zh: "比较文本来源，证据不足的结论会标明状态。", en: "Compare source text; evidence states identify unsupported conclusions." },
+  "cmp.r3.material": { zh: "Notebook 两个版本", en: "Two Notebook versions" },
+  "cmp.r3.input": { zh: "选择两份 .ipynb 文件", en: "Select two .ipynb files" },
+  "cmp.r3.evidence": { zh: "按单元格比较来源，不执行 Notebook。", en: "Compare cell sources without executing the notebook." },
+  "cmp.r4.material": { zh: "复制来的 review patch", en: "A copied review patch" },
+  "cmp.r4.input": { zh: "粘贴改动：统一 diff 文本", en: "Paste a diff: unified diff text" },
+  "cmp.r4.evidence": { zh: "只有 diff hunk 支持时使用较弱证据，不冒充仓库符号证明。", en: "Claims with only diff-hunk support use weaker evidence, without claiming repository-symbol proof." },
+  "cmp.r5.material": { zh: "只有当前文件，或一份 PDF / 网页", en: "One current file, PDF, or web page" },
+  "cmp.r5.input": { zh: "目前需要提供前后版本", en: "A before/after pair is currently required" },
+  "cmp.r5.evidence": { zh: "独立资料学习与持久快照尚未实现。", en: "Standalone-document learning and durable snapshots are not implemented." },
+  "start.c2.flow": { zh: "欢迎 → 两份文件 → 放入修改前后文件 → 预览变化 → 开始学习", en: "Welcome → Two files → Select before and after → Preview changes → Start learning" },
+  "start.c3.flow": { zh: "课程 → 差异 → 测验 → 复习", en: "Lesson → Diff → Quiz → Review" },
 };
 
 /* Language detection & toggle */
@@ -1554,6 +1449,8 @@ function applyLang(l) {
   lang = l;
   localStorage.setItem("ahadiff_lang", l);
   document.documentElement.lang = l === "zh" ? "zh-CN" : "en";
+  document.title = T["page.title"][l];
+  document.querySelector('meta[name="description"]').setAttribute("content", T["page.description"][l]);
   document.querySelectorAll("[data-i18n]").forEach(function(el) {
     var key = el.getAttribute("data-i18n");
     if (T[key] && T[key][l]) el.innerHTML = T[key][l];
@@ -1579,6 +1476,7 @@ function applyLang(l) {
     if (vlink) { vlink.href = vsrc; }
   }
   document.getElementById("langToggle").textContent = l === "zh" ? "zh / EN" : "ZH / en";
+  document.getElementById("langToggle").setAttribute("aria-label", T["nav.language"][l]);
 }
 
 applyLang(lang);

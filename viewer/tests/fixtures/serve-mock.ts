@@ -1824,6 +1824,18 @@ export async function installServeMock(page: Page): Promise<void> {
       }),
   );
   await page.route(
+    (url) => url.pathname === '/api/learn/estimate',
+    (route) => route.fulfill({
+      json: {
+        patch_bytes: 74, file_count: 1, total_lines: 5, estimated_tokens: 20,
+        provider_context_window: 8192, provider_max_output: null,
+        risk_level: 'ok', warnings: [],
+        preview_patch: '--- a/demo.py\n+++ b/demo.py\n@@ -1 +1 @@\n-before\n+after\n',
+        preview_truncated: false, source_kind: 'git_staged_unstaged',
+      },
+    }),
+  );
+  await page.route(
     (url) => url.pathname === '/api/signals/mark-wrong',
     (route) =>
       route.fulfill({

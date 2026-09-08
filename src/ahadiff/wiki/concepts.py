@@ -174,6 +174,11 @@ def _short_sha_resolves_to(workspace_root: Path, source_ref: str, expected_sha: 
     return result.stdout.strip().lower() == expected_sha.lower()
 
 
+def is_run_local_concept_source(source_kind: str) -> bool:
+    """Whether concepts belong to the run's immutable artifact set."""
+    return source_kind in {"patch_file", "patch_stdin", "file_compare"}
+
+
 def append_concepts(
     *,
     workspace_root: Path,
@@ -186,7 +191,7 @@ def append_concepts(
     occurrences = _collect_concept_occurrences(questions)
     if not occurrences:
         return None
-    if source_kind in {"patch_file", "patch_stdin", "file_compare"}:
+    if is_run_local_concept_source(source_kind):
         local_path = run_path / "concepts_local.jsonl"
         payload = [
             _concept_entry(
@@ -877,6 +882,7 @@ __all__ = [
     "append_concepts",
     "compute_term_key",
     "export_concepts_from_db",
+    "is_run_local_concept_source",
     "load_concepts_page",
     "load_concepts_page_from_db",
     "load_concepts_page_from_storage",

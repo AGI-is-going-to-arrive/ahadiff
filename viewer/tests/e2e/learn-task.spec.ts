@@ -76,6 +76,9 @@ async function installLearnMocks(
           provider_max_output: 8192,
           risk_level: estimateRiskLevel,
           warnings: estimateWarnings,
+          preview_patch: '--- a/demo.py\n+++ b/demo.py\n@@ -1 +1 @@\n-before\n+after\n',
+          preview_truncated: false,
+          source_kind: 'git_staged_unstaged',
         }),
       });
     },
@@ -199,6 +202,8 @@ async function triggerLearnViaDialog(page: Page): Promise<void> {
   const dialog = page.locator('[role="dialog"]');
   await expect(dialog).toBeVisible({ timeout: 5000 });
   // Click "Start Run" in the dialog (default mode = working)
+  await dialog.locator('.learn-dialog__preview-button').click();
+  await expect(dialog.locator('.learn-dialog__preview-diff')).toBeVisible();
   const startBtn = dialog.locator('.learn-dialog__btn--primary');
   await startBtn.click();
   // Dialog closes
@@ -207,7 +212,7 @@ async function triggerLearnViaDialog(page: Page): Promise<void> {
 
 async function triggerLearnViaWelcome(page: Page): Promise<void> {
   const learnBtn = page.getByRole('button', {
-    name: /Start from your diff|从你的 diff 开始/,
+    name: /Choose a learning source|选择学习来源/,
   });
   const dialog = page.getByRole('dialog');
   await expect(learnBtn).toBeVisible();
@@ -218,6 +223,8 @@ async function triggerLearnViaWelcome(page: Page): Promise<void> {
     }
     await expect(dialog).toBeVisible({ timeout: 2000 });
   }).toPass({ timeout: 10000 });
+  await dialog.locator('.learn-dialog__preview-button').click();
+  await expect(dialog.locator('.learn-dialog__preview-diff')).toBeVisible();
   await dialog.locator('.learn-dialog__btn--primary').click();
   await expect(dialog).not.toBeVisible({ timeout: 3000 });
 }
@@ -476,7 +483,7 @@ test.describe('learn task flow', () => {
     expect(calls.cancel).toBe(1);
   });
 
-  test('submit failure shows error banner with retry', async ({ page }) => {
+  test('unknown submission outcome shows an error without unsafe retry', async ({ page }) => {
     await installLearnMocks(page, {
       submitStatus: 500,
       submitBody: { error: 'internal_error', status: 500 },
@@ -487,8 +494,17 @@ test.describe('learn task flow', () => {
 
     const banner = page.locator('.learn-banner');
     await expect(banner).toHaveClass(/learn-banner--failed/);
-    await expect(banner.locator('.learn-banner__btn--retry')).toBeVisible();
+    await expect(banner.locator('.learn-banner__btn--retry')).toHaveCount(0);
+    await expect(banner).toContainText(/may have accepted|可能已接受/);
     await expect(banner.locator('.learn-banner__btn--dismiss')).toBeVisible();
+  });
+
+  test('an explicit server rejection keeps the retry action available', async ({ page }) => {
+    await installLearnMocks(page, { submitStatus: 409, submitBody: { error: 'run_in_progress', status: 409 } });
+    await page.goto('/');
+    await triggerLearnViaDialog(page);
+    await expect(page.locator('.learn-banner')).toHaveClass(/learn-banner--failed/);
+    await expect(page.locator('.learn-banner__btn--retry')).toBeVisible();
   });
 
   test('503 too_many_pending shows friendly message', async ({ page }) => {

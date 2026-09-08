@@ -1458,6 +1458,9 @@ export const learnEstimateResponseSchema = z
     effective_capture_limits: captureRecommendationSchema.nullable().optional(),
     diff_clipped: z.boolean().default(false),
     omitted_files_count: z.number().int().nonnegative().default(0),
+    preview_patch: z.string().optional(),
+    preview_truncated: z.boolean().optional(),
+    source_kind: sourceKindSchema.nullable().optional(),
   })
   .strict();
 

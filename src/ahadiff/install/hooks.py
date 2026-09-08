@@ -281,6 +281,8 @@ def _remove_hook_section(path: Path, target: str) -> bool:
 
 
 def _atomic_write_hook_text(path: Path, content: str, original_mode: int | None) -> None:
+    if sys.platform == "win32":
+        raise InputError("hooks target is POSIX-shell only and is not supported on Windows")
     temp_path: Path | None = None
     with tempfile.NamedTemporaryFile(
         "w",

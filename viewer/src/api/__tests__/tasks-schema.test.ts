@@ -13,6 +13,9 @@ describe('learn task API schemas', () => {
       provider_max_output: null,
       risk_level: 'warn',
       warnings: ['large diff'],
+      preview_patch: '--- a/query.sql\n+++ b/query.sql\n-old\n+new\n',
+      preview_truncated: true,
+      source_kind: 'file_compare',
     } satisfies LearnEstimateResponse;
 
     // Schema applies defaults for the new optional Phase-3 fields, so we
@@ -22,6 +25,9 @@ describe('learn task API schemas', () => {
       diff_clipped: false,
       omitted_files_count: 0,
     });
+    expect(
+      learnEstimateResponseSchema.safeParse({ ...estimate, source_kind: null }).success,
+    ).toBe(true);
     expect(
       learnEstimateResponseSchema.safeParse({
         ...estimate,

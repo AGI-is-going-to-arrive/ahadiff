@@ -86,6 +86,7 @@ describe('learn store', () => {
     useRunsStore.setState({ lastLoadedAt: Date.now() });
     graphInvalidateMock.mockClear();
     mockedSubscribeTaskProgress.mockReturnValue(null);
+    mockedEstimateLearn.mockResolvedValue(makeEstimate());
   });
 
   afterEach(() => {
@@ -170,17 +171,20 @@ describe('learn store', () => {
     expect(useLearnStore.getState().phase).toBe('completed');
   });
 
-  it('submitLearn sets phase to failed on rejection', async () => {
+  it('network failure leaves submission outcome unknown and prevents duplicate retry', async () => {
     mockedStartLearnTask.mockRejectedValue(new Error('network down'));
 
     await useLearnStore.getState().submitLearn();
 
     expect(useLearnStore.getState().phase).toBe('failed');
-    expect(useLearnStore.getState().error).toBe('network down');
-    expect(useLearnStore.getState().errorCode).toBe('submit_failed');
+    expect(useLearnStore.getState().error).toBeNull();
+    expect(useLearnStore.getState().errorCode).toBe('submit_unknown');
+    expect(useLearnStore.getState().retryable).toBe(false);
+    await useLearnStore.getState().retryLearn();
+    expect(mockedStartLearnTask).toHaveBeenCalledOnce();
   });
 
-  it('submitLearn turns AbortError into a retryable failed state', async () => {
+  it('an HTTP AbortError cannot prove the server rejected the task', async () => {
     mockedStartLearnTask.mockRejectedValue(
       new DOMException('The operation was aborted.', 'AbortError'),
     );
@@ -190,12 +194,12 @@ describe('learn store', () => {
 
     await promise;
     expect(useLearnStore.getState().phase).toBe('failed');
-    expect(useLearnStore.getState().errorCode).toBe('submit_aborted');
+    expect(useLearnStore.getState().errorCode).toBe('submit_unknown');
     expect(useLearnStore.getState().error).toBeNull();
-    expect(useLearnStore.getState().retryable).toBe(true);
+    expect(useLearnStore.getState().retryable).toBe(false);
   });
 
-  it('dismiss during submit prevents a stale submit response from reviving the task', async () => {
+  it('dismiss while awaiting acknowledgement cannot discard a potentially accepted task', async () => {
     let resolveStart: ((v: TaskSubmitResponse) => void) | null = null;
     mockedStartLearnTask.mockImplementation(
       () =>
@@ -208,15 +212,14 @@ describe('learn store', () => {
     expect(useLearnStore.getState().phase).toBe('submitting');
 
     useLearnStore.getState().dismiss();
-    expect(useLearnStore.getState().phase).toBe('idle');
+    expect(useLearnStore.getState().phase).toBe('submitting');
 
     resolveStart!({ task_id: 'task-stale' });
     await promise;
 
-    expect(useLearnStore.getState().phase).toBe('idle');
-    expect(useLearnStore.getState().taskId).toBeNull();
-    await vi.advanceTimersByTimeAsync(3000);
-    expect(mockedGetTask).not.toHaveBeenCalled();
+    expect(useLearnStore.getState().phase).toBe('running');
+    expect(useLearnStore.getState().taskId).toBe('task-stale');
+    expect(mockedSubscribeTaskProgress).toHaveBeenCalledOnce();
   });
 
   it('submitLearn is a no-op while already running', async () => {
@@ -285,14 +288,15 @@ describe('learn store', () => {
     expect(useLearnStore.getState().error).toBe('A learn task is already running');
   });
 
-  it('submitLearn treats non-matching 503 as regular submit_failed', async () => {
+  it('a generic 503 leaves acceptance unknown and disables automatic retry', async () => {
     mockedStartLearnTask.mockRejectedValue(
       new ApiError(503, { error: 'service_unavailable', status: 503 }),
     );
 
     await useLearnStore.getState().submitLearn();
 
-    expect(useLearnStore.getState().errorCode).toBe('submit_failed');
+    expect(useLearnStore.getState().errorCode).toBe('submit_unknown');
+    expect(useLearnStore.getState().retryable).toBe(false);
   });
 
   it('submitLearn preserves backend API error codes for localization', async () => {
@@ -331,9 +335,9 @@ describe('learn store', () => {
     expect(mockedStartLearnTask).toHaveBeenCalledWith({});
   });
 
-  it('retryLearn works directly from failed state without dismiss', async () => {
+  it('retryLearn works after an explicit server rejection without dismiss', async () => {
     const payload = { last: true };
-    mockedStartLearnTask.mockRejectedValueOnce(new Error('fail'));
+    mockedStartLearnTask.mockRejectedValueOnce(new ApiError(409, { error: 'run_in_progress', status: 409 }));
     await useLearnStore.getState().submitLearn(payload);
     expect(useLearnStore.getState().phase).toBe('failed');
     expect(useLearnStore.getState().lastPayload).toEqual({ last: true });
@@ -412,6 +416,103 @@ describe('learn store', () => {
     expect(mockedStartLearnTask).not.toHaveBeenCalled();
     expect(useLearnStore.getState().phase).toBe('idle');
     expect(useLearnStore.getState().pendingPayload).toBeNull();
+  });
+
+  it('an estimate that resolves after cancellation never sends the POST', async () => {
+    let resolveEstimate: ((value: LearnEstimateResponse) => void) | null = null;
+    mockedEstimateLearn.mockImplementation(() => new Promise(resolve => { resolveEstimate = resolve; }));
+    const controller = new AbortController();
+    const promise = useLearnStore.getState().requestLearn({ last: true }, { signal: controller.signal });
+    controller.abort();
+    resolveEstimate!(makeEstimate());
+    await promise;
+    expect(mockedStartLearnTask).not.toHaveBeenCalled();
+    expect(useLearnStore.getState().phase).toBe('idle');
+  });
+
+  it('cancellation after POST preserves its acknowledgement and cancels only that task', async () => {
+    let acknowledge: ((value: TaskSubmitResponse) => void) | null = null;
+    mockedStartLearnTask.mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));
+    mockedCancelTask.mockResolvedValue({ cancelled: true });
+    mockedGetTask.mockResolvedValue(makeTaskInfo({ task_id: 'accepted-task', status: 'cancelled' }));
+    const controller = new AbortController();
+    const promise = useLearnStore.getState().requestLearn({ last: true }, { signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockedStartLearnTask).toHaveBeenCalledWith({ last: true });
+
+    controller.abort();
+    expect(useLearnStore.getState().phase).toBe('cancelling');
+    expect(useLearnStore.getState().taskId).toBeNull();
+    useLearnStore.getState().dismiss();
+    await useLearnStore.getState().retryLearn();
+    expect(useLearnStore.getState().phase).toBe('cancelling');
+    expect(mockedStartLearnTask).toHaveBeenCalledOnce();
+    expect(mockedCancelTask).not.toHaveBeenCalled();
+
+    acknowledge!({ task_id: 'accepted-task' });
+    await promise;
+    expect(mockedCancelTask).toHaveBeenCalledTimes(1);
+    expect(mockedCancelTask).toHaveBeenCalledWith('accepted-task');
+    expect(useLearnStore.getState().taskId).toBe('accepted-task');
+    expect(useLearnStore.getState().phase).toBe('cancelling');
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(mockedGetTask).toHaveBeenCalledWith('accepted-task');
+    expect(useLearnStore.getState().phase).toBe('cancelled');
+    expect(mockedStartLearnTask).toHaveBeenCalledOnce();
+  });
+
+  it('the cancel action can queue cancellation before a task id is returned', async () => {
+    let acknowledge: ((value: TaskSubmitResponse) => void) | null = null;
+    mockedStartLearnTask.mockImplementation(() => new Promise(resolve => { acknowledge = resolve; }));
+    mockedCancelTask.mockRejectedValue(new Error('cancel temporarily unavailable'));
+    const promise = useLearnStore.getState().submitLearn({ last: true });
+    await useLearnStore.getState().cancelLearn();
+    expect(useLearnStore.getState().phase).toBe('cancelling');
+    acknowledge!({ task_id: 'known-task' });
+    await promise;
+    expect(mockedCancelTask).toHaveBeenCalledWith('known-task');
+    // A cancellation failure must keep the accepted run visible and tracked.
+    expect(useLearnStore.getState().phase).toBe('running');
+    expect(useLearnStore.getState().taskId).toBe('known-task');
+    expect(mockedSubscribeTaskProgress).toHaveBeenCalled();
+  });
+
+  it('a failed estimate never starts a learn task, and retry checks the source again', async () => {
+    mockedEstimateLearn.mockRejectedValueOnce(new Error('preview offline'));
+    await useLearnStore.getState().requestLearn({ last: true });
+
+    expect(mockedStartLearnTask).not.toHaveBeenCalled();
+    expect(useLearnStore.getState().phase).toBe('failed');
+    expect(useLearnStore.getState().errorCode).toBe('estimate_failed');
+    expect(useLearnStore.getState().pendingPayload).toBeNull();
+
+    mockedStartLearnTask.mockResolvedValue({ task_id: 'retry-after-preview' });
+    await useLearnStore.getState().retryLearn();
+    expect(mockedEstimateLearn).toHaveBeenCalledTimes(2);
+    expect(mockedStartLearnTask).toHaveBeenCalledOnce();
+  });
+
+  it('selected files remain private through confirmation and cannot be silently retried', async () => {
+    const payload: LearnSubmitPayload = {
+      compare_files: [
+        { name: 'query.sql', content: 'SELECT * FROM private_table;' },
+        { name: 'query.sql', content: 'SELECT id FROM private_table;' },
+      ],
+      force_learn: true,
+    };
+    mockedEstimateLearn.mockResolvedValue(makeEstimate({ risk_level: 'warn' }));
+    mockedStartLearnTask.mockRejectedValue(new Error('submit failed'));
+
+    await useLearnStore.getState().requestLearn(payload);
+    expect(useLearnStore.getState().pendingPayload).toEqual({ force_learn: true });
+    expect(useLearnStore.getState().lastPayload).toEqual({ force_learn: true });
+    expect(useLearnStore.getState().retryable).toBe(false);
+
+    await useLearnStore.getState().confirmLearn();
+    expect(mockedStartLearnTask).toHaveBeenCalledWith(payload);
+    expect(useLearnStore.getState().pendingPayload).toBeNull();
+    await useLearnStore.getState().retryLearn();
+    expect(mockedStartLearnTask).toHaveBeenCalledOnce();
   });
 
   // ---------- cancelLearn ----------

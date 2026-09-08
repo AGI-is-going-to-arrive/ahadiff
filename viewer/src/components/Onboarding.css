@@ -580,6 +580,7 @@
   color: var(--ink);
   margin: var(--sp-2) 0 0;
   white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .onboarding__preview-text.mono {

@@ -17,6 +17,7 @@ from ._errors import error_response
 if TYPE_CHECKING:
     from starlette.middleware.base import RequestResponseEndpoint
     from starlette.requests import Request
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _MAX_BODY_BYTES = 1_048_576  # 1 MiB
@@ -94,6 +95,12 @@ class LoopbackGuardMiddleware(BaseHTTPMiddleware):
             if referer is not None and not _is_allowed_origin(referer, expected_port=expected_port):
                 return _error_response(ErrorCode.LOOPBACK_DENIED, "referer_not_allowed")
         if request.method in _JSON_BODY_METHODS:
+            if _has_ambiguous_body_framing(request):
+                return _error_response(
+                    ErrorCode.INPUT_BAD_FIELD,
+                    "invalid_request_framing",
+                    cors_origin=cors_origin,
+                )
             has_body = _declares_request_body(request)
             if has_body and not _is_json_content_type(request.headers.get("content-type", "")):
                 return _error_response(
@@ -200,6 +207,16 @@ def _declares_request_body(request: Request) -> bool:
         except ValueError:
             return True
     return "transfer-encoding" in request.headers
+
+
+def _has_ambiguous_body_framing(request: Request) -> bool:
+    content_lengths = request.headers.getlist("content-length")
+    # Servers can preserve both headers while decoding a chunked body. A zero
+    # Content-Length must not disable the media-type check or bounded read.
+    return len(content_lengths) > 1 or (
+        bool(content_lengths)
+        and ("transfer-encoding" in request.headers or "," in content_lengths[0])
+    )
 
 
 def _is_allowed_host(value: str, *, expected_port: int | None) -> bool:
@@ -367,24 +384,42 @@ _LONG_TIMEOUT_EXACT_PATHS = frozenset({"/api/graph/refresh"})
 _LONG_TIMEOUT_PREFIXES = ("/api/learn", "/api/tasks/")
 
 
-class RequestTimeoutMiddleware(BaseHTTPMiddleware):
-    """Abort requests that exceed a wall-clock deadline.
+class RequestTimeoutMiddleware:
+    """Cancel cooperative request work that misses the response-start deadline.
 
     Default: 30 s for most endpoints, 600 s for learn/task requests and the
-    explicit graph refresh route.
+    explicit graph refresh route. Streaming bodies continue after response
+    headers. Already-started worker-thread transactions cannot be rolled back
+    by cancelling their async waiter.
     """
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        timeout = _request_timeout_for(request.url.path)
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        deadline = asyncio.timeout(_request_timeout_for(scope["path"]))
+
+        async def send_with_deadline(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                deadline.reschedule(None)
+            await send(message)
+
         try:
-            async with asyncio.timeout(timeout):
-                return await call_next(request)
+            async with deadline:
+                await self.app(scope, receive, send_with_deadline)
         except TimeoutError:
-            return _error_response(
+            if not deadline.expired():
+                raise
+            response = _error_response(
                 ErrorCode.REQUEST_TIMEOUT,
                 "request_timeout",
                 status_code=504,
             )
+            await response(scope, receive, send)
 
 
 def _request_timeout_for(path: str) -> float:

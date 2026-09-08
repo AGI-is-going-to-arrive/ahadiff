@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import os
@@ -11,6 +12,9 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import pytest
 from pydantic import ValidationError
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse, StreamingResponse
+from starlette.routing import Route
 from starlette.testclient import TestClient
 
 import ahadiff.serve.locale as serve_locale_module
@@ -37,7 +41,11 @@ from ahadiff.review.database import (
 from ahadiff.serve import ServeState, create_app
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
+    from collections.abc import AsyncIterator, Awaitable, Callable, Generator, Iterator
+
+    from starlette.requests import Request
+    from starlette.responses import Response
+    from starlette.types import Message, Receive, Scope, Send
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +66,15 @@ def _client(
 
 
 _WRITE_HEADERS = {"origin": "http://localhost:8765", "X-AhaDiff-Token": "test-token"}
+
+
+def _middleware_client(endpoint: Callable[[Request], Awaitable[Response]]) -> TestClient:
+    app = Starlette(routes=[Route("/probe", endpoint, methods=["GET", "POST"])])
+    app.state.ahadiff = SimpleNamespace(port=8765)
+    app.add_middleware(middleware_module.WriteRateLimitMiddleware)
+    app.add_middleware(middleware_module.LoopbackGuardMiddleware)
+    app.add_middleware(middleware_module.RequestTimeoutMiddleware)
+    return TestClient(app, base_url="http://localhost:8765")
 
 
 def _zero_identity_stat(path_stat: Any) -> SimpleNamespace:
@@ -777,6 +794,79 @@ def test_write_routes_reject_body_larger_than_one_megabyte(tmp_path: Path) -> No
 
     assert response.status_code == 413
     assert response.json()["error"] == "payload_too_large"
+
+
+@pytest.mark.parametrize(
+    "framing_headers",
+    [
+        [("content-length", "0"), ("transfer-encoding", "chunked")],
+        [("content-length", "1048578"), ("transfer-encoding", "chunked")],
+        [("content-length", "0"), ("content-length", "1048578")],
+        [("content-length", "1048578"), ("content-length", "0")],
+        [("content-length", "0"), ("content-length", "0")],
+        [("content-length", "0, 1048578")],
+    ],
+)
+def test_middleware_rejects_ambiguous_body_framing(
+    framing_headers: list[tuple[str, str]],
+) -> None:
+    received: list[int] = []
+
+    async def consume(request: Request) -> JSONResponse:
+        received.append(len(await request.body()))
+        return JSONResponse({"received": received[-1]})
+
+    client = _middleware_client(consume)
+    response = client.post(
+        "/probe",
+        headers=[
+            ("origin", "http://localhost:8765"),
+            ("content-type", "application/json"),
+            *framing_headers,
+        ],
+        content=b'"' + b"x" * 1_048_576 + b'"',
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_request_framing"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8765"
+    assert received == []
+
+
+@pytest.mark.parametrize(("size", "status"), [(1024, 200), (1_048_576, 200), (1_048_577, 413)])
+def test_middleware_limits_normal_chunked_bodies(size: int, status: int) -> None:
+    received: list[int] = []
+
+    async def consume(request: Request) -> JSONResponse:
+        received.append(len(await request.body()))
+        return JSONResponse({"received": received[-1]})
+
+    client = _middleware_client(consume)
+    response = client.post(
+        "/probe",
+        headers={"origin": "http://localhost:8765", "content-type": "application/json"},
+        content=(b"x" * min(1024, size - offset) for offset in range(0, size, 1024)),
+    )
+
+    assert "content-length" not in response.request.headers
+    assert response.request.headers["transfer-encoding"] == "chunked"
+    assert response.status_code == status
+    if status == 200:
+        assert received == [size]
+    else:
+        assert response.json()["error"] == "payload_too_large"
+        assert received == []
+
+
+def test_middleware_allows_empty_post_without_content_type() -> None:
+    async def consume(request: Request) -> JSONResponse:
+        return JSONResponse({"received": len(await request.body())})
+
+    client = _middleware_client(consume)
+    response = client.post("/probe", headers={"origin": "http://localhost:8765"})
+
+    assert response.status_code == 200
+    assert response.json() == {"received": 0}
 
 
 def test_write_routes_reject_non_json_content_type(tmp_path: Path) -> None:
@@ -3870,6 +3960,70 @@ def test_middleware_rejects_oversized_body(tmp_path: Path) -> None:
 
     assert response.status_code == 413
     assert response.json()["error"] == "payload_too_large"
+
+
+def test_request_timeout_cancels_cooperative_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(middleware_module, "_DEFAULT_REQUEST_TIMEOUT", 0.05)
+    events: list[str] = []
+
+    async def slow_endpoint(_request: Request) -> JSONResponse:
+        try:
+            await asyncio.sleep(0.15)
+            events.append("side_effect")
+        except asyncio.CancelledError:
+            events.append("cancelled")
+            raise
+        return JSONResponse({"ok": True})
+
+    response = _middleware_client(slow_endpoint).get("/probe")
+
+    assert response.status_code == 504
+    assert response.json()["error"] == "request_timeout"
+    assert events == ["cancelled"]
+
+
+def test_request_timeout_keeps_stream_alive_after_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(middleware_module, "_DEFAULT_REQUEST_TIMEOUT", 0.05)
+
+    async def stream() -> AsyncIterator[str]:
+        yield "data: first\n\n"
+        await asyncio.sleep(0.15)
+        yield "data: last\n\n"
+
+    async def endpoint(_request: Request) -> StreamingResponse:
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    response = _middleware_client(endpoint).get("/probe")
+
+    assert response.status_code == 200
+    assert response.text == "data: first\n\ndata: last\n\n"
+
+
+def test_request_timeout_does_not_mask_endpoint_timeout_error() -> None:
+    async def endpoint(_request: Request) -> JSONResponse:
+        raise TimeoutError("upstream operation timed out")
+
+    with pytest.raises(TimeoutError, match="upstream operation timed out"):
+        _middleware_client(endpoint).get("/probe")
+
+
+@pytest.mark.parametrize("scope_type", ["websocket", "lifespan"])
+def test_request_timeout_passes_non_http_scopes_through(scope_type: str) -> None:
+    forwarded: list[Scope] = []
+
+    async def downstream(scope: Scope, _receive: Receive, _send: Send) -> None:
+        forwarded.append(scope)
+
+    async def receive() -> Message:
+        raise AssertionError("middleware must not consume non-HTTP messages")
+
+    async def send(_message: Message) -> None:
+        raise AssertionError("middleware must not emit non-HTTP messages")
+
+    scope: Scope = {"type": scope_type}
+    asyncio.run(middleware_module.RequestTimeoutMiddleware(downstream)(scope, receive, send))
+
+    assert forwarded == [scope]
 
 
 def test_middleware_rejects_malformed_ipv6_origin() -> None:

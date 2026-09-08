@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Link } from 'react-router-dom';
 import { getRatchetTransparency, getRunArtifact, getRunLesson } from '../api/runs';
 import LearnTaskBanner from '../components/LearnTaskBanner';
+import LearnSourcePicker, { type LearnSource } from '../components/LearnSourcePicker';
 import { ApiError } from '../api/client';
 import type { RatchetTransparencyResponse, RunArtifactEnvelope, RunSummary } from '../api/types';
 import { useTranslation } from '../i18n/useTranslation';
@@ -174,6 +175,7 @@ export default function LandingPage() {
   );
   const [activeTab, setActiveTab] = useState<DemoTabId>('aha');
   const [isLearnDialogOpen, setIsLearnDialogOpen] = useState(false);
+  const [learnSource, setLearnSource] = useState<LearnSource>('git');
   const [liveDemo, setLiveDemo] = useState<LiveHeroDemo | null>(null);
   const [transparency, setTransparency] = useState<RatchetTransparencyResponse | null>(null);
   const latestRun = useMemo(() => latestRunOf(runs), [runs]);
@@ -424,8 +426,11 @@ export default function LandingPage() {
               >
                 {t('Landing.hero_cta_learn')}
               </button>
-              <span className="text cli-cmd">ahadiff learn HEAD~1..HEAD</span>
             </div>
+            <LearnSourcePicker onSelect={(source) => {
+              setLearnSource(source);
+              setIsLearnDialogOpen(true);
+            }} />
             <div className="hero-learn-status">
               <LearnTaskBanner />
             </div>
@@ -518,7 +523,7 @@ export default function LandingPage() {
       </section>
       {isLearnDialogOpen ? (
         <Suspense fallback={null}>
-          <LearnModeDialog open={isLearnDialogOpen} onClose={() => setIsLearnDialogOpen(false)} />
+          <LearnModeDialog open={isLearnDialogOpen} initialSource={learnSource} onClose={() => setIsLearnDialogOpen(false)} />
         </Suspense>
       ) : null}
 

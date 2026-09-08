@@ -65,6 +65,7 @@ let progressSubscription: TaskProgressSubscription | null = null;
 let submitGeneration = 0;
 let consecutiveErrors = 0;
 let pendingSubmitPayload: LearnSubmitPayload | null = null;
+let pendingCancelGeneration: number | null = null;
 
 interface LearnState {
   phase: LearnPhase;
@@ -79,7 +80,7 @@ interface LearnState {
 
   requestLearn: (payload?: LearnSubmitPayload, opts?: LearnRequestOptions) => Promise<void>;
   confirmLearn: () => Promise<void>;
-  submitLearn: (payload?: LearnSubmitPayload) => Promise<void>;
+  submitLearn: (payload?: LearnSubmitPayload, opts?: LearnRequestOptions) => Promise<void>;
   retryLearn: () => Promise<void>;
   cancelLearn: () => Promise<void>;
   dismiss: () => void;
@@ -106,7 +107,7 @@ function resetPollState(): void {
 }
 
 function stripSensitivePayload(payload: LearnSubmitPayload): LearnSubmitPayload {
-  const { patch: _p, patch_url: _u, ...safePayload } = payload;
+  const { patch: _p, patch_url: _u, compare_files: _f, ...safePayload } = payload;
   return safePayload;
 }
 
@@ -298,7 +299,7 @@ export const useLearnStore = create<LearnState>(() => ({
     const generation = ++submitGeneration;
     const effectivePayload = payload ?? {};
     const safePayload = stripSensitivePayload(effectivePayload);
-    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined;
+    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined && effectivePayload.compare_files === undefined;
     pendingSubmitPayload = effectivePayload;
     useLearnStore.setState({
       phase: 'estimating',
@@ -314,9 +315,10 @@ export const useLearnStore = create<LearnState>(() => ({
     try {
       const est = await estimateLearn(effectivePayload, opts);
       if (submitGeneration !== generation) return;
+      if (opts?.signal?.aborted) throw new DOMException('Learn estimate cancelled', 'AbortError');
       if (est.risk_level === 'ok') {
         useLearnStore.setState({ estimate: est });
-        await useLearnStore.getState().submitLearn(effectivePayload);
+        await useLearnStore.getState().submitLearn(effectivePayload, opts);
       } else {
         useLearnStore.setState({ phase: 'confirming', estimate: est });
       }
@@ -335,7 +337,13 @@ export const useLearnStore = create<LearnState>(() => ({
         });
         return;
       }
-      await useLearnStore.getState().submitLearn(effectivePayload);
+      pendingSubmitPayload = null;
+      useLearnStore.setState({
+        phase: 'failed',
+        error: null,
+        errorCode: err instanceof ApiError ? err.errorCode ?? 'estimate_failed' : 'estimate_failed',
+        pendingPayload: null,
+      });
     }
   },
 
@@ -347,14 +355,20 @@ export const useLearnStore = create<LearnState>(() => ({
     await useLearnStore.getState().submitLearn(effectivePayload);
   },
 
-  submitLearn: async (payload) => {
+  submitLearn: async (payload, opts) => {
     const { phase } = useLearnStore.getState();
     if (phase === 'submitting' || phase === 'running' || phase === 'cancelling') return;
+    if (opts?.signal?.aborted) {
+      pendingSubmitPayload = null;
+      useLearnStore.setState({ phase: 'idle', pendingPayload: null, estimate: null });
+      return;
+    }
     const generation = ++submitGeneration;
     const effectivePayload = payload ?? {};
     const safePayload = stripSensitivePayload(effectivePayload);
-    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined;
+    const retryable = effectivePayload.patch === undefined && effectivePayload.patch_url === undefined && effectivePayload.compare_files === undefined;
     pendingSubmitPayload = null;
+    pendingCancelGeneration = null;
     useLearnStore.setState({
       phase: 'submitting',
       error: null,
@@ -365,23 +379,29 @@ export const useLearnStore = create<LearnState>(() => ({
       pendingPayload: null,
       retryable,
     });
+    const requestCancellation = (): void => {
+      if (submitGeneration === generation) void useLearnStore.getState().cancelLearn();
+    };
+    opts?.signal?.addEventListener('abort', requestCancellation, { once: true });
     try {
+      // Once sent, an aborted HTTP request cannot prove that the server rejected
+      // the job. Keep its acknowledgement and cancel only the returned task id.
       const res = await startLearnTask(effectivePayload);
-      if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
+      if (submitGeneration !== generation) return;
+      const currentPhase = useLearnStore.getState().phase;
+      if (currentPhase !== 'submitting' && currentPhase !== 'cancelling') return;
+      const shouldCancel = pendingCancelGeneration === generation;
+      pendingCancelGeneration = null;
       consecutiveErrors = 0;
       useLearnStore.setState({ phase: 'running', taskId: res.task_id });
       startProgressTracking(res.task_id);
+      if (shouldCancel) await useLearnStore.getState().cancelLearn();
     } catch (err: unknown) {
-      if (submitGeneration !== generation || useLearnStore.getState().phase !== 'submitting') return;
-      if (isAbortError(err)) {
-        useLearnStore.setState({
-          phase: 'failed',
-          error: null,
-          errorCode: 'submit_aborted',
-        });
-        return;
-      }
-      let msg = err instanceof Error ? err.message : 'Submit failed';
+      if (submitGeneration !== generation) return;
+      const currentPhase = useLearnStore.getState().phase;
+      if (currentPhase !== 'submitting' && currentPhase !== 'cancelling') return;
+      pendingCancelGeneration = null;
+      let msg: string | null = err instanceof Error ? err.message : 'Submit failed';
       let code = 'submit_failed';
       if (err instanceof ApiError && err.status === 429) {
         const body = err.body;
@@ -404,7 +424,17 @@ export const useLearnStore = create<LearnState>(() => ({
         code = err.errorCode;
         msg = err.message;
       }
-      useLearnStore.setState({ phase: 'failed', error: msg, errorCode: code });
+      const knownRejected = err instanceof ApiError
+        && ((err.status >= 400 && err.status < 500) || code === 'too_many_tasks');
+      if (!knownRejected) {
+        code = 'submit_unknown';
+        msg = null;
+      }
+      useLearnStore.setState({
+        phase: 'failed', error: msg, errorCode: code, retryable: retryable && knownRejected,
+      });
+    } finally {
+      opts?.signal?.removeEventListener('abort', requestCancellation);
     }
   },
 
@@ -419,7 +449,7 @@ export const useLearnStore = create<LearnState>(() => ({
       useLearnStore.getState().reconnectPoll();
       return;
     }
-    await useLearnStore.getState().submitLearn(lastPayload ?? {});
+    await useLearnStore.getState().requestLearn(lastPayload ?? {});
   },
 
   reconnectPoll: () => {
@@ -436,20 +466,29 @@ export const useLearnStore = create<LearnState>(() => ({
 
   cancelLearn: async () => {
     const { taskId, phase } = useLearnStore.getState();
+    if (phase === 'submitting' && taskId === null) {
+      pendingCancelGeneration = submitGeneration;
+      useLearnStore.setState({ phase: 'cancelling' });
+      return;
+    }
     if (!taskId || phase !== 'running') return;
     useLearnStore.setState({ phase: 'cancelling' });
     try {
       await cancelTask(taskId);
     } catch {
-      if (useLearnStore.getState().phase === 'cancelling') {
+      const current = useLearnStore.getState();
+      if (current.phase === 'cancelling' && current.taskId === taskId) {
         useLearnStore.setState({ phase: 'running' });
       }
     }
   },
 
   dismiss: () => {
+    const { phase, taskId } = useLearnStore.getState();
+    if (phase === 'submitting' || (phase === 'cancelling' && taskId === null)) return;
     submitGeneration += 1;
     pendingSubmitPayload = null;
+    pendingCancelGeneration = null;
     resetPollState();
     useLearnStore.setState({ phase: 'idle', taskId: null, task: null, estimate: null, error: null, errorCode: null, pendingPayload: null });
   },

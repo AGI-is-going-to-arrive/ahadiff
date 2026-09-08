@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <title>知返 AhaDiff 用户使用指南</title>
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="description" content="知返 AhaDiff 用户使用指南：把一次 git diff 变成带代码证据的课程、明确的 claim 状态、测验、复习卡、概念图谱和质量棘轮。默认 local-first。" />
+<meta name="description" content="知返 AhaDiff 使用指南：从 Git 改动、两份文件或粘贴的 diff 学习。普通文件夹也能开始，先预览变化，再读课程、查证据、测验和复习。" />
 <meta name="theme-color" content="#FAF8F2" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -657,7 +657,7 @@ img { max-width: 100%; display: block; }
 .start-steps { display: flex; flex-direction: column; gap: 18px; max-width: 940px; margin: 0 auto; }
 .start-step { display: grid; grid-template-columns: minmax(0, 340px) 1fr; gap: 28px; align-items: start; background: var(--elevated); border: 1px solid var(--hair); border-radius: 14px; padding: 26px 28px; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
 .start-step__head { min-width: 0; }
-.start-step__n { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #fff; background: var(--accent); width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; margin-bottom: 12px; }
+.start-step__n { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: #fff; background: var(--accent-ink); width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; margin-bottom: 12px; }
 .start-step__head h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
 .start-step__head p { color: var(--muted); font-size: 14px; line-height: 1.6; }
 .start-step__body { min-width: 0; }
@@ -721,13 +721,14 @@ img { max-width: 100%; display: block; }
 .guide-main section:first-of-type { border-top: none; }
 .guide-main h2 { font-family: var(--font-serif); font-size: clamp(26px, 3vw, 34px); font-weight: 500; letter-spacing: -.02em; margin: 8px 0 14px; }
 .guide-main h3 { font-family: var(--font-serif); font-size: 20px; font-weight: 600; margin: 24px 0 10px; }
+.guide-main h3[id] { scroll-margin-top: 84px; }
 .guide-main p { color: var(--ink-2); line-height: 1.72; margin-bottom: 14px; max-width: 760px; }
 .guide-main ul, .guide-main ol { color: var(--ink-2); line-height: 1.7; margin: 0 0 14px 1.2em; max-width: 760px; }
 .guide-main li { margin-bottom: 6px; }
 .guide-main .code-block { margin: 12px 0 18px; white-space: pre; }
 .g-steps { counter-reset: g; display: flex; flex-direction: column; gap: 14px; margin: 16px 0; }
 .g-step { position: relative; padding-left: 44px; }
-.g-step::before { counter-increment: g; content: counter(g); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+.g-step::before { counter-increment: g; content: counter(g); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-ink); color: #fff; display: grid; place-items: center; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
 .g-step h3 { margin-top: 0; }
 .g-note { border-left: 3px solid var(--accent); background: var(--accent-softer); border-radius: 0 10px 10px 0; padding: 12px 16px; margin: 14px 0; color: var(--ink-2); font-size: 14px; line-height: 1.65; }
 .g-note code, .start-tip code { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
@@ -744,6 +745,7 @@ img { max-width: 100%; display: block; }
 
 /* ---- Guide-specific component tweaks ---- */
 .g-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin: 16px 0; }
+.g-cards--sources { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .g-card { min-width: 0; background: var(--elevated); border: 1px solid var(--hair); border-radius: 12px; padding: 22px 22px 18px; box-shadow: 0 2px 12px -6px rgba(120,80,40,.1); }
 .g-card h3 { margin-top: 0; }
 .g-card p { font-size: 14px; color: var(--muted); margin-bottom: 12px; }
@@ -834,7 +836,7 @@ img { max-width: 100%; display: block; }
 /* ---- Mini horizontal numbered flow ---- */
 .mini-flow{ counter-reset: mf; display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 16px 0; max-width: 100%; min-width: 0; overflow-x: clip; }
 .mini-step{ position: relative; flex: 1 1 160px; min-width: 150px; background: var(--accent-softer); border: 1px solid var(--hair-strong); border-radius: 10px; padding: 14px 14px 14px 42px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
-.mini-step::before{ counter-increment: mf; content: counter(mf); position: absolute; left: 12px; top: 12px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+.mini-step::before{ counter-increment: mf; content: counter(mf); position: absolute; left: 12px; top: 12px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-ink); color: #fff; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
 .mini-step code{ font-family: var(--font-mono); font-size: 11.5px; color: var(--accent-ink); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
 .mini-arrow{ display: grid; place-items: center; color: var(--accent); font-size: 18px; flex: 0 0 auto; max-width: 100%; }
 @media (max-width: 600px){ .mini-arrow{ transform: rotate(90deg); } }
@@ -939,15 +941,16 @@ img { max-width: 100%; display: block; }
     <div class="guide-hero">
       <div class="b-eyebrow"><span>知返 AhaDiff 用户使用指南 &middot; v1.3.8</span></div>
       <h1>知返 AhaDiff 用户使用指南</h1>
-      <p class="guide-lead">AhaDiff 把一次 git diff 变成带代码证据的课程、明确的 claim 状态、测验、复习卡、概念图谱和质量棘轮。它默认 local-first：每个仓库自己的 AhaDiff 状态都存在 <code>.ahadiff/</code> 下。</p>
-      <div class="start-tip">视频教程：<a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 英文讲解（YouTube）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。安装以 <code>pip install ahadiff</code> 为准（现在推荐用 pipx 隔离安装，见下方安装说明）；英文讲解已是最新，中文 B 站视频正在同步更新。</div>
+      <p class="guide-lead">学习自己的修复、同事的修改或 AI 生成的变化。选择 <strong>Git 改动</strong>、<strong>两份文件</strong>或<strong>粘贴改动</strong>，再读课程、查证据、做测验和复习。学习记录保存在工作区的 <code>.ahadiff/</code>；文件和 patch 学习无需创建 Git 仓库。</p>
+      <div class="g-note">源码更新说明（2026-09-08）：三来源入口和文件预览属于当前源码改动，尚未发布，版本号仍为 1.3.8。已发布版本可先用 CLI 的 <code>--compare</code> 和 <code>--patch</code>；体验新界面需构建包含这些改动的源码。</div>
+      <div class="start-tip">视频教程：<a href="https://youtu.be/lvL7GMvDPvI"><img src="./assets/youtube.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 英文讲解（YouTube）</a>；<a href="https://www.bilibili.com/video/BV1b57k6yEWm"><img src="./assets/bilibili.svg" width="14" height="14" alt="" style="vertical-align:middle;margin-right:2px"> 中文讲解（B 站）</a>。两个视频分别使用对应语言界面和烧录字幕；中间字幕源文件不随公开文档树发布。视频展示较早的界面，当前源码的操作以本文步骤为准。安装已发布版本推荐用 <code>pipx install ahadiff</code> 隔离安装。</div>
     </div>
 
     <!-- ===== 1. Quick Start ===== -->
     <section id="quickstart">
       <div class="section-eyebrow">上手</div>
       <h2>1. 快速开始</h2>
-      <p>从 PyPI 安装已发布的 CLI，推荐用 pipx 隔离安装。只有参与 AhaDiff 开发时，才需要从源码 checkout 运行。</p>
+      <p>安装 CLI，在工作目录打开本地 WebUI，再配置一个 provider。手头有修改前后的两份文件，就可以开始，无需建仓库或安装 AI 工具指引。</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>安装</h3>
@@ -956,24 +959,47 @@ img { max-width: 100%; display: block; }
 ahadiff --version</span></div>
         </div>
         <div class="g-card">
-          <h3>从源码开发（贡献者）</h3>
-          <p>同步锁定的开发环境，再确认模块能正常运行。</p>
+          <h3>构建当前源码</h3>
+          <p>在包含本次改动的源码目录中，安装锁定的依赖并构建 WebUI。</p>
           <div class="code-block"><span class="cmd">uv sync --locked --dev
-uv run python -m ahadiff --version
-uv run python -m ahadiff doctor</span></div>
+pnpm --dir viewer install --frozen-lockfile
+pnpm --dir viewer build
+uv tool install --editable .
+ahadiff --version</span></div>
         </div>
       </div>
-      <h3>第一次在仓库中使用</h3>
-      <p>第一次在某个仓库里用 AhaDiff 时，先初始化它并确认环境。</p>
-      <div class="code-block"><span class="cmd">cd /path/to/your/repo
-ahadiff init
+      <h3>打开你的工作目录</h3>
+      <p>在准备存放学习记录的文件夹打开终端。普通文件夹就可以；文件和 patch 输入无需 Git 仓库。下面的命令在 macOS/Linux 终端和 Windows PowerShell 中都可使用：</p>
+      <div class="code-block"><span class="cmd">ahadiff serve</span></div>
+      <p>AhaDiff 会打开 <code>http://127.0.0.1:8765</code>，并按需创建本地状态。到<strong>设置</strong>添加本地或远端 provider；使用远端模型前需明确选择远端隐私模式。配置 provider 时可能发送小探测请求，文件变化预览不会调用 LLM。</p>
+
+      <h3 id="sources">选择你要学习的材料</h3>
+      <div class="g-cards g-cards--sources">
+        <div class="g-card"><h3>Git 改动</h3><p>学习已有仓库中的 bug 修复、同事的 commit 或 AI 修改。选择工作区变化或提交范围。</p></div>
+        <div class="g-card"><h3>两份文件</h3><p>分别点选或拖放修改前、修改后的文件。可使用代码、SQL、配置、Markdown 或两份 <code>.ipynb</code>，文件同名也可以。</p></div>
+        <div class="g-card"><h3>粘贴改动</h3><p>粘贴从 review 或其他工具复制的统一 diff。这里需要带 diff 头和变化行的补丁文本，不是单份资料或 review 评论。</p></div>
+      </div>
+      <div class="mini-flow">
+        <div class="mini-step">在<strong>欢迎</strong>、<strong>快速上手</strong>或<strong>使用指南</strong>选择来源。</div>
+        <div class="mini-arrow" aria-hidden="true">&rarr;</div>
+        <div class="mini-step">点击<strong>预览变化</strong>，检查安全处理后的 diff。</div>
+        <div class="mini-arrow" aria-hidden="true">&rarr;</div>
+        <div class="mini-step">点击<strong>开始学习</strong>，等待运行完成。</div>
+        <div class="mini-arrow" aria-hidden="true">&rarr;</div>
+        <div class="mini-step">到<strong>课程</strong>读解释、<strong>差异</strong>查证据、<strong>测验</strong>作答，再到<strong>复习</strong>处理到期卡片。</div>
+      </div>
+      <p class="g-lead">同一次运行会把这些页面连接起来。安装 Agent 是可选项。只有当前文件、没有旧版时，可以在下次修改前先保留一份副本；目前没有自动快照或独立资料课程。</p>
+      <details class="faq-item"><summary>已有 Git 仓库中的可选 CLI 初始化</summary><div class="faq-a">
+        <p>以下命令只在 Git 仓库内使用。普通目录从 <code>ahadiff serve</code> 开始；CLI 的 <code>init</code>、<code>doctor</code> 仍要求 Git 仓库元数据。</p>
+        <div class="code-block"><span class="cmd">ahadiff init
 ahadiff doctor
 ahadiff config show --resolved</span></div>
+      </div></details>
 
-      <p class="g-lead">运行产物和复习状态留在这个仓库里。Provider 配置可以放在仓库级，也可以放在全局级。</p>
-      <div class="tree" role="img" aria-label=".ahadiff 目录把 config.toml、review.sqlite、runs 和 concepts.jsonl 存为仓库本地 AhaDiff 状态。">
-<span class="t-root">your-repo/</span>
-&#9492;&#9472; <span class="t-truth t-dir">.ahadiff/</span>  <span class="t-tag">仓库本地状态 &middot; 按仓库，而非全局</span>
+      <p class="g-lead">运行产物和复习状态留在所选工作区。Provider 配置可以放在工作区内，也可以放在全局级。</p>
+      <div class="tree" role="img" aria-label=".ahadiff 目录把 config.toml、review.sqlite、runs 和 concepts.jsonl 存为工作区本地的学习状态。">
+<span class="t-root">your-folder/</span>
+&#9492;&#9472; <span class="t-truth t-dir">.ahadiff/</span>  <span class="t-tag">工作区内的学习记录</span>
    &#9500;&#9472; config.toml      <span style="color:var(--muted)">provider、capture、隐私</span>
    &#9500;&#9472; review.sqlite    <span style="color:var(--muted)">SRS、结果历史、学习信号</span>
    &#9500;&#9472; runs/            <span style="color:var(--muted)">每次 learn 运行一个目录</span>
@@ -985,16 +1011,16 @@ ahadiff config show --resolved</span></div>
         <span class="badge"><span class="badge-dot sqlite"></span>3.50.4+（backport）</span>
         <span class="badge"><span class="badge-dot sqlite"></span>3.44.6+（backport）</span>
       </div>
-      <p class="g-lead"><code>uv tool</code> 在 Python 3.11.14 上自带 SQLite 3.50.4。已被接受。</p>
-      <p class="g-lead">第一次生成课程前，先跑 <code>ahadiff doctor</code> 确认你的 SQLite 版本达标；它会报告检测到的版本和所需门槛，版本过低时 fail-closed 报错。版本号更高不代表自动被接受。门禁要求 SQLite 3.51.3 及以上，或回填补丁的 3.50.4+ / 3.44.6+ 版本，所以 3.51.0-3.51.2 低于门槛、不会被接受。如果 <code>ahadiff doctor</code> 提示你的版本不行，换一个自带 SQLite 满足门槛的 Python，例如 <code>uv tool</code>、python.org 安装包、Homebrew 或 conda。</p>
+      <p class="g-lead">需要 Python 3.11+ 和达标的 SQLite 运行时。SQLite 版本取决于 AhaDiff 实际使用的 Python 构建，不能仅凭安装器名称判断。</p>
+      <p class="g-lead">第一次生成课程前，先查看<strong>快速上手</strong>里的诊断。在 Git 仓库内也可以运行 <code>ahadiff doctor</code> 确认 SQLite 版本达标；它会报告检测到的版本和所需门槛，版本过低时 fail-closed 报错。版本号更高不代表自动被接受。门禁要求 SQLite 3.51.3 及以上，或回填补丁的 3.50.4+ / 3.44.6+ 版本，所以 3.51.0-3.51.2 低于门槛、不会被接受。如果诊断提示版本不达标，请改用包含兼容 SQLite 的 Python 构建并重新检查。安装器名称或 Windows 上的 Python 版本本身都不能证明 SQLite 兼容。</p>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-welcome.png" alt="欢迎页：主标语、简介段落和首次运行的快速上手。" />
-        <figcaption class="shot-cap">欢迎页：打开 WebUI 后的第一屏。</figcaption>
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-welcome.png" alt="欢迎页：主标语、简介段落和首次运行的快速上手。" width="3840" height="1892" />
+        <figcaption class="shot-cap">较早版本的欢迎页示例；当前源码请按上方的三个来源入口操作。</figcaption>
         <ol class="shot-legend">
           <li>衬线主标题 Ship with AI. Learn it back.</li>
           <li>首字下沉的简介段落介绍 AhaDiff。</li>
-          <li>查看最新课程 CTA 与 <code>uv run learn</code> 命令片段。</li>
+          <li>查看最新课程与首次学习入口。</li>
           <li>右侧卡片预览最新已完成运行的课程大纲。</li>
         </ol>
       </figure>
@@ -1004,7 +1030,7 @@ ahadiff config show --resolved</span></div>
     <section id="provider">
       <div class="section-eyebrow">配置</div>
       <h2>2. 配置 Provider</h2>
-      <p>配置一个 LLM provider 是 <code>ahadiff learn</code> 之前唯一的准备步骤。有两条路径。在 CLI 上，密钥放在环境变量里，你只把变量名交给 AhaDiff。在 WebUI Settings 里，你直接粘贴明文密钥，由 AhaDiff 替你存储（见下文「WebUI 如何存储你的密钥」）。无论哪种方式，密钥都不会进入 Git、README、manifest 或纳管的脚本。</p>
+      <p>环境就绪后，生成课程前需要配置一个 LLM provider，AI 编程 Agent 则是可选项。有两条配置路径。在 CLI 上，密钥放在环境变量里，你只把变量名交给 AhaDiff。在 WebUI Settings 里，你直接粘贴明文密钥，由 AhaDiff 替你存储（见下文「WebUI 如何存储你的密钥」）。无论哪种方式，密钥都不会进入 Git、README、manifest 或纳管的脚本。</p>
 
       <h3><code>provider test</code> 做了什么</h3>
       <div class="mini-flow">
@@ -1102,7 +1128,7 @@ ahadiff provider test \
       </div>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-settings.png" alt="设置：provider、隐私、审计、偏好和项目级 AI 工具指引。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-settings.png" alt="设置：provider、隐私、审计、偏好和项目级 AI 工具指引。" width="3840" height="1892" />
         <figcaption class="shot-cap">设置：配置与诊断。</figcaption>
         <ol class="shot-legend">
           <li>左侧设置栏：Account、Provider、Capture、Privacy、Audit。</li>
@@ -1177,18 +1203,18 @@ supports_native_json_schema = false</span></div>
       <div class="g-steps">
         <div class="g-step">
           <h3>选一个 diff 来源</h3>
-          <p>AhaDiff 有 10 种捕获模式。选与你改动相符的那个磁贴。发布验证会分开记录捕获覆盖和 live LLM 课程生成；v1.3.8 审计记录了全局 provider 保存回归和一次 live DeepSeek run。</p>
+          <p>在 WebUI 选择<a href="#sources">Git 改动、两份文件或粘贴改动</a>。对比文件时，把旧版放在修改前，把新版放在修改后。</p>
         </div>
         <div class="g-step">
-          <h3>生成课程和 claim 状态</h3>
-          <p>AhaDiff 捕获 diff、扫描安全问题，产出 claim、课程、测验、分数和其他产物。</p>
+          <h3>先预览，再开始学习</h3>
+          <p>预览安全处理后的真实 diff。修改来源后原预览会失效，需要重新预览。生成时使用已配置的 provider 和隐私模式，产出 claim、课程、测验和分数。</p>
         </div>
         <div class="g-step">
           <h3>打开 WebUI 学习</h3>
           <p>读 Lesson 看解释，跳到 Diff 看证据，做 Quiz 检验理解，用 Review 做间隔重复。</p>
         </div>
       </div>
-      <p class="g-lead">运行与你改动相符的来源。仪表盘的 New Run 对话框对应这同一组分类。</p>
+      <p class="g-lead">习惯终端时，可使用以下已有 CLI 模式，它们共用同一条学习链路。文件和 patch 路径必须在工作区内，Git 模式需要仓库。想学习很小的练习改动时可加 <code>--force-learn</code>。</p>
       <div class="cap-grid">
         <div class="cap-group">
           <span class="cap-group-label">快速（工作树）</span>
@@ -1216,14 +1242,14 @@ supports_native_json_schema = false</span></div>
         <div class="cap-group">
           <span class="cap-group-label">文件对比</span>
           <div class="cap-tiles">
-            <div class="cap-tile"><span class="cap-name">对比文件</span><span class="cap-when">两个文件版本，不用 git。</span><code class="cap-cli">ahadiff learn --compare old.py new.py</code></div>
-            <div class="cap-tile"><span class="cap-name">对比目录</span><span class="cap-when">两个目录树，不用 git。</span><code class="cap-cli">ahadiff learn --compare-dir old/ new/</code></div>
+            <div class="cap-tile"><span class="cap-name">对比文件</span><span class="cap-when">两个文件版本，无需 Git 仓库。</span><code class="cap-cli">ahadiff learn --compare old.py new.py</code></div>
+            <div class="cap-tile"><span class="cap-name">对比目录</span><span class="cap-when">两个目录树；仅 macOS/Linux。</span><code class="cap-cli">ahadiff learn --compare-dir old/ new/</code></div>
           </div>
         </div>
       </div>
       <div class="badges" style="justify-content:flex-start">
         <span class="badge">10 种模式 &rarr; 捕获覆盖</span>
-        <span class="badge">v1.3.8 live DeepSeek 全局 provider run 已记录</span>
+        <span class="badge">文件与粘贴 patch 可在无仓库目录开始</span>
         <span class="badge">路径范围：仅工作树模式 &middot; 仓库相对路径</span>
       </div>
       <div class="g-note">给上面任意一种加 <code>--against-spec SPEC.md</code> 即可把 diff 与 spec 对照；加 <code>--spec-semantic-review</code> 走语义检查。</div>
@@ -1247,7 +1273,11 @@ supports_native_json_schema = false</span></div>
         <span class="badge">远程 URL：同样的安全检查 &middot; 拒绝环回 / 内网</span>
         <span class="badge">compare-dir：仅 POSIX &middot; 其他平台 fail closed</span>
       </div>
-      <p>WebUI 的 patch 字段接受粘贴的 unified diff 文本，上限 65536 字节；patch 文件、stdin 或更大的 patch 请用 CLI。CLI 的 patch 文件在仓库根目录内解析；外部生成的 patch 传 <code>--patch -</code>。</p>
+      <h3>文件输入、预览与证据边界</h3>
+      <p>浏览器接受两份 UTF-8 文本文件，每份最多 256 KiB，合计最多 512 KiB。点选文件时，草稿只留在页面内存中，不会改写原文件。两份 <code>.ipynb</code> 保留按单元格比较的来源信息，AhaDiff 不会执行单元格。Markdown、SQL 和配置修改保留文本证据；没有更强支持时，claim 会标为 weak 或未证明。</p>
+      <p><strong>预览变化</strong>只把输入发给本机服务，不调用 LLM。预览最多显示 64 KiB，部分展示会明确标注；这与捕获限额提示不同，后者才代表输入本身未完整捕获。点击<strong>开始学习</strong>后，生成遵循你选定的本地或远端隐私模式，并把常规运行产物保存在 <code>.ahadiff/</code>。</p>
+      <p>粘贴的统一 diff 上限为 64 KiB。浏览器请求序列化后上限为 1 MiB，转义字符很多时可能先达到请求上限；更大的输入请用 CLI。CLI 的 patch 和对比文件在工作区根目录内解析；外部生成的 patch 可传 <code>--patch -</code>。</p>
+      <div class="g-note">文件或粘贴 patch 的小练习默认勾选<strong>变化较小时仍生成课程</strong>，也可取消。它只跳过 learnability 筛选，证据校验、安全门禁和评分仍然生效。能够跳到来源行或课程分数很高，都不代表已证明运行正确或你已掌握这次改动。</div>
       <p>长时间运行的 CLI 命令会在运行中显示 Rich 状态。把它当作终端反馈，而不是机器可读的输出契约。</p>
     </section>
 
@@ -1255,14 +1285,14 @@ supports_native_json_schema = false</span></div>
     <section id="webui">
       <div class="section-eyebrow">界面</div>
       <h2>4. 使用 WebUI</h2>
-      <p>运行下面任意一条打开本地 React SPA。<code>serve</code> 默认会打开浏览器；加 <code>--no-browser</code> 保持无头，或加 <code>--watch</code> 在工作区文件改动时自动 learn。</p>
+      <p>运行下面任意一条打开本地 React SPA。<code>serve</code> 默认会打开浏览器；加 <code>--no-browser</code> 保持无头，或加 <code>--watch</code> 在 Git 工作区文件改动时自动 learn。</p>
       <div class="code-block"><span class="cmd">ahadiff serve
 ahadiff serve --port 8765 --no-browser
 ahadiff serve --watch   # 文件监听，默认已包含</span></div>
 
       <h3>工作流一览</h3>
       <div class="g-rail">
-        <div class="node"><strong>Diff</strong><span>捕获代码改动</span></div>
+        <div class="node"><strong>Diff</strong><span>捕获修改前后的变化</span></div>
         <div class="node"><strong>Claims</strong><span>绑定 file:line 证据</span></div>
         <div class="node"><strong>Lesson</strong><span>生成解释</span></div>
         <div class="node"><strong>Quiz/Review</strong><span>用 SRS 检验记忆</span></div>
@@ -1274,6 +1304,8 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
         <table class="cmp-table">
           <thead><tr><th>页面</th><th>用途</th></tr></thead>
           <tbody>
+            <tr><td><code>/welcome</code></td><td>选择 Git 改动、两份文件或粘贴改动，打开最新课程。</td></tr>
+            <tr><td><code>/onboarding</code></td><td>打开工作目录、配置 provider、检查诊断并开始第一次学习。Agent 配置是可选项。</td></tr>
             <tr><td><code>/</code></td><td>仪表盘：最新运行、KPI、棘轮趋势和复习活动。</td></tr>
             <tr><td><code>/run/:runId</code></td><td>运行详情：Overview、Score、Judge、Artifacts。可选的 LLM judge 失败时，Judge 标签显示脱敏的失败面板，而非原始 provider 输出。</td></tr>
             <tr><td><code>/run/:runId/lesson</code></td><td>课程正文、claim 摘要、证据和知识笔记。</td></tr>
@@ -1283,11 +1315,11 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
             <tr><td><code>/concepts</code></td><td>概念账本、概念图谱和 Graphify 源。</td></tr>
             <tr><td><code>/ratchet</code></td><td>结果历史、benchmark 摘要、improve 预览和导出入口。</td></tr>
             <tr><td><code>/settings</code></td><td>provider、capture、隐私、审计、偏好和项目级 AI 工具指引。AI Tool Guidance 把目标分为 CLI / IDE / CI，显示使用提示，并内置一个无需 provider 的演示。</td></tr>
-            <tr><td><code>/guide</code></td><td>日常命令和 15 个项目 AI 工具指引目标。它显示分类过滤、使用提示，以及每个目标在你应用改动前会写入什么；写入和移除仍在 Settings &rarr; AI Tool Guidance 里完成。</td></tr>
+            <tr><td><code>/guide</code></td><td>共用的三个学习来源、日常命令，以及 16 个当前 AI 工具目标的共享目录。工具指引是可选项，写入、更新与移除仍在设置 &rarr; AI 工具指引中完成。</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="g-note">大约十几个 AI 工具目标会写入各工具原生的文件。Settings &rarr; AI Tool Guidance 列出全部目标并在写入前预览每个文件；除非你提交，否则它们都留在本地。例如：
+      <div class="g-note">可选的 AI 工具集成会写入工具原生文件。Guide 与 Settings 共用当前目录及生命周期说明；已退休的 Roo 和被替代的 Windsurf 条目仅用于清理。Settings &rarr; AI Tool Guidance 列出全部目标并在写入前预览每个文件；除非你提交，否则它们都留在本地。例如：
         <ul>
           <li><code>.claude/skills/ahadiff/SKILL.md</code></li>
           <li><code>.agents/skills/ahadiff/SKILL.md</code></li>
@@ -1300,13 +1332,11 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
           <li><code>.clinerules/ahadiff.md</code></li>
           <li><code>.continue/rules/ahadiff.md</code></li>
           <li><code>.cursor/rules/ahadiff.mdc</code></li>
-          <li><code>.roo/rules/ahadiff.md</code></li>
-          <li><code>.windsurf/rules/ahadiff.md</code></li>
         </ul>
         仓库级指引段落仍写在用户自管的文件里，例如 <code>CLAUDE.md</code>、<code>AGENTS.md</code>、<code>GEMINI.md</code> 和 <code>.github/copilot-instructions.md</code>。本仓库忽略生成的 <code>.agents/</code> 安装，所以本地 Codex / Antigravity 的 skill 产出默认不会被提交。hooks 目标与 MCP 注册见常用命令一节。</div>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-dashboard.png" alt="仪表盘：最近运行、分数、通过率、棘轮趋势和复习活动。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-dashboard.png" alt="仪表盘：最近运行、分数、通过率、棘轮趋势和复习活动。" width="3840" height="1892" />
         <figcaption class="shot-cap">仪表盘：一览运行、棘轮与学习信号。</figcaption>
         <ol class="shot-legend">
           <li>顶部统计卡：总运行数、平均分、通过率、概念数、LLM 调用。</li>
@@ -1347,7 +1377,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       </div>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-lesson.png" alt="课程：claim 状态、claim 摘要、知识笔记和证据侧栏。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-lesson.png" alt="课程：claim 状态、claim 摘要、知识笔记和证据侧栏。" width="3840" height="1892" />
         <figcaption class="shot-cap">课程：由 diff 生成的带证据学习笔记。</figcaption>
         <ol class="shot-legend">
           <li>顶栏含 PASS 分数、查看评分详情、标记为已学习。</li>
@@ -1358,7 +1388,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       </figure>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-diff.png" alt="Diff：diff 内容、ClaimInspector 和对应的证据行。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-diff.png" alt="Diff：diff 内容、ClaimInspector 和对应的证据行。" width="3840" height="1892" />
         <figcaption class="shot-cap">Diff：代码改动与行内 claim 证据联动。</figcaption>
         <ol class="shot-legend">
           <li>中部代码 diff，红/绿标记新增与删除行。</li>
@@ -1378,7 +1408,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       </div>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-quiz.png" alt="测验：回忆与迁移题、证据揭示和常见误区。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-quiz.png" alt="测验：回忆与迁移题、证据揭示和常见误区。" width="3840" height="1892" />
         <figcaption class="shot-cap">测验：基于 claim 状态的主动回忆题。</figcaption>
         <ol class="shot-legend">
           <li>单道选择题，含 A/B/C/D 选项。</li>
@@ -1389,7 +1419,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       </figure>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-review.png" alt="复习：FSRS 队列，含 Again / Hard / Good / Easy 评分。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-review.png" alt="复习：FSRS 队列，含 Again / Hard / Good / Easy 评分。" width="3840" height="1892" />
         <figcaption class="shot-cap">复习：按遗忘曲线排序的间隔重复队列。</figcaption>
         <ol class="shot-legend">
           <li>顶部计数：到期卡片、FSRS、高风险概念。</li>
@@ -1401,7 +1431,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
 
       <h3>概念</h3>
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-concepts.png" alt="概念账本：可排序表格中的全部已学概念。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-concepts.png" alt="概念账本：可排序表格中的全部已学概念。" width="3840" height="1892" />
         <figcaption class="shot-cap">概念账本：可排序表格中的全部已学概念。</figcaption>
         <ol class="shot-legend">
           <li>Ledger / Graph 标签与健康状态过滤计数。</li>
@@ -1412,7 +1442,7 @@ ahadiff serve --watch   # 文件监听，默认已包含</span></div>
       </figure>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-concepts-graph.png" alt="概念图谱：Graphify 源、概念节点和图控件。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-concepts-graph.png" alt="概念图谱：Graphify 源、概念节点和图控件。" width="1920" height="1080" />
         <figcaption class="shot-cap">概念图谱：导入的知识图谱视图。</figcaption>
         <ol class="shot-legend">
           <li>Ledger / Graph 标签与 Refresh Graph 按钮。</li>
@@ -1624,7 +1654,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
           <h3>AI Tool Guidance</h3>
           <p>Settings 负责写文件；Guide 只读。</p>
           <details class="faq-item"><summary>Details</summary><div class="faq-a">
-            <p>Settings 为 15 个安装目标显示：</p>
+            <p>Settings 为 16 个当前工具目标显示：</p>
             <ul>
               <li>CLI / IDE / CI 分组</li>
               <li>本地化的快速上手步骤</li>
@@ -1701,7 +1731,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
       <div class="g-note">当一道硬门禁触发，或 <code>critical_safety_findings</code> 命中时，一个运行即使分数很高也会 FAIL。</div>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-rundetail-overview.png" alt="运行详情概览：单次 learn 运行的结果与元数据。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-rundetail-overview.png" alt="运行详情概览：单次 learn 运行的结果与元数据。" width="1920" height="1080" />
         <figcaption class="shot-cap">运行详情概览：单次 learn 运行的结果与元数据。</figcaption>
         <ol class="shot-legend">
           <li>Overview / Score / Judge / Artifacts 标签栏。</li>
@@ -1712,7 +1742,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
       </figure>
 
       <figure class="shot-fig">
-        <img loading="lazy" src="./video/public/screenshots/zh/zh-rundetail-score.png" alt="运行详情评分：8 维评估明细。" />
+        <img loading="lazy" src="./video/public/screenshots/zh/zh-rundetail-score.png" alt="运行详情评分：8 维评估明细。" width="1920" height="1080" />
         <figcaption class="shot-cap">运行详情评分：8 维评估明细。</figcaption>
         <ol class="shot-legend">
           <li>FAIL 徽章、总分、未通过门禁数。</li>
@@ -1735,7 +1765,7 @@ ahadiff export preview RUN_ID --out .ahadiff/export-preview</span></div>
         <details class="faq-item">
           <summary>provider 失败了怎么办？</summary>
           <div class="faq-a">
-            <p>跑诊断并重新测试 provider。在 Windows PowerShell 上，用 <code>$env:</code> 形式设置变量并传 <code>--base-url $env:AHADIFF_PROVIDER_BASE_URL</code>，如<a href="#provider">配置 Provider</a>所示。</p>
+            <p>到快速上手查看诊断，再在设置中重测 provider。下方 CLI 诊断命令要求 Git 仓库。在 Windows PowerShell 上，用 <code>$env:</code> 形式设置变量并传 <code>--base-url $env:AHADIFF_PROVIDER_BASE_URL</code>，如<a href="#provider">配置 Provider</a>所示。</p>
             <div class="code-block"><span class="cmd">ahadiff doctor
 ahadiff config show --resolved</span></div>
             <p>然后重新运行<a href="#provider">配置 Provider</a>里的对应 provider 命令。</p>
@@ -1743,7 +1773,7 @@ ahadiff config show --resolved</span></div>
         </details>
         <details class="faq-item">
           <summary>课程被跳过了怎么办？</summary>
-          <div class="faq-a"><p>可能 diff 太小、learnability 太低，或没有足够可用的 claim 状态。如果你确定这就是要学的改动，用 <code>--force-learn</code> 重跑。</p></div>
+          <div class="faq-a"><p>文件或 patch 小练习可以勾选<strong>变化较小时仍生成课程</strong>，或在 CLI 加 <code>--force-learn</code>。它只跳过 learnability 筛选。空变化、不可用的证据和安全失败仍需处理，不会因为勾选而变为通过。</p></div>
         </details>
         <details class="faq-item">
           <summary>怎么改测验题量？</summary>
@@ -1831,8 +1861,10 @@ ahadiff config show --resolved</span></div>
       </div>
       <div class="g-note"><code>--compare-dir</code> 需要仅在 macOS / Linux 上可用的安全目录文件描述符，其他平台 fail closed。<code>hooks</code> 目标使用 POSIX shell 钩子。hooks 默认仅提醒；--auto-learn 变体见 Git hooks 卡片。回滚在 POSIX 上于原子替换前恢复权限模式，并在缺少 <code>fchmod</code> 的平台于替换后尽力恢复权限模式。</div>
 
-      <h3>验证快照</h3>
-      <p class="g-lead">当前文档快照记录的本地检查。v1.3.8 本地 gate 覆盖后端 unit/integration/eval、ruff/format/pyright、viewer typecheck/Vitest/build、i18n parity、真实 serve 保存复现和一次 live DeepSeek learn。发布和 CI 状态以 GitHub Actions 为准。</p>
+      <p>表格说明设计支持面与明确的平台例外。浏览器检查和模拟 Windows 分支不等于 Windows 原生运行，执行结论需查看对应平台的当前结果。</p>
+
+      <h3>历史验证快照</h3>
+      <p class="g-lead">以下记录早于 2026-09-08 源码更新，不代表新文件选择或预览已获验证。v1.3.8 本地 gate 覆盖后端 unit/integration/eval、ruff/format/pyright、viewer typecheck/Vitest/build、i18n parity、真实 serve 保存复现和一次 live DeepSeek learn。发布和 CI 状态以 GitHub Actions 为准。</p>
       <div class="g-cards">
         <div class="g-card">
           <h3>已验证</h3>

@@ -13,12 +13,14 @@ import time
 from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 import pytest
+from pydantic import ValidationError
 from typer.testing import CliRunner
 
 from ahadiff import cli as cli_module
 from ahadiff.claims.extract import load_line_map_records
 from ahadiff.cli import app
 from ahadiff.contracts import ClaimRecord, SourceHunk
+from ahadiff.contracts.run_source import COMPARE_FILE_MAX_BYTES, CompareFileInput
 from ahadiff.core.errors import InputError, SafetyError, StorageError
 from ahadiff.eval.deterministic import build_deterministic_scores
 from ahadiff.eval.rubric import load_rubric
@@ -2823,12 +2825,327 @@ def test_compare_ipynb_renders_cell_aware_source_diff(tmp_path: Path) -> None:
     _, metadata, patch_text = _load_run_artifacts(repo_root)
     source_detail = cast("dict[str, object]", metadata["source_detail"])
     assert source_detail["notebook_cell_aware"] is True
-    assert "# %% [markdown] cell 0 id=intro" in patch_text
+    assert source_detail["notebook_old_cells"] == 2
+    assert source_detail["notebook_new_cells"] == 2
+    assert source_detail["notebook_metadata_outputs_ignored"] is True
     assert "# %% [code] cell 1 id=calc" in patch_text
     assert "-value = 1" in patch_text
     assert "+value = 2" in patch_text
     assert "old output" not in patch_text
     assert "new output" not in patch_text
+
+
+def test_compare_ipynb_ignores_filename_and_output_only_changes(tmp_path: Path) -> None:
+    for name, output in (("before.ipynb", "old output"), ("after.ipynb", "new output")):
+        (tmp_path / name).write_text(
+            _notebook_payload(
+                [
+                    {
+                        "cell_type": "code",
+                        "id": "calc",
+                        "source": "value = 1\n",
+                        "outputs": [{"text": output}],
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    with pytest.raises(InputError, match="identical"):
+        capture_module.capture_patch(
+            workspace_root=tmp_path,
+            compare=(Path("before.ipynb"), Path("after.ipynb")),
+            max_patch_bytes=10_000,
+        )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../secret.py",
+        "dir/file.py",
+        "dir\\file.py",
+        "C:file.py",
+        "app.py:secret",
+        "CON",
+        "aux.txt",
+        "COM¹.txt",
+        ".git",
+        ".AHADIFF",
+        "app.py.",
+        "app.py ",
+        "line\nfile.py",
+        "line\u2028file.py",
+        "line\u2029file.py",
+        "line\x85file.py",
+        "file\u202epy",
+        "file\x7f.py",
+        "file?.py",
+        "",
+    ],
+)
+def test_compare_files_rejects_unsafe_display_names(name: str) -> None:
+    with pytest.raises(ValidationError):
+        CompareFileInput(name=name, content="safe text")
+
+
+@pytest.mark.parametrize("content", ["binary\x00text", "bad\ud800text", "中" * 90_000])
+def test_compare_files_rejects_binary_invalid_unicode_and_utf8_byte_overflow(content: str) -> None:
+    with pytest.raises(ValidationError) as error:
+        CompareFileInput(name="notes.txt", content=content)
+    assert "input_value" not in str(error.value)
+
+
+def test_compare_files_accepts_exact_utf8_byte_limit() -> None:
+    file = CompareFileInput(name="notes.txt", content="x" * COMPARE_FILE_MAX_BYTES)
+    assert len(file.content.encode("utf-8")) == COMPARE_FILE_MAX_BYTES
+    assert "xxx" not in repr(file)
+
+
+def test_compare_files_preserves_both_sides_without_creating_source_files(tmp_path: Path) -> None:
+    before = "\ufeffdef compute():\r\n    return 1\r\n"
+    after = "def compute():\n    return 2\n"
+    capture = capture_module.capture_patch(
+        workspace_root=tmp_path,
+        compare_files=(
+            CompareFileInput(name="示例.py", content=before),
+            CompareFileInput(name="示例.py", content=after),
+        ),
+        use_graphify=False,
+    )
+
+    assert capture.run_source.source_kind == "file_compare"
+    assert capture.run_source.capability_level == 2
+    assert capture.metadata["source_detail"]["type"] == "compare_files"
+    assert capture.before_text_by_path == {"before/示例.py": "def compute():\n    return 1\n"}
+    assert capture.after_text_by_path == {"after/示例.py": after}
+    assert "--- a/before/示例.py" in capture.persisted_patch_text
+    assert "+++ b/after/示例.py" in capture.persisted_patch_text
+    assert not (tmp_path / "before").exists()
+    assert not (tmp_path / "after").exists()
+
+
+def test_compare_files_persists_only_redacted_artifacts(tmp_path: Path) -> None:
+    secret = "sk-" + "aB2cD3eF4gH5iJ6kL7mN8pQ9rS0tU1vW2xY3zA4b"
+    capture = capture_module.capture_patch(
+        workspace_root=tmp_path,
+        compare_files=(
+            CompareFileInput(name="settings.py", content='api_key = "old"\n'),
+            CompareFileInput(name="settings.py", content=f'api_key = "{secret}"\n'),
+        ),
+        use_graphify=False,
+    )
+    assert secret not in capture.persisted_patch_text
+    capture_module.write_input_artifacts(capture)
+    for artifact in (tmp_path / ".ahadiff" / "runs" / capture.run_id).iterdir():
+        if artifact.is_file():
+            assert secret not in artifact.read_text(encoding="utf-8")
+    assert not (tmp_path / "settings.py").exists()
+
+
+def test_compare_files_keeps_notebook_source_semantics(tmp_path: Path) -> None:
+    def notebook(value: int) -> str:
+        return _notebook_payload(
+            [
+                {
+                    "cell_type": "code",
+                    "id": "calc",
+                    "source": f"value = {value}\n",
+                    "outputs": [{"text": "output must be ignored"}],
+                }
+            ]
+        )
+
+    capture = capture_module.capture_patch(
+        workspace_root=tmp_path,
+        compare_files=(
+            CompareFileInput(name="before.ipynb", content=notebook(1)),
+            CompareFileInput(name="after.ipynb", content=notebook(2)),
+        ),
+        use_graphify=False,
+    )
+    assert capture.metadata["source_detail"]["notebook_cell_aware"] is True
+    assert "-value = 1" in capture.persisted_patch_text
+    assert "+value = 2" in capture.persisted_patch_text
+    assert "output must be ignored" not in capture.persisted_patch_text
+    assert "-# Notebook source view" not in capture.persisted_patch_text
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source", "bad\ud800text"),
+        ("source", ["bad\udffftext"]),
+        ("source", "bad\x00text"),
+        ("source", "bad\x1btext"),
+        ("id", "bad\ud800id"),
+        ("id", "bad\x00id"),
+        ("cell_type", "bad\udfffkind"),
+        ("cell_type", "bad\x00kind"),
+    ],
+)
+def test_compare_files_rejects_invalid_decoded_notebook_text(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    cell: dict[str, object] = {"cell_type": "code", "id": "example", "source": "value = 2\n"}
+    cell[field] = value
+    before = json.dumps({"cells": [{"cell_type": "code", "source": "value = 1\n"}]})
+    after = json.dumps({"cells": [cell]}, ensure_ascii=True)
+    files = (
+        CompareFileInput(name="notes.ipynb", content=before),
+        CompareFileInput(name="notes.ipynb", content=after),
+    )
+    with pytest.raises(InputError, match="Notebook"):
+        capture_module.capture_patch(workspace_root=tmp_path, compare_files=files)
+
+
+def test_notebook_deep_json_is_a_controlled_input_error() -> None:
+    from ahadiff.git.notebook import render_notebook_source_for_diff
+
+    payload = b'{"cells":' + b"[" * 2_000 + b"]" * 2_000 + b"}"
+    with pytest.raises(InputError, match="Notebook JSON nesting"):
+        render_notebook_source_for_diff(payload)
+
+
+@pytest.mark.parametrize("container_kind", ["list", "object"])
+def test_notebook_json_depth_limit_is_exact_and_independent_of_python_recursion(
+    container_kind: str,
+) -> None:
+    from ahadiff.git.notebook import render_notebook_source_for_diff
+
+    metadata: object = "ignored"
+    for _ in range(127):
+        metadata = [metadata] if container_kind == "list" else {"nested": metadata}
+    payload: dict[str, object] = {"cells": [], "metadata": metadata}
+    # The notebook root is the first container: root + 127 nested containers = 128.
+    rendered = render_notebook_source_for_diff(json.dumps(payload).encode())
+    assert rendered is not None
+    assert rendered.cell_count == 0
+
+    payload["metadata"] = [metadata] if container_kind == "list" else {"nested": metadata}
+    with pytest.raises(InputError, match="Notebook JSON nesting exceeds 128 levels"):
+        render_notebook_source_for_diff(json.dumps(payload).encode())
+
+
+def test_notebook_json_brackets_in_strings_and_wide_metadata_do_not_count_as_depth() -> None:
+    from ahadiff.git.notebook import render_notebook_source_for_diff
+
+    source = 'text = "' + "[" * 2_000 + "]" * 2_000 + '\\"{}"\n'
+    cells = [{"cell_type": "code", "source": source}]
+    baseline = render_notebook_source_for_diff(json.dumps({"cells": cells}).encode())
+    payload = {
+        "cells": cells,
+        "metadata": [{"brackets": "[{}]", "escape": '\\"'} for _ in range(10_000)],
+        "outputs": ["[" * 2_000 + "]" * 2_000],
+    }
+    rendered = render_notebook_source_for_diff(json.dumps(payload).encode())
+    assert rendered == baseline
+    assert rendered is not None
+    assert source in rendered.text
+
+
+def test_notebook_source_keeps_tabs_newlines_and_unicode_but_sanitizes_headers() -> None:
+    from ahadiff.git.notebook import render_notebook_source_for_diff
+
+    payload = json.dumps(
+        {
+            "cells": [
+                {
+                    "cell_type": "code\u2028+fake",
+                    "id": "例子\u202eid",
+                    "source": "if True:\r\n\tprint('你好😀')\n",
+                }
+            ]
+        }
+    ).encode()
+    rendered = render_notebook_source_for_diff(payload)
+    assert rendered is not None
+    assert "# %% [code +fake] cell 0 id=例子 id" in rendered.text
+    assert "if True:\n\tprint('你好😀')\n" in rendered.text
+    assert "\u202e" not in rendered.text
+
+
+@pytest.mark.parametrize("before,after", [("", "added\n"), ("removed\n", "")])
+def test_compare_files_supports_an_empty_side(tmp_path: Path, before: str, after: str) -> None:
+    capture = capture_module.capture_patch(
+        workspace_root=tmp_path,
+        compare_files=(
+            CompareFileInput(name="notes.txt", content=before),
+            CompareFileInput(name="notes.txt", content=after),
+        ),
+        use_graphify=False,
+    )
+    assert "+added" in capture.persisted_patch_text or "-removed" in capture.persisted_patch_text
+
+
+def test_compare_files_rejects_identical_content_and_conflicting_sources(tmp_path: Path) -> None:
+    files = (
+        CompareFileInput(name="a.txt", content="same"),
+        CompareFileInput(name="b.txt", content="same"),
+    )
+    with pytest.raises(InputError, match="identical"):
+        capture_module.capture_patch(workspace_root=tmp_path, compare_files=files)
+    with pytest.raises(InputError, match="exactly one"):
+        capture_module.capture_patch(workspace_root=tmp_path, compare_files=files, last=True)
+
+
+def test_empty_compare_is_allowed_only_when_explicitly_requested_for_preview(
+    tmp_path: Path,
+) -> None:
+    files = (
+        CompareFileInput(name="a.txt", content="same\n"),
+        CompareFileInput(name="b.txt", content="same\n"),
+    )
+    preview = capture_module.capture_patch(
+        workspace_root=tmp_path,
+        compare_files=files,
+        allow_empty_compare=True,
+        use_graphify=False,
+    )
+    assert preview.persisted_patch_text == ""
+    assert preview.metadata["selected_files"] == []
+    assert preview.run_source.source_kind == "file_compare"
+    with pytest.raises(InputError, match="identical"):
+        capture_module.capture_patch(workspace_root=tmp_path, compare_files=files)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="secure recursive directory compare is POSIX-only")
+def test_unchanged_directory_preview_keeps_normal_capture_rejection(tmp_path: Path) -> None:
+    for directory in ("before", "after"):
+        target = tmp_path / directory
+        target.mkdir()
+        (target / "notes.txt").write_text("same\n", encoding="utf-8")
+    preview = capture_module.capture_patch(
+        workspace_root=tmp_path,
+        compare_dir=(Path("before"), Path("after")),
+        allow_empty_compare=True,
+        use_graphify=False,
+    )
+    assert preview.persisted_patch_text == ""
+    assert preview.metadata["selected_files"] == []
+    assert preview.run_source.source_kind == "file_compare"
+    with pytest.raises(InputError, match="no differences"):
+        capture_module.capture_patch(
+            workspace_root=tmp_path,
+            compare_dir=(Path("before"), Path("after")),
+        )
+
+
+def test_compare_files_source_reference_frames_the_pair(tmp_path: Path) -> None:
+    refs: list[str] = []
+    for before, after in (("a::b", "c"), ("a", "b::c")):
+        capture = capture_module.capture_patch(
+            workspace_root=tmp_path,
+            compare_files=(
+                CompareFileInput(name="a.txt", content=before),
+                CompareFileInput(name="b.txt", content=after),
+            ),
+            use_graphify=False,
+        )
+        refs.append(capture.run_source.source_ref)
+    assert refs[0] != refs[1]
 
 
 def test_compare_dir_ipynb_uses_cell_aware_rendering(tmp_path: Path) -> None:

@@ -791,7 +791,7 @@ button.diff-split-cell {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 28vw);
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
   gap: 18px;
   scroll-margin-top: 80px;
 }
